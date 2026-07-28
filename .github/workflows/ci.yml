@@ -1,0 +1,142 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same branch; macOS minutes are the scarce resource.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: SpareCore (Linux)
+    runs-on: ubuntu-latest
+    container: swift:6.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      # SpareCore must stay platform-agnostic: it is the part of the codebase
+      # that can be compiled and tested without a Mac. An Apple-only import
+      # sneaking in here is what silently ends that, so fail loudly.
+      - name: Reject Apple-only imports in SpareCore
+        run: |
+          set -uo pipefail
+          banned='^[[:space:]]*(@_exported[[:space:]]+)?import[[:space:]]+(SwiftUI|SwiftData|StoreKit|UIKit|AppKit|WidgetKit|AppIntents|UserNotifications|CoreData|Combine|Darwin|ObjectiveC)\b'
+          if grep -rEn --include='*.swift' "$banned" SpareCore/Sources SpareCore/Tests; then
+            echo "::error::SpareCore must not import Apple-only frameworks (see matches above)."
+            exit 1
+          fi
+          echo "OK: no Apple-only imports in SpareCore."
+
+      # `canImport(Darwin)` is allowed for platform-conditional bodies, but the
+      # FoundationNetworking shim must accompany any URLSession use.
+      - name: Check FoundationNetworking guard on networking files
+        run: |
+          set -uo pipefail
+          status=0
+          while IFS= read -r file; do
+            if ! grep -q 'canImport(FoundationNetworking)' "$file"; then
+              echo "::error file=$file::uses URLSession without a #if canImport(FoundationNetworking) import"
+              status=1
+            fi
+          done < <(grep -rEl --include='*.swift' 'URLSession' SpareCore/Sources || true)
+          if [ "$status" -eq 0 ]; then echo "OK: networking files are guarded."; fi
+          exit "$status"
+
+      - name: Build
+        run: swift build --package-path SpareCore
+
+      - name: Test
+        run: swift test --package-path SpareCore
+
+  ios:
+    name: Spare (iOS)
+    runs-on: macos-latest
+    needs: core
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain versions
+        run: |
+          xcodebuild -version
+          swift --version
+
+      # Printed before the build so a destination failure is diagnosable from
+      # the log alone rather than needing a rerun.
+      - name: List available simulators
+        run: xcrun simctl list devices available
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Show scheme
+        run: xcodebuild -list -project Spare.xcodeproj
+
+      # Resolve a concrete simulator UDID from the runner's actual device list
+      # instead of hardcoding a device name that may not exist on the image.
+      - name: Pick a simulator
+        id: sim
+        run: |
+          set -euo pipefail
+          udid=$(xcrun simctl list devices available --json \
+            | python3 -c '
+import json,sys
+data = json.load(sys.stdin)["devices"]
+best = None
+for runtime, devices in data.items():
+    if "iOS" not in runtime:
+        continue
+    for device in devices:
+        if not device.get("isAvailable"):
+            continue
+        name = device["name"]
+        rank = 0 if name.startswith("iPhone") else 1
+        key = (rank, name)
+        if best is None or key < best[0]:
+            best = (key, device["udid"], name, runtime)
+if best is None:
+    sys.exit("no available iOS simulator on this runner")
+print(best[1])
+sys.stderr.write(f"selected {best[2]} ({best[3]})\n")
+')
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          echo "Using simulator $udid"
+
+      - name: Build and test
+        run: |
+          set -uo pipefail
+          if command -v xcbeautify >/dev/null 2>&1; then
+            formatter=(xcbeautify --renderer github-actions)
+          else
+            formatter=(cat)
+          fi
+          xcodebuild test \
+            -project Spare.xcodeproj \
+            -scheme Spare \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            | "${formatter[@]}"
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            echo "::error::xcodebuild test failed with status $status"
+          fi
+          exit "$status"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcresult
+          path: TestResults.xcresult
+          if-no-files-found: ignore
