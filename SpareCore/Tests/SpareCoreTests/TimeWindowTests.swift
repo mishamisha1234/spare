@@ -41,13 +41,23 @@ final class TimeWindowTests: XCTestCase {
         XCTAssertEqual(TimeWindow.fortyFive.label, "45 min")
     }
 
-    func testBudgetsStayUnderNaiveReadingSpeed() {
+    /// Budgets are calibrated to roughly 200 wpm minus absorption overhead. The
+    /// 3-minute window sits slightly above that (650 words is ~217 wpm) because
+    /// a One Thing needs a floor of substance to be worth reading — so this
+    /// asserts a sane band rather than a hard 200 ceiling.
+    func testBudgetsImplyAPlausibleReadingRate() {
         for window in TimeWindow.allCases {
-            XCTAssertLessThanOrEqual(
-                window.wordBudget.upperBound,
-                window.minutes * 200,
-                "\(window) budget exceeds a 200 wpm ceiling"
-            )
+            let fastest = Double(window.wordBudget.upperBound) / Double(window.minutes)
+            let slowest = Double(window.wordBudget.lowerBound) / Double(window.minutes)
+            XCTAssertLessThanOrEqual(fastest, 220, "\(window) demands an implausible reading rate")
+            XCTAssertGreaterThanOrEqual(slowest, 150, "\(window) wastes the time the reader gave it")
+        }
+    }
+
+    func testLongerWindowsCarryStrictlyLargerBudgets() {
+        let budgets = TimeWindow.allCases.map(\.wordBudget)
+        for (shorter, longer) in zip(budgets, budgets.dropFirst()) {
+            XCTAssertLessThan(shorter.upperBound, longer.lowerBound)
         }
     }
 

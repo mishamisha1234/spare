@@ -95,7 +95,10 @@ public struct SSEParser: Sendable {
         var eventName: String?
         var dataLines: [String] = []
 
-        for rawLine in record.split(whereSeparator: { $0 == "\n" || $0 == "\r" }) {
+        // `isNewline` rather than comparing against "\n" and "\r": Swift folds a
+        // CRLF pair into a single Character, so neither comparison matches it and
+        // a CRLF stream would parse as one unsplit line.
+        for rawLine in record.split(whereSeparator: { $0.isNewline }) {
             let line = String(rawLine)
             // Comments/heartbeats.
             if line.hasPrefix(":") { continue }

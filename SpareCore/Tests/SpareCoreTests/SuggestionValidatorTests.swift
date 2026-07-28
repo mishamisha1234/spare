@@ -44,12 +44,25 @@ final class SuggestionValidatorTests: XCTestCase {
         XCTAssertTrue(SuggestionValidator.isAcceptable(set))
     }
 
+    /// Five spellings of one domain must count as one, not five.
     func testDomainComparisonIgnoresCaseAndPunctuation() {
+        var set = validSet()
+        for (index, spelling) in ["Economic history", "economic history", "ECONOMIC HISTORY!",
+                                  "Economic-History", "  economic   history  "].enumerated() {
+            set[index].domainTag = spelling
+        }
+        XCTAssertTrue(SuggestionValidator.validate(set).contains(.tooFewDomains(1)))
+    }
+
+    func testDistinctDomainsAreNotCollapsed() {
         var set = validSet()
         set[0].domainTag = "Economic history"
         set[1].domainTag = "economic history"
-        let issues = SuggestionValidator.validate(set)
-        XCTAssertTrue(issues.contains(.tooFewDomains(4)))
+        // Now 4 distinct domains, which clears the 3-domain floor.
+        XCTAssertFalse(SuggestionValidator.validate(set).contains { issue in
+            if case .tooFewDomains = issue { return true }
+            return false
+        })
     }
 
     func testMissingWildcardIsBlocking() {

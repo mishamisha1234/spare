@@ -37,12 +37,16 @@ public enum LessonQualityCheck {
         let lowered = body.lowercased()
 
         for phrase in Prompts.bannedPhrases where lowered.contains(phrase) {
-            // "leverage" is banned as a verb only; allow the noun in finance
-            // contexts rather than flagging every legitimate use.
-            if phrase == "leverage", !lowered.contains("leveraging"), !lowered.contains("to leverage") {
-                continue
-            }
+            // "leverage" is banned as a verb only — the bare noun is legitimate
+            // in finance writing. Handled separately below, because substring
+            // matching cannot tell the two apart: "leveraging" stems to
+            // "leverag" and so does not contain "leverage" at all.
+            if phrase == "leverage" { continue }
             findings.append(.bannedPhrase(phrase))
+        }
+
+        if Self.leverageVerbForms.contains(where: { lowered.contains($0) }) {
+            findings.append(.bannedPhrase("leverage"))
         }
 
         switch ReadingTime.budgetAssessment(wordCount: lesson.wordCount, window: window) {
@@ -83,6 +87,9 @@ public enum LessonQualityCheck {
     }
 
     // MARK: Helpers
+
+    /// Verb uses of "leverage", which the brief bans. The bare noun is allowed.
+    static let leverageVerbForms = ["leveraging", "leveraged", "leverages", "to leverage"]
 
     static func firstSentence(of text: String) -> String? {
         let prose = text
