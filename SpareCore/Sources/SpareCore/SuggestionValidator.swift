@@ -26,15 +26,15 @@ public enum SuggestionValidator {
         public var description: String {
             switch self {
             case .wrongCount(let count):
-                return "expected \(requiredCount) suggestions, got \(count)"
+                return "expected \(SuggestionValidator.requiredCount) suggestions, got \(count)"
             case .tooFewDomains(let count):
-                return "suggestions span \(count) domains, need at least \(minimumDomains)"
+                return "suggestions span \(count) domains, need at least \(SuggestionValidator.minimumDomains)"
             case .wildcardCount(let count):
                 return "expected exactly 1 wildcard, got \(count)"
             case .titleTooLong(let title, let words):
-                return "title \"\(title)\" is \(words) words (max \(maxTitleWords))"
+                return "title \"\(title)\" is \(words) words (max \(SuggestionValidator.maxTitleWords))"
             case .hookTooLong(let title, let words):
-                return "hook for \"\(title)\" is \(words) words (max \(maxHookWords))"
+                return "hook for \"\(title)\" is \(words) words (max \(SuggestionValidator.maxHookWords))"
             case .clickbait(let title, let phrase):
                 return "title \"\(title)\" contains clickbait phrase \"\(phrase)\""
             case .duplicateOfHistory(let title):

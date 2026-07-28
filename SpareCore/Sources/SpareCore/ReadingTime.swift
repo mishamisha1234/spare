@@ -1,6 +1,8 @@
 import Foundation
 
-extension String {
+/// Declared on `StringProtocol` rather than `String` so it also applies to the
+/// `Substring` values that `split` produces.
+extension StringProtocol {
     /// Whitespace-separated word count; the unit all budget and pacing math
     /// is expressed in.
     public var lessonWordCount: Int {

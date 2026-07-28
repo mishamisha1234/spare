@@ -196,11 +196,16 @@ final class MockProviderTests: XCTestCase {
     }
 
     func testCancellingTheStreamStopsIt() async throws {
+        // Everything the Task closure touches is hoisted into a Sendable local:
+        // XCTestCase is not Sendable, so capturing `self` is a Swift 6 error.
         let streamProvider = MockProvider(simulateLatency: true, chunkDelayMilliseconds: 30)
+        let source = MockProvider.fixtureSuggestions(for: .fortyFive)[0]
+        let snapshot = ProfileSnapshot.empty
+
         let task = Task { () -> Int in
             var count = 0
             for try await _ in streamProvider.streamLesson(
-                topic: topic(for: .fortyFive), window: .fortyFive, profile: profile
+                topic: source, window: .fortyFive, profile: snapshot
             ) {
                 count += 1
                 if count == 3 { break }
