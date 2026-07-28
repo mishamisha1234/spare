@@ -4,16 +4,12 @@ import SpareCore
 
 @main
 struct SpareApp: App {
+    private let container = PersistenceStack.makeContainer()
+
     var body: some Scene {
         WindowGroup {
             RootView()
         }
-        .modelContainer(for: [
-            StoredProfile.self,
-            StoredLesson.self,
-            StoredRecallItem.self,
-            StoredSuggestionCache.self,
-            StoredEntitlement.self,
-        ])
+        .modelContainer(container)
     }
 }

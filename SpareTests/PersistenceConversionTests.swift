@@ -7,19 +7,8 @@ import SpareCore
 /// the SpareCore value types. Core logic is tested in the SpareCore package.
 final class PersistenceConversionTests: XCTestCase {
 
-    private func inMemoryContext() throws -> ModelContext {
-        let schema = Schema([
-            StoredProfile.self,
-            StoredLesson.self,
-            StoredRecallItem.self,
-            StoredSuggestionCache.self,
-            StoredEntitlement.self,
-        ])
-        let container = try ModelContainer(
-            for: schema,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
-        return ModelContext(container)
+    private func inMemoryContext() -> ModelContext {
+        ModelContext(PersistenceStack.makeContainer(inMemory: true))
     }
 
     // MARK: - Profile
@@ -223,8 +212,30 @@ final class PersistenceConversionTests: XCTestCase {
 
     // MARK: - Container
 
+    /// The store path must sit under a directory that exists. `Application
+    /// Support` is absent in a fresh app container, which is what broke store
+    /// creation at launch.
+    func testStoreURLParentDirectoryExists() {
+        let url = PersistenceStack.storeURL()
+        XCTAssertEqual(url.lastPathComponent, "Spare.store")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: url.deletingLastPathComponent().path),
+            "store directory was not created: \(url.deletingLastPathComponent().path)"
+        )
+    }
+
+    func testSchemaCoversEveryPersistedModel() {
+        let names = Set(PersistenceStack.makeSchema().entities.map(\.name))
+        for expected in [
+            "StoredProfile", "StoredLesson", "StoredRecallItem",
+            "StoredSuggestionCache", "StoredEntitlement",
+        ] {
+            XCTAssertTrue(names.contains(expected), "schema is missing \(expected)")
+        }
+    }
+
     func testModelsInsertAndFetchFromAnInMemoryContainer() throws {
-        let context = try inMemoryContext()
+        let context = inMemoryContext()
         let lesson = MockProvider.fixtureLesson(
             topic: MockProvider.fixtureSuggestions(for: .three)[0], window: .three
         )
