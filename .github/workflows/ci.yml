@@ -87,27 +87,7 @@ jobs:
         id: sim
         run: |
           set -euo pipefail
-          udid=$(xcrun simctl list devices available --json \
-            | python3 -c '
-import json,sys
-data = json.load(sys.stdin)["devices"]
-best = None
-for runtime, devices in data.items():
-    if "iOS" not in runtime:
-        continue
-    for device in devices:
-        if not device.get("isAvailable"):
-            continue
-        name = device["name"]
-        rank = 0 if name.startswith("iPhone") else 1
-        key = (rank, name)
-        if best is None or key < best[0]:
-            best = (key, device["udid"], name, runtime)
-if best is None:
-    sys.exit("no available iOS simulator on this runner")
-print(best[1])
-sys.stderr.write(f"selected {best[2]} ({best[3]})\n")
-')
+          udid=$(xcrun simctl list devices available --json | python3 .github/scripts/pick_simulator.py)
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
           echo "Using simulator $udid"
 
