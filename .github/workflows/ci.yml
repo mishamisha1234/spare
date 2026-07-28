@@ -24,10 +24,14 @@ jobs:
       # SpareCore must stay platform-agnostic: it is the part of the codebase
       # that can be compiled and tested without a Mac. An Apple-only import
       # sneaking in here is what silently ends that, so fail loudly.
+      # Portable POSIX sh: this job runs in a container whose default shell is
+      # dash, so no `pipefail` and no process substitution.
       - name: Reject Apple-only imports in SpareCore
         run: |
-          set -uo pipefail
-          banned='^[[:space:]]*(@_exported[[:space:]]+)?import[[:space:]]+(SwiftUI|SwiftData|StoreKit|UIKit|AppKit|WidgetKit|AppIntents|UserNotifications|CoreData|Combine|Darwin|ObjectiveC)\b'
+          set -u
+          # `([^A-Za-z0-9_]|$)` is a portable word boundary: it still catches
+          # `import UIKit.UIView` while leaving a hypothetical `UIKitCore` alone.
+          banned='^[[:space:]]*(@_exported[[:space:]]+)?import[[:space:]]+(SwiftUI|SwiftData|StoreKit|UIKit|AppKit|WidgetKit|AppIntents|UserNotifications|CoreData|Combine|Darwin|ObjectiveC)([^A-Za-z0-9_]|$)'
           if grep -rEn --include='*.swift' "$banned" SpareCore/Sources SpareCore/Tests; then
             echo "::error::SpareCore must not import Apple-only frameworks (see matches above)."
             exit 1
@@ -38,16 +42,20 @@ jobs:
       # FoundationNetworking shim must accompany any URLSession use.
       - name: Check FoundationNetworking guard on networking files
         run: |
-          set -uo pipefail
-          status=0
-          while IFS= read -r file; do
-            if ! grep -q 'canImport(FoundationNetworking)' "$file"; then
+          set -u
+          unguarded=$(
+            grep -rEl --include='*.swift' 'URLSession' SpareCore/Sources 2>/dev/null \
+            | while IFS= read -r file; do
+                grep -q 'canImport(FoundationNetworking)' "$file" || printf '%s\n' "$file"
+              done
+          )
+          if [ -n "$unguarded" ]; then
+            printf '%s\n' "$unguarded" | while IFS= read -r file; do
               echo "::error file=$file::uses URLSession without a #if canImport(FoundationNetworking) import"
-              status=1
-            fi
-          done < <(grep -rEl --include='*.swift' 'URLSession' SpareCore/Sources || true)
-          if [ "$status" -eq 0 ]; then echo "OK: networking files are guarded."; fi
-          exit "$status"
+            done
+            exit 1
+          fi
+          echo "OK: networking files are guarded."
 
       - name: Build
         run: swift build --package-path SpareCore
