@@ -50,21 +50,16 @@ public struct TaskSleeper: Sleeper {
 }
 
 /// Records what it was asked to wait for, without waiting.
-public final class RecordingSleeper: Sleeper, @unchecked Sendable {
-    private let lock = NSLock()
-    private var storage: [TimeInterval] = []
+///
+/// An actor rather than a lock-guarded class: `sleep` is async, and NSLock's
+/// `lock()`/`unlock()` are unavailable from async contexts (holding a lock
+/// across a suspension point can deadlock).
+public actor RecordingSleeper: Sleeper {
+    public private(set) var recordedDelays: [TimeInterval] = []
 
     public init() {}
 
-    public var recordedDelays: [TimeInterval] {
-        lock.lock()
-        defer { lock.unlock() }
-        return storage
-    }
-
     public func sleep(seconds: TimeInterval) async throws {
-        lock.lock()
-        storage.append(seconds)
-        lock.unlock()
+        recordedDelays.append(seconds)
     }
 }

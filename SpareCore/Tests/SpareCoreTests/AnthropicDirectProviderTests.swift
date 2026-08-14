@@ -187,7 +187,8 @@ final class AnthropicDirectProviderTests: XCTestCase {
 
         XCTAssertEqual(transport.requestCount, 3, "the truncated draft is retried")
         XCTAssertEqual(revisedText(events), "Recovered revision.")
-        XCTAssertEqual(sleeper.recordedDelays, [1], "one backoff, at the policy's initial delay")
+        let delays = await sleeper.recordedDelays
+        XCTAssertEqual(delays, [1], "one backoff, at the policy's initial delay")
     }
 
     func testMalformedJSONIsRetried() async throws {
@@ -219,7 +220,8 @@ final class AnthropicDirectProviderTests: XCTestCase {
         )
         XCTAssertEqual(suggestions.count, 5)
         XCTAssertEqual(transport.requestCount, 3)
-        XCTAssertEqual(sleeper.recordedDelays, [1, 2], "exponential, not flat")
+        let delays = await sleeper.recordedDelays
+        XCTAssertEqual(delays, [1, 2], "exponential, not flat")
     }
 
     func testRetriesAreBoundedByThePolicy() async {

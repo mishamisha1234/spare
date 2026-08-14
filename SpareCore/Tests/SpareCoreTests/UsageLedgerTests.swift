@@ -136,6 +136,7 @@ final class UsageLedgerTests: XCTestCase {
         let start = Date()
         try await sleeper.sleep(seconds: 30)
         XCTAssertLessThan(Date().timeIntervalSince(start), 1)
-        XCTAssertEqual(sleeper.recordedDelays, [30])
+        let delays = await sleeper.recordedDelays
+        XCTAssertEqual(delays, [30])
     }
 }

@@ -15,12 +15,22 @@ xcuserdata/
 Package.resolved
 
 # Never commit credentials of any kind.
-# The Anthropic API key lives in the Keychain only — but belt and braces:
+# The Anthropic API key lives in the Keychain only — but belt and braces.
+#
+# These patterns are deliberately narrow. A broad `*apikey*` silently swallowed
+# APIKeyStore.swift and KeychainAPIKeyStore.swift, because git runs with
+# core.ignorecase=true on Windows — the build then failed on a type that
+# existed on disk but had never been committed. Filename heuristics are a poor
+# guard anyway; the real one is the content scan in CI, which greps for
+# key-shaped strings and fails the build.
 *.pem
 *.p12
 *.key
 .env
 .env.*
-*apikey*
-*api_key*
-secrets.*
+apikey.txt
+api_key.txt
+*.apikey
+secrets.json
+secrets.plist
+secrets.yml
