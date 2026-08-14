@@ -104,7 +104,8 @@ struct LibraryView: View {
         }
         .background(palette.background)
         .navigationTitle("Library")
-        .accessibilityIdentifier("library.screen")
+        // No container-level accessibilityIdentifier: see OnboardingView.
+        // library.filter.*, library.row.*, and library.empty are what's used.
     }
 
     private var domainFilter: some View {

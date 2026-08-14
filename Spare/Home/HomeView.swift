@@ -37,7 +37,9 @@ struct HomeView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(palette.background)
         .themedAppear()
-        .accessibilityIdentifier("home.screen")
+        // No container-level accessibilityIdentifier: see OnboardingView for
+        // why (confirmed to clobber descendant identifiers). Nothing needs
+        // this one — home.circle.* and home.libraryButton are what's tested.
     }
 
     private func row(_ windows: [TimeWindow]) -> some View {

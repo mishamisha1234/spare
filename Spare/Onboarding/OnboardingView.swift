@@ -55,7 +55,14 @@ struct OnboardingView: View {
         .padding(.horizontal, Theme.Spacing.m)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(palette.background)
-        .accessibilityIdentifier("onboarding.step.\(step.rawValue)")
+        // No container-level accessibilityIdentifier here: SwiftUI propagates
+        // an identifier set on a container down to every descendant element
+        // that doesn't get a more specific one applied to it afterwards --
+        // this exact line was clobbering onboarding.primary, every chip, and
+        // both text fields with "onboarding.step.N", confirmed by dumping
+        // app.debugDescription in CI (every element on the pitch screen
+        // shared one identifier). Each step's controls already carry their
+        // own meaningful identifiers; nothing needs one at this level too.
     }
 
     // MARK: - Steps

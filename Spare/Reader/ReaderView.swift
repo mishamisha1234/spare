@@ -90,7 +90,8 @@ struct ReaderView: View {
             viewModel.updateScrollProgress(min(scrolled / maxScroll, 1))
         }
         .onAppear { viewModel.start() }
-        .accessibilityIdentifier("reader.screen")
+        // No container-level accessibilityIdentifier: see OnboardingView.
+        // reader.continue / reader.holding / reader.textSize are what's used.
     }
 
     @ViewBuilder

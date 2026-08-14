@@ -49,6 +49,6 @@ struct LessonDetailView: View {
         }
         .background(palette.background)
         .navigationBarTitleDisplayMode(.inline)
-        .accessibilityIdentifier("lessonDetail.screen")
+        // No container-level accessibilityIdentifier: see OnboardingView.
     }
 }

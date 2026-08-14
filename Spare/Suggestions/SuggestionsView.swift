@@ -60,7 +60,8 @@ struct SuggestionsView: View {
             }
         }
         .task { await viewModel.loadCacheThenRefresh() }
-        .accessibilityIdentifier("suggestions.screen")
+        // No container-level accessibilityIdentifier: see OnboardingView.
+        // suggestions.row.* and suggestions.shuffle are what's used.
     }
 
     private func row(_ suggestion: TopicSuggestion) -> some View {

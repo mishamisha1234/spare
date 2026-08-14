@@ -127,7 +127,13 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             // MARK: Library (reached from Home)
             try waitAndCapture(app, "06b-home-again", scheme: colorScheme, identifier: "home.libraryButton")
             try tap(app, "home.libraryButton", scheme: colorScheme, step: "06b-home-again")
-            try waitAndCapture(app, "10-library", scheme: colorScheme, identifier: "library.screen")
+            // Wait for the lesson we just read to actually appear in the
+            // library, not just for the screen to exist -- a stronger check,
+            // and it avoids depending on any container-level identifier.
+            let firstLibraryRow = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier BEGINSWITH 'library.row.'"))
+                .firstMatch
+            try waitAndCapture(app, "10-library", scheme: colorScheme, element: firstLibraryRow, step: "10-library")
         } catch {
             attachFailureDiagnostics(app, scheme: colorScheme)
             throw error

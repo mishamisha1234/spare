@@ -105,7 +105,10 @@ struct CompletionView: View {
                 await viewModel.ensureRecallGenerated(for: stored)
             }
         }
-        .accessibilityIdentifier("completion.screen")
+        // No container-level accessibilityIdentifier: SwiftUI can propagate
+        // one down and clobber every descendant's own identifier — confirmed
+        // for OnboardingView via an app.debugDescription dump in CI. Every
+        // control on this screen already carries its own identifier.
     }
 
     private func primaryButton(title: String, isDisabled: Bool, action: @escaping () -> Void) -> some View {
