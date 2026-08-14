@@ -149,7 +149,12 @@ Verification against the real API is a manual step on a Mac with a key in Settin
 
 ## Known deviations
 
-- **Toolbar button shadow.** Toolbar items render with a soft shadow under a circular background that the theme doesn't specify. It comes from iOS's own toolbar chrome, not from our styling — `.buttonStyle(.plain)` on the buttons doesn't reach it, and `NavigationBarChrome.flatten()` (transparent background, cleared shadow across all appearance slots) is the further attempt. If it persists, it is iOS 26's per-item "glass" treatment, which has no SwiftUI-level override short of abandoning `.toolbar` entirely. Not worth losing native back-swipe and VoiceOver behaviour over.
+- **Toolbar button shadow — confirmed unfixable without abandoning `.toolbar`.** Toolbar items render with a soft shadow under a circular background the theme doesn't specify. Three fixes were tried and verified against CI screenshots, and all three left it unchanged:
+  1. `.buttonStyle(.plain)` on the buttons — it isn't button styling.
+  2. `.toolbarBackground(.hidden, for: .navigationBar)` — it isn't the bar background.
+  3. `NavigationBarChrome.flatten()`: a `UINavigationBarAppearance` with a transparent background and cleared `shadowColor`/`shadowImage`, applied to `standardAppearance`, `scrollEdgeAppearance`, `compactAppearance`, and `compactScrollEdgeAppearance`.
+
+  That eliminates the bar as the source: it is iOS 26's per-item "glass" treatment on toolbar buttons, which has no SwiftUI-level override. Removing it would mean hand-rolling a header row instead of `.toolbar`, giving up native back-swipe and VoiceOver behaviour to delete a shadow. Not worth it. Both fixes are kept anyway — they're harmless and correct in intent.
 
 ## Roadmap
 

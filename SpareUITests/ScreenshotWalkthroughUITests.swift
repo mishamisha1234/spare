@@ -134,6 +134,21 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
                 .matching(NSPredicate(format: "identifier BEGINSWITH 'library.row.'"))
                 .firstMatch
             try waitAndCapture(app, "10-library", scheme: colorScheme, element: firstLibraryRow, step: "10-library")
+
+            // MARK: Settings — last, deliberately. It needs a back-navigation
+            // tap on system chrome, so if that proves flaky it costs only this
+            // step rather than the nine screenshots already captured.
+            let backButton = app.navigationBars.buttons.firstMatch
+            XCTAssertTrue(
+                backButton.waitForExistence(timeout: defaultTimeout),
+                "11-settings: no back button to return to Home"
+            )
+            backButton.tap()
+            try waitAndCapture(app, "11-home", scheme: colorScheme, identifier: "home.settingsButton")
+            try tap(app, "home.settingsButton", scheme: colorScheme, step: "11-settings")
+            try waitAndCapture(
+                app, "12-settings", scheme: colorScheme, identifier: "settings.apiKeyField"
+            )
         } catch {
             attachFailureDiagnostics(app, scheme: colorScheme)
             throw error
