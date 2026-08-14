@@ -52,15 +52,28 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+  SpareUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: SpareUITests
+    dependencies:
+      - target: Spare
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Spare
 schemes:
   Spare:
     build:
       targets:
         Spare: all
         SpareTests: [test]
+        SpareUITests: [test]
     run:
       config: Debug
     test:
       config: Debug
       targets:
         - SpareTests
+        - SpareUITests
