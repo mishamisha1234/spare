@@ -18,7 +18,14 @@ struct HomeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Capped like the title-to-circles gap below: an uncapped Spacer
+            // here grows in lockstep with the uncapped one at the bottom —
+            // SwiftUI splits leftover space evenly between Spacers of equal
+            // priority — which silently cancels out the "pull the group up"
+            // intent. Confirmed by measuring the previous screenshot: top and
+            // bottom empty space came out equal instead of bottom-heavy.
             Spacer(minLength: Theme.Spacing.s)
+                .frame(maxHeight: Theme.Spacing.m)
 
             Text("How long do you have?")
                 .font(Theme.Font.largeTitle.font)
