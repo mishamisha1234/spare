@@ -17,8 +17,8 @@ struct HomeView: View {
     private static let bottomRow: [TimeWindow] = [.fifteen, .fortyFive]
 
     var body: some View {
-        VStack(spacing: Theme.Spacing.xl) {
-            Spacer(minLength: Theme.Spacing.l)
+        VStack(spacing: 0) {
+            Spacer(minLength: Theme.Spacing.s)
 
             Text("How long do you have?")
                 .font(Theme.Font.largeTitle.font)
@@ -26,11 +26,20 @@ struct HomeView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
 
-            VStack(spacing: Theme.Spacing.l) {
+            // Capped, not a bare Spacer: keeps the title close to the circles
+            // on every screen height instead of stretching to split the
+            // available space evenly, which is what read as a lot of dead air.
+            Spacer(minLength: Theme.Spacing.m)
+                .frame(maxHeight: Theme.Spacing.l)
+
+            VStack(spacing: Theme.Spacing.m) {
                 row(Self.topRow)
                 row(Self.bottomRow)
             }
 
+            // Uncapped: absorbs the rest of the screen below the group so the
+            // group sits in the optical center of the space under the title,
+            // rather than the exact geometric center two equal spacers give.
             Spacer(minLength: Theme.Spacing.l)
         }
         .padding(.horizontal, Theme.Spacing.m)
@@ -43,12 +52,12 @@ struct HomeView: View {
     }
 
     private func row(_ windows: [TimeWindow]) -> some View {
-        HStack(spacing: Theme.Spacing.l) {
+        HStack(spacing: Theme.Spacing.m) {
             ForEach(windows) { window in
                 DurationCircleView(window: window) { onSelect(window) }
             }
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 }
 

@@ -70,15 +70,26 @@ struct SettingsView: View {
 
             HStack(spacing: Theme.Spacing.xs) {
                 Button(action: saveKey) {
+                    // Disabled state is a border, not a dimmed fill: an accent
+                    // fill at reduced opacity turned muddy in dark mode, where
+                    // the accent already sits close to the background in
+                    // luminance. A border reads as "inactive" without mixing
+                    // two low-contrast colors together.
                     Text("Save key")
                         .font(Theme.Font.headline.font)
-                        .foregroundStyle(palette.textOnAccent)
+                        .foregroundStyle(keyEntry.isEmpty ? palette.secondaryText : palette.textOnAccent)
                         .frame(maxWidth: .infinity)
                         .frame(height: Theme.ControlSize.button)
                         .background(
                             RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                                .fill(palette.accent)
-                                .opacity(keyEntry.isEmpty ? Theme.Interaction.disabledOpacity : 1)
+                                .fill(keyEntry.isEmpty ? Color.clear : palette.accent)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.cornerRadius)
+                                .strokeBorder(
+                                    keyEntry.isEmpty ? palette.border : Color.clear,
+                                    lineWidth: Theme.borderWidth
+                                )
                         )
                 }
                 .buttonStyle(.plain)
@@ -115,22 +126,26 @@ struct SettingsView: View {
     private var readingSection: some View {
         section("Reading") {
             labelledPicker("Appearance") {
-                Picker("Appearance", selection: $appearanceModeRaw) {
-                    ForEach(Theme.AppearanceMode.allCases) { mode in
-                        Text(mode.label).tag(mode.rawValue)
-                    }
-                }
-                .pickerStyle(.segmented)
+                ThemedSegmentedControl(
+                    options: Theme.AppearanceMode.allCases,
+                    label: \.label,
+                    selection: Binding(
+                        get: { Theme.AppearanceMode(rawValue: appearanceModeRaw) ?? .system },
+                        set: { appearanceModeRaw = $0.rawValue }
+                    )
+                )
                 .accessibilityIdentifier("settings.appearance")
             }
 
             labelledPicker("Text size") {
-                Picker("Text size", selection: $textSizeStepRaw) {
-                    ForEach(TextSizeStep.allCases) { step in
-                        Text(step.label).tag(step.rawValue)
-                    }
-                }
-                .pickerStyle(.segmented)
+                ThemedSegmentedControl(
+                    options: TextSizeStep.allCases,
+                    label: \.label,
+                    selection: Binding(
+                        get: { TextSizeStep(rawValue: textSizeStepRaw) ?? .standard },
+                        set: { textSizeStepRaw = $0.rawValue }
+                    )
+                )
                 .accessibilityIdentifier("settings.textSize")
             }
         }

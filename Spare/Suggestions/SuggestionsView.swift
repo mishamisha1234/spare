@@ -67,16 +67,18 @@ struct SuggestionsView: View {
 
     private func row(_ suggestion: TopicSuggestion) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
+            // Tag leads as an eyebrow, not a footnote: scan order is
+            // tag → title → hook, and the tag needs to outrank the hook.
+            Text(suggestion.domainTag.uppercased())
+                .font(Theme.Font.eyebrow.font)
+                .tracking(Theme.Font.eyebrow.tracking)
+                .foregroundStyle(palette.text)
             Text(suggestion.title)
                 .font(Theme.Font.headline.font)
                 .foregroundStyle(palette.text)
             Text(suggestion.hook)
                 .font(Theme.Font.label.font)
                 .foregroundStyle(palette.secondaryText)
-            Text(suggestion.domainTag.uppercased())
-                .font(Theme.Font.caption.font)
-                .foregroundStyle(palette.secondaryText)
-                .padding(.top, Theme.Spacing.xxs)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, Theme.Spacing.s)

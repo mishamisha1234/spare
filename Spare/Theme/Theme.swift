@@ -97,6 +97,9 @@ enum Theme {
         case label
         /// Secondary/meta text: timestamps, tags, captions.
         case caption
+        /// A small label sitting above a title — e.g. a suggestion's domain
+        /// tag. Meant to outrank the title it sits over, not recede.
+        case eyebrow
 
         var font: SwiftUI.Font {
             switch self {
@@ -114,6 +117,8 @@ enum Theme {
                 return .system(size: 15, weight: .medium, design: .default)
             case .caption:
                 return .system(size: 13, weight: .medium, design: .default)
+            case .eyebrow:
+                return .system(size: 11, weight: .semibold, design: .default)
             }
         }
 
@@ -122,6 +127,15 @@ enum Theme {
         var lineSpacing: CGFloat {
             switch self {
             case .body: 19 * 0.55
+            default: 0
+            }
+        }
+
+        /// Letter-spacing to apply via `.tracking(_:)`, in points. Only
+        /// `.eyebrow` carries it — 0.08em at its own 11pt size.
+        var tracking: CGFloat {
+            switch self {
+            case .eyebrow: 11 * 0.08
             default: 0
             }
         }
@@ -214,10 +228,10 @@ enum Theme {
     /// Diameters for the four time windows, in ascending order. Size is the
     /// only thing that communicates duration on Home — nothing else may.
     enum CircleSize {
-        static let three: CGFloat = 58
-        static let ten: CGFloat = 80
-        static let fifteen: CGFloat = 96
-        static let fortyFive: CGFloat = 120
+        static let three: CGFloat = 80
+        static let ten: CGFloat = 110
+        static let fifteen: CGFloat = 132
+        static let fortyFive: CGFloat = 160
 
         /// Minimum interactive area regardless of visual diameter.
         static let minimumTapTarget: CGFloat = 44
