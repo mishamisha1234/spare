@@ -53,6 +53,23 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
 
         app.launch()
 
+        // Unconditional, not failure-only: `app.screenshot()` captures raw
+        // simulator pixels regardless of what XCUITest's own accessibility
+        // connection sees, so a clean screenshot does not prove the element
+        // tree is correct. This dump is ground truth for that tree — needed
+        // because the previous run showed a perfectly rendered button that a
+        // 30s `waitForExistence` still could not find by identifier.
+        let launchHierarchy = XCTAttachment(string: app.debugDescription)
+        launchHierarchy.name = "\(colorScheme)-00-launch-hierarchy"
+        launchHierarchy.lifetime = .keepAlways
+        add(launchHierarchy)
+        // Also printed directly: xcparse's "screenshots" subcommand may only
+        // pull image attachments, but stdout is captured in the CI log
+        // regardless, with no artifact-extraction step in between.
+        print("=== \(colorScheme) accessibility tree at launch ===")
+        print(app.debugDescription)
+        print("=== end \(colorScheme) accessibility tree ===")
+
         do {
             // MARK: Onboarding — step 1: pitch
             try waitAndCapture(app, "01-onboarding-pitch", scheme: colorScheme, identifier: "onboarding.primary")

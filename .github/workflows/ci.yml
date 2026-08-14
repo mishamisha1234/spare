@@ -107,6 +107,11 @@ jobs:
           else
             formatter=(cat)
           fi
+          # `tee` a raw, unformatted copy alongside the beautified stream:
+          # xcbeautify's job is reformatting build/test output, and it is not
+          # guaranteed to pass through plain print()/NSLog lines a test
+          # writes to stdout, so the raw log is the reliable place to look
+          # for anything a test explicitly printed.
           xcodebuild test \
             -project Spare.xcodeproj \
             -scheme Spare \
@@ -114,12 +119,33 @@ jobs:
             -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
+            | tee raw-test-output.log \
             | "${formatter[@]}"
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             echo "::error::xcodebuild test failed with status $status"
           fi
           exit "$status"
+
+      - name: Show anything the tests printed directly
+        if: always()
+        run: |
+          set -u
+          if [ -f raw-test-output.log ] && grep -q 'accessibility tree' raw-test-output.log; then
+            echo "::group::Test-printed accessibility tree diagnostics"
+            grep -A 200 'accessibility tree at launch' raw-test-output.log | grep -B 200 -m 1 'end .* accessibility tree' || true
+            echo "::endgroup::"
+          else
+            echo "No test-printed accessibility tree diagnostics found in raw output."
+          fi
+
+      - name: Upload raw test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-test-output
+          path: raw-test-output.log
+          if-no-files-found: ignore
 
       - name: Upload test results
         if: always()
