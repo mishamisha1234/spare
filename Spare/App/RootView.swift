@@ -39,6 +39,11 @@ struct RootView: View {
                         .navigationDestination(for: AppRoute.self) { route in
                             destination(for: route)
                         }
+                        // The declarative half of the toolbar-chrome fix; the
+                        // UIKit appearance proxy in NavigationBarChrome is the
+                        // other half. Applied to the stack's root so it covers
+                        // every pushed screen.
+                        .toolbarBackground(.hidden, for: .navigationBar)
                 }
             } else {
                 OnboardingView(onFinished: { hasCompletedOnboarding = true })

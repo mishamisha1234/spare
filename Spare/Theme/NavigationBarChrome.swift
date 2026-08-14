@@ -16,6 +16,8 @@ import UIKit
 /// VoiceOver behaviour to remove a shadow — is explicitly not worth making,
 /// so it stays documented in the README instead.
 enum NavigationBarChrome {
+    /// `@MainActor`: UIKit's appearance proxies are main-actor isolated.
+    @MainActor
     static func flatten() {
         let appearance = UINavigationBarAppearance()
         appearance.configureWithTransparentBackground()

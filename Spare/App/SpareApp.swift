@@ -2,7 +2,11 @@ import SwiftUI
 import SwiftData
 import SpareCore
 
+/// `@MainActor` so `init` can touch UIKit's appearance proxies, which are
+/// main-actor isolated. SwiftUI already runs an App's init and body on the
+/// main actor, so this states what was true rather than changing behaviour.
 @main
+@MainActor
 struct SpareApp: App {
     /// `-UITEST_RESET_STATE` (set by the screenshot UI test) forces an
     /// in-memory store and clears onboarding/appearance defaults, so every
