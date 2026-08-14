@@ -5,6 +5,17 @@ import XCTest
 /// 13 API calls if every chapter is generated. A reader who stops at chapter 2
 /// must not pay for chapters 3–6, so these tests count requests rather than
 /// just checking that output looks right.
+/// Counts events from inside a detached `Task`. An actor rather than a
+/// captured `var`: mutating a local from a concurrently-running closure is a
+/// data race, which Swift 6 rejects outright.
+private actor ChapterCounter {
+    private(set) var revisedChapters = 0
+
+    func countRevised() {
+        revisedChapters += 1
+    }
+}
+
 final class LazyChapterGenerationTests: XCTestCase {
 
     private let profile = ProfileSnapshot.empty
@@ -57,10 +68,10 @@ final class LazyChapterGenerationTests: XCTestCase {
             topic: topic, window: .fortyFive, profile: profile, demand: demand
         )
 
-        var revisedChapters = 0
+        let counter = ChapterCounter()
         let task = Task {
             for try await event in stream {
-                if case .revisedChapterFinished = event { revisedChapters += 1 }
+                if case .revisedChapterFinished = event { await counter.countRevised() }
             }
         }
 
@@ -69,6 +80,7 @@ final class LazyChapterGenerationTests: XCTestCase {
         task.cancel()
         _ = await task.result
 
+        let revisedChapters = await counter.revisedChapters
         XCTAssertEqual(revisedChapters, 2, "chapters 0 and 1 only — the prefetch window")
         XCTAssertEqual(
             transport.requestCount, 5,
@@ -199,19 +211,20 @@ final class LazyChapterGenerationTests: XCTestCase {
     func testMockProviderIsAlsoLazy() async throws {
         let provider = MockProvider(simulateLatency: false)
         let demand = ChapterDemand()
-        var revisedChapters = 0
+        let counter = ChapterCounter()
 
         let task = Task {
             for try await event in provider.streamLesson(
                 topic: topic, window: .fortyFive, profile: profile, demand: demand
             ) {
-                if case .revisedChapterFinished = event { revisedChapters += 1 }
+                if case .revisedChapterFinished = event { await counter.countRevised() }
             }
         }
         try await Task.sleep(nanoseconds: 200_000_000)
         task.cancel()
         _ = await task.result
 
+        let revisedChapters = await counter.revisedChapters
         XCTAssertEqual(revisedChapters, 2, "offline provider must respect back-pressure too")
     }
 }

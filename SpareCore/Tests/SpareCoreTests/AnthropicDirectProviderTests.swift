@@ -381,7 +381,10 @@ final class AnthropicDirectProviderTests: XCTestCase {
             for: MockProvider.fixtureLesson(topic: topic, window: .three)
         )
 
-        let event = try XCTUnwrap(await ledger.events.first)
+        // Awaited into a local first: XCTUnwrap takes an autoclosure, which
+        // can't carry an `await`.
+        let recorded = await ledger.events
+        let event = try XCTUnwrap(recorded.first)
         XCTAssertEqual(event.usage.cacheReadInputTokens, 2_000)
         let uncached = CostEstimator.cost(of: TokenUsage(inputTokens: 2_010, outputTokens: 100))
         XCTAssertLessThan(event.estimatedCostUSD, uncached, "cache reads must bill cheaper")
