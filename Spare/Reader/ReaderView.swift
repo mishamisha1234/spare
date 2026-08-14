@@ -187,11 +187,14 @@ struct ReaderView: View {
 }
 
 private struct ContentHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
+    // `let`, not `var`: PreferenceKey's requirement is get-only, and a mutable
+    // static var is exactly the "global shared mutable state" Swift 6 strict
+    // concurrency rejects — anyone could reassign it from anywhere.
+    static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
 private struct ScrollOffsetKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
+    static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
