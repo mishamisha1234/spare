@@ -201,28 +201,28 @@ public struct AnthropicDirectProvider: LessonProvider {
 
         // Pass 1. Streamed for progress and to avoid a long silent request,
         // but never displayed — `RevisionGate` drops draft text on the floor.
-        let draftJSON = try await streamStructured(
+        let (draft, _) = try await streamStructured(
             request: draftRequest,
             field: "bodyMarkdown",
             kind: .lessonDraft,
+            as: Lesson.self,
             retryAfterEmission: true
         ) { text in
             continuation.yield(.draftDelta(chapter: 0, text: text))
         }
-        let draft: Lesson = try decode(Lesson.self, from: draftJSON)
         continuation.yield(.metadata(draft.metadata))
         continuation.yield(.draftChapterFinished(chapter: 0))
 
         // Pass 2. This is what the reader actually sees.
-        let revisedJSON = try await streamStructured(
+        let (revised, _) = try await streamStructured(
             request: revisionRequest(window: window, draft: draft, stream: true),
             field: "bodyMarkdown",
             kind: .lessonRevision,
+            as: Lesson.self,
             retryAfterEmission: false
         ) { text in
             continuation.yield(.revisedDelta(chapter: 0, text: text))
         }
-        let revised: Lesson = try decode(Lesson.self, from: revisedJSON)
         continuation.yield(.revisedChapterFinished(chapter: 0))
         continuation.yield(.finished(revised))
     }
@@ -321,15 +321,15 @@ public struct AnthropicDirectProvider: LessonProvider {
             cacheSystemPrompt: configuration.cacheSystemPrompt
         )
 
-        let draftJSON = try await streamStructured(
+        let (_, draftJSON) = try await streamStructured(
             request: chapterRequest,
             field: "bodyMarkdown",
             kind: .chapterDraft,
+            as: ChapterResponse.self,
             retryAfterEmission: true
         ) { text in
             continuation.yield(.draftDelta(chapter: index, text: text))
         }
-        let draft: ChapterResponse = try decode(ChapterResponse.self, from: draftJSON)
         continuation.yield(.draftChapterFinished(chapter: index))
 
         let revisionRequest = MessagesRequest(
@@ -353,10 +353,11 @@ public struct AnthropicDirectProvider: LessonProvider {
         var pendingBody = ""
         var headerEmitted = false
 
-        let revisedJSON = try await streamStructured(
+        let (revised, _) = try await streamStructured(
             request: revisionRequest,
             field: "bodyMarkdown",
             kind: .chapterRevision,
+            as: ChapterResponse.self,
             retryAfterEmission: false,
             onRawDelta: { raw in
                 _ = headingExtractor.consume(raw)
@@ -381,8 +382,6 @@ public struct AnthropicDirectProvider: LessonProvider {
                 pendingBody += bodyText
             }
         }
-
-        let revised: ChapterResponse = try decode(ChapterResponse.self, from: revisedJSON)
 
         // If the body was empty the header never flushed; emit it now so the
         // chapter is never silently missing its heading.
@@ -465,15 +464,19 @@ public struct AnthropicDirectProvider: LessonProvider {
     ///   passes: those deltas are already on the reader's screen, and
     ///   re-running the pass would append a second copy rather than replace
     ///   the first. True for drafts, which are never displayed.
-    @discardableResult
-    private func streamStructured(
+    /// Decoding happens *inside* the retry loop, not after it: a response that
+    /// streams cleanly but doesn't parse is exactly the "malformed response"
+    /// case that should be retried, and decoding outside would surface it as
+    /// a hard failure on the first attempt.
+    private func streamStructured<T: Decodable>(
         request: MessagesRequest,
         field: String,
         kind: UsageKind,
+        as type: T.Type,
         retryAfterEmission: Bool,
         onRawDelta: ((String) -> Void)? = nil,
         onDelta: (String) -> Void
-    ) async throws -> String {
+    ) async throws -> (value: T, json: String) {
         var attempt = 1
         while true {
             do {
@@ -481,6 +484,7 @@ public struct AnthropicDirectProvider: LessonProvider {
                     request: request,
                     field: field,
                     kind: kind,
+                    as: type,
                     onRawDelta: onRawDelta,
                     onDelta: onDelta
                 )
@@ -501,13 +505,14 @@ public struct AnthropicDirectProvider: LessonProvider {
         let didEmit: Bool
     }
 
-    private func streamStructuredOnce(
+    private func streamStructuredOnce<T: Decodable>(
         request: MessagesRequest,
         field: String,
         kind: UsageKind,
+        as type: T.Type,
         onRawDelta: ((String) -> Void)?,
         onDelta: (String) -> Void
-    ) async throws -> String {
+    ) async throws -> (value: T, json: String) {
         var didEmit = false
         var parser = SSEParser()
         var extractor = StreamingJSONFieldExtractor(field: field)
@@ -590,7 +595,7 @@ public struct AnthropicDirectProvider: LessonProvider {
             if stopReason == "max_tokens" {
                 throw LessonProviderError.malformedStream("response was cut off at max_tokens")
             }
-            return fullJSON
+            return (try decode(type, from: fullJSON), fullJSON)
         } catch let failure as StreamAttemptFailure {
             throw failure
         } catch {

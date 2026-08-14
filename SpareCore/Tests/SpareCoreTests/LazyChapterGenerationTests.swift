@@ -27,8 +27,13 @@ final class LazyChapterGenerationTests: XCTestCase {
     /// Outline + enough chapter draft/revision pairs to satisfy any test that
     /// runs to completion.
     private func fullCourseSteps(chapters: Int = 6) -> [FixtureTransport.Step] {
+        // The outline is a plain (non-streaming) call — it's small and nothing
+        // renders from it — so it needs a `.body` fixture, not `.sse`.
         var steps: [FixtureTransport.Step] = [
-            .sse(HTTPFixtures.stream(json: HTTPFixtures.outlineJSON(chapterCount: chapters)))
+            .body(
+                status: 200,
+                text: HTTPFixtures.messageBody(json: HTTPFixtures.outlineJSON(chapterCount: chapters))
+            )
         ]
         for index in 0..<chapters {
             steps.append(.sse(HTTPFixtures.stream(
