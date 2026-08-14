@@ -219,6 +219,8 @@ struct OnboardingView: View {
         Button(action: action) {
             Text(text)
                 .font(Theme.Font.label.font)
+                .lineLimit(1)
+                .minimumScaleFactor(Theme.Interaction.chipLabelMinimumScale)
                 .foregroundStyle(isSelected ? palette.textOnAccent : palette.text)
                 .padding(.horizontal, Theme.Spacing.s)
                 .frame(height: Theme.ControlSize.chip)

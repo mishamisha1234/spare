@@ -55,6 +55,7 @@ struct SuggestionsView: View {
                 } label: {
                     Image(systemName: "shuffle")
                 }
+                .buttonStyle(.plain)
                 .foregroundStyle(palette.text)
                 .accessibilityIdentifier("suggestions.shuffle")
             }

@@ -23,6 +23,7 @@ struct RootView: View {
                                 } label: {
                                     Image(systemName: "books.vertical")
                                 }
+                                .buttonStyle(.plain)
                                 .accessibilityIdentifier("home.libraryButton")
                             }
                         }

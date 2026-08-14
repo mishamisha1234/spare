@@ -196,6 +196,11 @@ enum Theme {
         /// Floor for `.minimumScaleFactor` on the Home circle labels, so the
         /// 3-minute circle's text never shrinks past legibility.
         static let circleLabelMinimumScale: Double = 0.7
+        /// Floor for `.minimumScaleFactor` on onboarding interest chips. A
+        /// fixed-height chip with a long single word ("Architecture") would
+        /// otherwise wrap mid-word onto a second line and grow taller than
+        /// its neighbors — confirmed visually via the CI screenshot artifact.
+        static let chipLabelMinimumScale: Double = 0.7
     }
 
     // MARK: - Motion
