@@ -5,6 +5,10 @@ import XCTest
 /// dark mode. This is the primary review surface for changes made without a
 /// Mac: CI extracts the attachments from the `.xcresult` bundle and uploads
 /// them as a plain-PNG workflow artifact.
+///
+/// `@MainActor`: XCUIApplication/XCUIElement are main-actor-isolated in the
+/// XCTest SDK this project builds against, and every helper here touches one.
+@MainActor
 final class ScreenshotWalkthroughUITests: XCTestCase {
 
     override func setUpWithError() throws {
