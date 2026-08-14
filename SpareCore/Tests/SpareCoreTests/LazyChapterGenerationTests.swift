@@ -136,10 +136,14 @@ final class LazyChapterGenerationTests: XCTestCase {
         let provider = makeProvider(transport)
         let demand = ChapterDemand.eager()
 
+        // Built outside the Task: `topic` and `profile` are instance
+        // properties, so referencing them inside would capture the
+        // non-Sendable XCTestCase.
+        let stream = provider.streamLesson(
+            topic: topic, window: .fortyFive, profile: profile, demand: demand
+        )
         let task = Task {
-            for try await _ in provider.streamLesson(
-                topic: topic, window: .fortyFive, profile: profile, demand: demand
-            ) {}
+            for try await _ in stream {}
         }
         try await Task.sleep(nanoseconds: 120_000_000)
         task.cancel()
@@ -213,10 +217,11 @@ final class LazyChapterGenerationTests: XCTestCase {
         let demand = ChapterDemand()
         let counter = ChapterCounter()
 
+        let stream = provider.streamLesson(
+            topic: topic, window: .fortyFive, profile: profile, demand: demand
+        )
         let task = Task {
-            for try await event in provider.streamLesson(
-                topic: topic, window: .fortyFive, profile: profile, demand: demand
-            ) {
+            for try await event in stream {
                 if case .revisedChapterFinished = event { await counter.countRevised() }
             }
         }
