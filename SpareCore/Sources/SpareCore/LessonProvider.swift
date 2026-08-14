@@ -58,10 +58,16 @@ public protocol LessonProvider: Sendable {
 
     /// Streaming generation. Draft and revision events interleave per chapter;
     /// feed the stream into a `RevisionGate` rather than rendering directly.
+    ///
+    /// `demand` is the reader's back-pressure on chaptered formats: the
+    /// generator waits on it before each chapter, so a reader who stops early
+    /// is never billed for chapters they didn't reach. Non-chaptered formats
+    /// ignore it.
     func streamLesson(
         topic: TopicSuggestion,
         window: TimeWindow,
-        profile: ProfileSnapshot
+        profile: ProfileSnapshot,
+        demand: ChapterDemand
     ) -> AsyncThrowingStream<LessonStreamEvent, Error>
 
     func generateRecallQuestion(for lesson: Lesson) async throws -> RecallQuestion
@@ -72,4 +78,19 @@ public protocol LessonProvider: Sendable {
         window: TimeWindow,
         profile: ProfileSnapshot
     ) async throws -> Lesson
+}
+
+extension LessonProvider {
+    /// Generates everything up front, with no reader back-pressure.
+    ///
+    /// Fine for single-unit formats and for tests. For a 45-minute
+    /// mini-course this means paying for all six chapters whether or not
+    /// they're read — the Reader always passes a real `ChapterDemand`.
+    public func streamLesson(
+        topic: TopicSuggestion,
+        window: TimeWindow,
+        profile: ProfileSnapshot
+    ) -> AsyncThrowingStream<LessonStreamEvent, Error> {
+        streamLesson(topic: topic, window: window, profile: profile, demand: .eager())
+    }
 }

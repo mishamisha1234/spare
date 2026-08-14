@@ -17,6 +17,15 @@ struct RootView: View {
                 NavigationStack(path: $path) {
                     HomeView(onSelect: { window in path.append(.suggestions(window)) })
                         .toolbar {
+                            ToolbarItem(placement: .topBarLeading) {
+                                Button {
+                                    path.append(.settings)
+                                } label: {
+                                    Image(systemName: "gearshape")
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("home.settingsButton")
+                            }
                             ToolbarItem(placement: .topBarTrailing) {
                                 Button {
                                     path.append(.library)
@@ -73,6 +82,9 @@ struct RootView: View {
             if let lesson = modelContext.storedLesson(id: lessonID) {
                 LessonDetailView(lesson: lesson)
             }
+
+        case .settings:
+            SettingsView()
         }
     }
 }

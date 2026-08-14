@@ -23,6 +23,11 @@ final class ReaderViewModel: ObservableObject {
     private var gate: RevisionGate
     private var streamTask: Task<Void, Never>?
 
+    /// Back-pressure on chaptered lessons: generation waits on this, so a
+    /// reader who stops at chapter 2 is never billed for chapters 3-6.
+    private let demand = ChapterDemand()
+    private var lastSignalledChapter = -1
+
     init(source: ReaderSource, provider: LessonProvider, modelContext: ModelContext) {
         self.source = source
         self.provider = provider
@@ -33,6 +38,10 @@ final class ReaderViewModel: ObservableObject {
         }
         self.gate = RevisionGate(window: window)
     }
+
+    // No deinit cancelling the task: `deinit` is nonisolated, so touching
+    // isolated state from it is a Swift 6 error. `stop()` from `.onDisappear`
+    // is the cancellation path.
 
     /// Minutes remaining, using the final word count once known and a stable
     /// upper-bound estimate while still streaming.
@@ -48,12 +57,25 @@ final class ReaderViewModel: ObservableObject {
         }
     }
 
+    /// Stops generation when the reader leaves. Without this, a backgrounded
+    /// mini-course would keep drafting chapters nobody is going to read.
+    func stop() {
+        streamTask?.cancel()
+        demand.finish()
+    }
+
     /// Called as the reader scrolls, on a 0...1 fraction of the currently
-    /// revealed content. Feeds `RevisionGate` so pacing stays honest, and
-    /// drives the nav-bar time estimate.
+    /// revealed content. Feeds `RevisionGate` so pacing stays honest, drives
+    /// the nav-bar time estimate, and releases the next chapter.
     func updateScrollProgress(_ progress: Double) {
         scrollProgress = progress
         gate.updateReaderProgress(progress)
+
+        let chapter = gate.readerChapterIndex
+        if chapter > lastSignalledChapter {
+            lastSignalledChapter = chapter
+            demand.readerReached(chapter: chapter)
+        }
     }
 
     private func run() async {
@@ -68,13 +90,25 @@ final class ReaderViewModel: ObservableObject {
     private func streamNewLesson(topic: TopicSuggestion, window: TimeWindow) async {
         let profile = modelContext.currentProfileSnapshot()
         do {
-            for try await event in provider.streamLesson(topic: topic, window: window, profile: profile) {
+            for try await event in provider.streamLesson(
+                topic: topic, window: window, profile: profile, demand: demand
+            ) {
                 gate.apply(event)
                 syncFromGate()
-                if case .finished(let lesson) = event {
-                    persist(lesson: lesson, parentLessonID: nil)
+
+                switch event {
+                case .revisedChapterFinished:
+                    // Persist progressively: a reader who stops at chapter 2
+                    // should still find those two chapters in their library.
+                    persistProgress(parentLessonID: nil)
+                case .finished(let lesson):
+                    persistCanonical(lesson, parentLessonID: nil)
+                default:
+                    break
                 }
             }
+        } catch let error as LessonProviderError {
+            errorMessage = Self.message(for: error)
         } catch {
             errorMessage = "The lesson stopped generating. Please go back and try again."
         }
@@ -90,12 +124,15 @@ final class ReaderViewModel: ObservableObject {
             let lesson = try await provider.goDeeper(
                 from: parent.lesson, angle: angle, window: window, profile: profile
             )
-            // No incremental pipeline is exposed for "go deeper" — reveal the
-            // whole thing at once rather than fake a stream.
+            // Both passes already ran inside `goDeeper`; there is no
+            // incremental pipeline to reveal, so this arrives whole.
+            gate.apply(.metadata(lesson.metadata))
             gate.apply(.revisedDelta(chapter: 0, text: lesson.bodyMarkdown))
             gate.apply(.finished(lesson))
             syncFromGate()
-            persist(lesson: lesson, parentLessonID: parentLessonID)
+            persistCanonical(lesson, parentLessonID: parentLessonID)
+        } catch let error as LessonProviderError {
+            errorMessage = Self.message(for: error)
         } catch {
             errorMessage = "Couldn't generate that lesson. Please go back and try again."
         }
@@ -107,11 +144,54 @@ final class ReaderViewModel: ObservableObject {
         holdProgress = gate.holdProgress
     }
 
-    private func persist(lesson: Lesson, parentLessonID: UUID?) {
-        let stored = StoredLesson(lesson: lesson, window: window, parentLessonID: parentLessonID)
-        modelContext.insert(stored)
+    // MARK: - Persistence
+
+    private func persistProgress(parentLessonID: UUID?) {
+        guard let metadata = gate.metadata, !gate.displayText.isEmpty else { return }
+
+        if let id = persistedLessonID, let existing = modelContext.storedLesson(id: id) {
+            existing.bodyMarkdown = gate.displayText
+        } else {
+            let stored = StoredLesson(
+                title: metadata.title,
+                subtitle: metadata.subtitle,
+                topicTag: metadata.domainTag,
+                window: window,
+                bodyMarkdown: gate.displayText,
+                parentLessonID: parentLessonID
+            )
+            modelContext.insert(stored)
+            persistedLessonID = stored.id
+        }
         try? modelContext.save()
-        persistedLessonID = stored.id
+    }
+
+    private func persistCanonical(_ lesson: Lesson, parentLessonID: UUID?) {
+        if let id = persistedLessonID, let existing = modelContext.storedLesson(id: id) {
+            existing.applyRevised(lesson)
+        } else {
+            let stored = StoredLesson(
+                lesson: lesson, window: window, parentLessonID: parentLessonID
+            )
+            modelContext.insert(stored)
+            persistedLessonID = stored.id
+        }
+        try? modelContext.save()
         isFinished = true
+    }
+
+    private static func message(for error: LessonProviderError) -> String {
+        switch error {
+        case .missingAPIKey:
+            return "Add an API key in Settings to generate live lessons."
+        case .refused:
+            return "The model declined to write about this topic. Try another one."
+        case .cancelled:
+            return "Generation stopped."
+        case .httpStatus(let code, _) where code == 429:
+            return "Rate limited. Give it a minute and try again."
+        default:
+            return "The lesson stopped generating. Please go back and try again."
+        }
     }
 }

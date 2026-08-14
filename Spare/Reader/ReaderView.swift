@@ -90,6 +90,9 @@ struct ReaderView: View {
             viewModel.updateScrollProgress(min(scrolled / maxScroll, 1))
         }
         .onAppear { viewModel.start() }
+        // Leaving the Reader stops generation: an abandoned mini-course must
+        // not keep drafting chapters nobody will read.
+        .onDisappear { viewModel.stop() }
         // No container-level accessibilityIdentifier: see OnboardingView.
         // reader.continue / reader.holding / reader.textSize are what's used.
     }

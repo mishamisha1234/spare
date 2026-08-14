@@ -57,6 +57,21 @@ jobs:
           fi
           echo "OK: networking files are guarded."
 
+      # The API key belongs in one place: the user's Keychain. Not in source,
+      # not in a fixture, not in CI secrets. This fails on anything shaped
+      # like a real key, while allowing the obvious placeholders tests use.
+      - name: Reject committed API keys
+        run: |
+          set -u
+          if grep -rEn --include='*.swift' --include='*.yml' --include='*.plist' --include='*.json' \
+               'sk-ant-[A-Za-z0-9_-]{16,}' . \
+             | grep -v 'sk-ant-fixture' \
+             | grep -v 'sk-ant-test'; then
+            echo "::error::Something shaped like a real Anthropic API key is committed."
+            exit 1
+          fi
+          echo "OK: no committed API keys."
+
       - name: Build
         run: swift build --package-path SpareCore
 

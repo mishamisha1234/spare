@@ -12,6 +12,7 @@ enum PersistenceStack {
             StoredRecallItem.self,
             StoredSuggestionCache.self,
             StoredEntitlement.self,
+            StoredUsageEvent.self,
         ])
     }
 

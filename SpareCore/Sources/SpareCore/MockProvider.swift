@@ -81,7 +81,8 @@ public struct MockProvider: LessonProvider {
     public func streamLesson(
         topic: TopicSuggestion,
         window: TimeWindow,
-        profile: ProfileSnapshot
+        profile: ProfileSnapshot,
+        demand: ChapterDemand
     ) -> AsyncThrowingStream<LessonStreamEvent, Error> {
         let simulateLatency = self.simulateLatency
         let delay = chunkDelayMilliseconds
@@ -94,6 +95,12 @@ public struct MockProvider: LessonProvider {
                     continuation.yield(.metadata(lesson.metadata))
 
                     for (index, chapterBody) in chapters.enumerated() {
+                        // Honour reader back-pressure exactly as the live
+                        // provider does, so laziness is testable offline.
+                        if index > 0 {
+                            try await demand.waitUntilAllowed(chapter: index)
+                        }
+                        try Task.checkCancellation()
                         // Pass 1: draft the chapter. Not reader-facing.
                         for chunk in Self.chunks(of: chapterBody) {
                             if simulateLatency {

@@ -68,6 +68,33 @@ public enum Schemas {
         required: ["title", "subtitle", "domainTag", "bodyMarkdown", "surprisingClaim", "deeperAngles"]
     )
 
+    /// The plan for a mini-course, produced before any chapter is written.
+    ///
+    /// Exists because chaptered lessons still need lesson-level metadata —
+    /// title, the load-bearing claim, and the three "go deeper" angles the
+    /// Completion screen offers. Generating it first (rather than after the
+    /// last chapter) means a reader who stops at chapter 2 still has a
+    /// properly titled entry in their library.
+    public static let courseOutline: JSONValue = object(
+        properties: [
+            "title": string("The course title."),
+            "subtitle": string("One line beneath the title."),
+            "domainTag": string("Single-word or two-word domain."),
+            "surprisingClaim": string("The one load-bearing, checkable, counterintuitive claim the course is built around."),
+            "deeperAngles": .object([
+                "type": .string("array"),
+                "description": .string("Exactly 3 angles: broader context, a specific mechanism, a counterargument."),
+                "items": .object(["type": .string("string")]),
+            ]),
+            "chapterHeadings": .object([
+                "type": .string("array"),
+                "description": .string("One heading per chapter, in order, plain text with no numbering."),
+                "items": .object(["type": .string("string")]),
+            ]),
+        ],
+        required: ["title", "subtitle", "domainTag", "surprisingClaim", "deeperAngles", "chapterHeadings"]
+    )
+
     /// One chapter of a mini-course.
     public static let chapter: JSONValue = object(
         properties: [
@@ -102,6 +129,45 @@ public struct TopicSuggestionsResponse: Codable, Sendable {
 
     public init(suggestions: [TopicSuggestion]) {
         self.suggestions = suggestions
+    }
+}
+
+public struct CourseOutlineResponse: Codable, Sendable, Equatable {
+    public var title: String
+    public var subtitle: String
+    public var domainTag: String
+    public var surprisingClaim: String
+    public var deeperAngles: [String]
+    public var chapterHeadings: [String]
+
+    public init(
+        title: String,
+        subtitle: String,
+        domainTag: String,
+        surprisingClaim: String,
+        deeperAngles: [String],
+        chapterHeadings: [String]
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.domainTag = domainTag
+        self.surprisingClaim = surprisingClaim
+        self.deeperAngles = deeperAngles
+        self.chapterHeadings = chapterHeadings
+    }
+
+    /// JSON Schema can't constrain array length, so the count is enforced
+    /// here: pad with a neutral heading or truncate to the chapter count.
+    public func headings(paddedTo count: Int) -> [String] {
+        guard chapterHeadings.count != count else { return chapterHeadings }
+        if chapterHeadings.count > count {
+            return Array(chapterHeadings.prefix(count))
+        }
+        return chapterHeadings + (chapterHeadings.count..<count).map { "Part \($0 + 1)" }
+    }
+
+    public var metadata: LessonMetadata {
+        LessonMetadata(title: title, subtitle: subtitle, domainTag: domainTag)
     }
 }
 

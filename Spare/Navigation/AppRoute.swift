@@ -18,4 +18,5 @@ enum AppRoute: Hashable {
     /// Re-reading an already-generated lesson from the Library — a static
     /// render, not a new streaming session.
     case lessonDetail(UUID)
+    case settings
 }

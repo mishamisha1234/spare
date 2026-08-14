@@ -12,16 +12,39 @@ struct SpareApp: App {
         ProcessInfo.processInfo.arguments.contains("-UITEST_RESET_STATE")
     }
 
-    private let container: ModelContainer = PersistenceStack.makeContainer(inMemory: isUITestReset)
+    private let container: ModelContainer
+    private let provider: any LessonProvider
 
     @AppStorage(AppSettingsKey.appearanceMode) private var appearanceModeRaw = Theme.AppearanceMode.system.rawValue
 
     init() {
+        NavigationBarChrome.flatten()
+
+        let container = PersistenceStack.makeContainer(inMemory: Self.isUITestReset)
+        self.container = container
+
         if Self.isUITestReset {
             let defaults = UserDefaults.standard
             defaults.removeObject(forKey: AppSettingsKey.hasCompletedOnboarding)
             defaults.removeObject(forKey: AppSettingsKey.appearanceMode)
             defaults.removeObject(forKey: AppSettingsKey.textSizeStep)
+        }
+
+        // UI tests must never reach the network or spend anything, whatever
+        // happens to be in this simulator's Keychain.
+        if Self.isUITestReset {
+            self.provider = MockProvider()
+        } else {
+            let keyStore = KeychainAPIKeyStore()
+            self.provider = KeyGatedProvider(
+                live: AnthropicDirectProvider(
+                    transport: FoundationHTTPTransport(),
+                    keyStore: keyStore,
+                    ledger: UsageLedgerActor(modelContainer: container)
+                ),
+                offline: MockProvider(),
+                keyStore: keyStore
+            )
         }
     }
 
@@ -40,9 +63,7 @@ struct SpareApp: App {
         WindowGroup {
             RootView()
                 .themedAppearance(appearanceMode)
-                // The one line that changes when AnthropicDirectProvider
-                // (Phase 3) replaces MockProvider.
-                .environment(\.lessonProvider, MockProvider())
+                .environment(\.lessonProvider, provider)
         }
         .modelContainer(container)
     }
