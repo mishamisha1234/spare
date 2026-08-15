@@ -1,7 +1,21 @@
 import SwiftUI
 import SwiftData
 import UIKit
+import UniformTypeIdentifiers
 import SpareCore
+
+/// `UIImage` itself has no `Transferable` conformance — `ShareLink` needs an
+/// explicit one, backed by PNG bytes rather than any in-memory `UIImage`
+/// reference so the system share sheet (a separate process) can read it.
+private struct ShareableImage: Transferable {
+    let image: UIImage
+
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(exportedContentType: .png) { shareable in
+            shareable.image.pngData() ?? Data()
+        }
+    }
+}
 
 /// Points, level, achievements, and the domain fingerprint. Reached from the
 /// quiet line in Library — deliberately not surfaced anywhere more
@@ -151,11 +165,8 @@ private struct ShareCardPreview: View {
                         .frame(maxWidth: 320)
                         .accessibilityIdentifier("shareCard.image")
 
-                    // `UIImage` is `Transferable`; `Image` (the SwiftUI view
-                    // type) is not, so the share item and the preview thumbnail
-                    // are built from the same `UIImage` in two different ways.
                     ShareLink(
-                        item: renderedImage,
+                        item: ShareableImage(image: renderedImage),
                         preview: SharePreview("Spare", image: Image(uiImage: renderedImage))
                     ) {
                         Text("Share")
