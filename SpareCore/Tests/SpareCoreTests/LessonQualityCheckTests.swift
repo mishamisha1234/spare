@@ -54,18 +54,21 @@ final class LessonQualityCheckTests: XCTestCase {
         )
     }
 
-    func testNounLeverageIsAllowedButVerbFormIsNot() {
-        let allowed = "In 1998 the fund ran 30 to 1 leverage and failed. " + filler(words: 520)
-        XCTAssertFalse(
-            LessonQualityCheck.findings(for: lesson(body: allowed), window: .three)
-                .contains(.bannedPhrase("leverage"))
-        )
-
-        let banned = "In 1998 the fund began leveraging its position. " + filler(words: 520)
-        XCTAssertTrue(
-            LessonQualityCheck.findings(for: lesson(body: banned), window: .three)
-                .contains(.bannedPhrase("leverage"))
-        )
+    /// The advisory words (unlock, harness, leverage, landscape, realm) are
+    /// ordinary nouns and verbs a genuine topic can need — a lesson on
+    /// carriages needs "harness," one on Constable needs "landscape." They
+    /// must never fail a lesson mechanically, in any form. That judgment is
+    /// left entirely to the revision pass's prompt.
+    func testAdvisoryWordsAreNeverMechanicallyFlagged() {
+        let body = "In 1974 the harness maker fitted a leather landscape strap to unlock"
+            + " the fund's leverage across every realm of the estate. " + filler(words: 520)
+        let findings = LessonQualityCheck.findings(for: lesson(body: body), window: .three)
+        XCTAssertFalse(findings.contains { finding in
+            if case .bannedPhrase(let phrase) = finding {
+                return Prompts.advisoryBannedPhrases.contains(phrase)
+            }
+            return false
+        })
     }
 
     // MARK: - Budget

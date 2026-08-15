@@ -71,10 +71,41 @@ final class PromptsTests: XCTestCase {
         }
     }
 
-    func testEditorialPromptNamesEveryBannedPhrase() {
+    func testEditorialPromptNamesEveryHardBannedPhrase() {
         let prompt = Prompts.editorialSystemPrompt.lowercased()
-        for phrase in ["delve", "moreover", "furthermore", "tapestry", "realm", "game-changer"] {
-            XCTAssertTrue(prompt.contains(phrase), "banned-phrase list lost: \(phrase)")
+        for phrase in ["delve", "moreover", "furthermore", "tapestry", "game-changer"] {
+            XCTAssertTrue(prompt.contains(phrase), "hard-banned phrase list lost: \(phrase)")
+        }
+    }
+
+    /// The advisory words are ordinary nouns/verbs a genuine topic can need
+    /// (harness, landscape, ...) — they must never appear in the draft pass's
+    /// absolute NEVER USE list, only as a judgment call in the revision pass.
+    func testEditorialPromptNeverAbsolutelyBansAnAdvisoryWord() {
+        let neverUseSection = Prompts.editorialSystemPrompt
+            .components(separatedBy: "NEVER USE").last!
+            .components(separatedBy: "NEVER DO").first!
+            .lowercased()
+        for word in Prompts.advisoryBannedPhrases {
+            XCTAssertFalse(
+                neverUseSection.contains(word.lowercased()),
+                "\"\(word)\" is advisory-only but appears in the absolute NEVER USE list"
+            )
+        }
+    }
+
+    func testFormattingSectionStatesTheMarkdownRules() {
+        let prompt = Prompts.editorialSystemPrompt
+        for required in [
+            "FORMATTING",
+            "\"## \" headings",
+            "written as statements rather than labels",
+            "The 3-minute format has no headings at all",
+            "No bold in body text",
+            "No horizontal rules",
+            "No headings above ##",
+        ] {
+            XCTAssertTrue(prompt.contains(required), "formatting section lost: \(required)")
         }
     }
 
@@ -86,6 +117,24 @@ final class PromptsTests: XCTestCase {
         XCTAssertTrue(prompt.contains("Do not explain your edits"))
         XCTAssertTrue(prompt.contains("front to back"))
         XCTAssertTrue(prompt.contains("Do not reorder"))
+    }
+
+    /// Both lists must reach the revision pass, and be visibly distinguished:
+    /// the hard list says remove, the advisory list says reconsider. Checks
+    /// one canonical form per phrase, not every spelling variant in the
+    /// array — those variants exist only for the mechanical substring match,
+    /// same as `hardBannedPhrases` already mixed "game-changer"/"game
+    /// changer" before this split.
+    func testRevisionPromptCarriesBothBannedListsWithDifferentInstructions() {
+        let prompt = Prompts.revisionSystemPrompt.lowercased()
+        XCTAssertTrue(prompt.contains("remove entirely"))
+        XCTAssertTrue(prompt.contains("reconsider, do not remove automatically"))
+        for word in ["delve", "moreover", "furthermore", "tapestry", "game-changer"] {
+            XCTAssertTrue(prompt.contains(word), "revision prompt lost hard-banned: \(word)")
+        }
+        for word in Prompts.advisoryBannedPhrases {
+            XCTAssertTrue(prompt.contains(word.lowercased()), "revision prompt lost advisory: \(word)")
+        }
     }
 
     func testSuggestionPromptStatesEveryRule() {
@@ -277,11 +326,16 @@ final class PromptsTests: XCTestCase {
         }
     }
 
-    func testBannedPhraseListIsLowercasedAndDeduplicated() {
-        let phrases = Prompts.bannedPhrases
-        XCTAssertEqual(phrases, phrases.map { $0.lowercased() })
-        XCTAssertEqual(Set(phrases).count, phrases.count)
-        XCTAssertFalse(phrases.isEmpty)
+    func testBannedPhraseListsAreLowercasedDeduplicatedAndDisjoint() {
+        for phrases in [Prompts.hardBannedPhrases, Prompts.advisoryBannedPhrases] {
+            XCTAssertEqual(phrases, phrases.map { $0.lowercased() })
+            XCTAssertEqual(Set(phrases).count, phrases.count)
+            XCTAssertFalse(phrases.isEmpty)
+        }
+        XCTAssertTrue(
+            Set(Prompts.hardBannedPhrases).isDisjoint(with: Prompts.advisoryBannedPhrases),
+            "a word can't be both a mechanical fail and a revision-only judgment call"
+        )
     }
 
     // MARK: - Template renderer

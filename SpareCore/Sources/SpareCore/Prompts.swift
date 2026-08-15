@@ -22,8 +22,10 @@ public enum Prompts {
     // MARK: - Banned vocabulary
 
     /// Enforced twice: named in the prompts below, and checked mechanically by
-    /// `LessonQualityCheck` after generation.
-    public static let bannedPhrases: [String] = [
+    /// `LessonQualityCheck` after generation. Every one of these is dead
+    /// giveaway AI-slop phrasing with no legitimate use in this app's prose —
+    /// a mechanical substring match can never false-positive on it.
+    public static let hardBannedPhrases: [String] = [
         "delve",
         "moreover",
         "furthermore",
@@ -31,12 +33,7 @@ public enum Prompts {
         "it is important to note",
         "in today's world",
         "at its core",
-        "unlock",
-        "harness",
-        "leverage",
-        "landscape",
         "tapestry",
-        "realm",
         "navigate the complexities",
         "game-changer",
         "game changer",
@@ -44,6 +41,19 @@ public enum Prompts {
         "let's dive in",
         "lets dive in",
         "hopefully this helps",
+    ]
+
+    /// Named only in `revisionSystemPrompt`, as a judgment call for the
+    /// revision pass — never checked mechanically. Each of these is an
+    /// ordinary noun or verb that a genuine topic can need: a lesson on
+    /// carriages needs "harness," one on Constable needs "landscape."
+    /// Mechanically flagging them would reject correct writing.
+    public static let advisoryBannedPhrases: [String] = [
+        "unlock",
+        "harness",
+        "leverage",
+        "landscape",
+        "realm",
     ]
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -78,17 +88,25 @@ public enum Prompts {
         End by changing how the reader sees something they already encounter. Not a
         summary. Not "in conclusion." Not a restatement of the opening.
 
+        FORMATTING
+        bodyMarkdown uses markdown. Sectioned formats get "## " headings, one per
+        section, written as statements rather than labels ("The acid does the
+        guarding", not "Mechanism"). The 3-minute format has no headings at all.
+        Use *italics* sparingly for emphasis. No bold in body text. No horizontal
+        rules. No headings above ##.
+
         NEVER USE
         delve, moreover, furthermore, "it's important to note", "in today's world",
-        "at its core", unlock, harness, leverage (as a verb), landscape, tapestry,
-        realm, "navigate the complexities", "game-changer", "the fascinating world
-        of", "let's dive in", "hopefully this helps".
+        "at its core", tapestry, "navigate the complexities", "game-changer", "the
+        fascinating world of", "let's dive in", "hopefully this helps".
 
         NEVER DO
         - Congratulate the reader or comment on the topic's quality.
         - Stack hedges ("some argue it may possibly").
         - Write a closing paragraph that restates the piece.
-        - Use second person more than a few times.
+        - Address the reader directly only where it does real work. No
+          cheerleading, no "you might be wondering", no rhetorical questions
+          aimed at the reader.
         - Add emoji.
         - Pad to hit the word count. Under-budget and tight beats on-budget and thin.
 
@@ -118,7 +136,9 @@ public enum Prompts {
         2. Find every abstract claim without a concrete instance nearby. Add one or
            cut the claim.
         3. Delete every sentence that only restates a previous sentence.
-        4. Find the banned words and phrases. Remove them.
+        4. Find every hard-banned word or phrase and remove it. Reconsider every
+           advisory word — cut it only where it's standing in for real thought,
+           not where the topic genuinely calls for it.
         5. Is there at least one genuinely surprising, checkable claim? If not, the
            lesson is boring — find one and work it in.
         6. Does the last paragraph summarize? If so, replace it with something that
@@ -129,10 +149,16 @@ public enum Prompts {
         10. Is it within the stated word budget? Cut rather than pad.
 
         BANNED WORDS AND PHRASES
-        delve, moreover, furthermore, "it's important to note", "in today's world",
-        "at its core", unlock, harness, leverage (as a verb), landscape, tapestry,
-        realm, "navigate the complexities", "game-changer", "the fascinating world
-        of", "let's dive in", "hopefully this helps".
+        Remove entirely: delve, moreover, furthermore, "it's important to note",
+        "in today's world", "at its core", tapestry, "navigate the complexities",
+        "game-changer", "the fascinating world of", "let's dive in", "hopefully
+        this helps".
+
+        Reconsider, do not remove automatically: unlock, harness, leverage,
+        landscape, realm. These are ordinary nouns and verbs a genuine topic can
+        need — a lesson on carriages needs "harness," one on Constable needs
+        "landscape." Cut one only where it's standing in for real thought, keep
+        it where the topic calls for it.
 
         Revise in place, front to back. Do not reorder sections or chapters: the
         reader is already being shown your output as it arrives, so the opening
