@@ -31,16 +31,35 @@ public enum PaywallTrigger: Sendable, Equatable {
     case lockedWindow(TimeWindow)
     /// Free user tried to go deeper.
     case goDeeperLocked
+    /// Free user tapped the post-lesson test.
+    case postLessonTestLocked
+}
+
+/// A limit that applies to someone who is *already paying*. Distinct from a
+/// `PaywallTrigger` on purpose: showing a paywall to a subscriber who hit a
+/// fair-use cap would be both useless and insulting, so the two can never be
+/// confused at a call site.
+public enum UsageCap: Sendable, Equatable {
+    case miniCoursesThisMonth(used: Int, cap: Int)
 }
 
 public enum AccessDecision: Sendable, Equatable {
     case allowed
     case denied(PaywallTrigger)
+    case capped(UsageCap)
 
     public var isAllowed: Bool { self == .allowed }
 
+    /// Non-nil only for a paywall denial — a `capped` decision deliberately
+    /// yields no trigger, so "show the paywall for any denial" can't compile
+    /// into existence.
     public var trigger: PaywallTrigger? {
         if case .denied(let trigger) = self { return trigger }
+        return nil
+    }
+
+    public var cap: UsageCap? {
+        if case .capped(let cap) = self { return cap }
         return nil
     }
 }
@@ -49,6 +68,11 @@ public enum EntitlementRules {
 
     public static let freeLessonsPerDay = 1
     public static let freeLibraryLimit = 10
+    /// Fair-use ceiling on the most expensive thing to generate. A 45-minute
+    /// mini-course is 13 API calls; "unlimited" on that line would mean an
+    /// unbounded per-user cost. Surfaced honestly in Settings rather than
+    /// discovered at the moment it bites.
+    public static let premiumMiniCoursesPerMonth = 8
 
     /// Daily count, corrected for day rollover. A count recorded yesterday is
     /// not spent today.
@@ -61,14 +85,50 @@ public enum EntitlementRules {
         return max(0, snapshot.freeLessonsUsedToday)
     }
 
+    /// Mini-courses started in the calendar month containing `now`.
+    ///
+    /// Derived from actual start dates rather than a stored counter, for the
+    /// same reason the points ledger keeps every event: a count that is
+    /// recomputed can't drift out of sync with the thing it counts, and
+    /// month rollover needs no scheduled reset.
+    public static func miniCoursesUsed(
+        startDates: [Date],
+        now: Date,
+        calendar: Calendar = .current
+    ) -> Int {
+        startDates.filter { calendar.isDate($0, equalTo: now, toGranularity: .month) }.count
+    }
+
+    public static func miniCoursesRemaining(
+        startDates: [Date],
+        now: Date,
+        calendar: Calendar = .current
+    ) -> Int {
+        let used = miniCoursesUsed(startDates: startDates, now: now, calendar: calendar)
+        return max(0, premiumMiniCoursesPerMonth - used)
+    }
+
     /// May this user start a lesson in this window right now?
+    ///
+    /// `miniCourseStartDates` defaults to empty, which reads as "no
+    /// mini-courses started" — correct for every caller that isn't asking
+    /// about the 45-minute window.
     public static func canStartLesson(
         _ snapshot: EntitlementSnapshot,
         window: TimeWindow,
+        miniCourseStartDates: [Date] = [],
         now: Date,
         calendar: Calendar = .current
     ) -> AccessDecision {
-        guard !snapshot.tier.isPremium else { return .allowed }
+        guard !snapshot.tier.isPremium else {
+            // The one limit that applies to paying users. Not a paywall.
+            guard window.format.isChaptered else { return .allowed }
+            let used = miniCoursesUsed(startDates: miniCourseStartDates, now: now, calendar: calendar)
+            guard used < premiumMiniCoursesPerMonth else {
+                return .capped(.miniCoursesThisMonth(used: used, cap: premiumMiniCoursesPerMonth))
+            }
+            return .allowed
+        }
 
         // Window lock is checked first: it's the more specific, more
         // explicable reason to show the paywall.
@@ -80,6 +140,13 @@ public enum EntitlementRules {
             return .denied(.dailyLimitReached)
         }
         return .allowed
+    }
+
+    /// The immediate 3-question test after a lesson. Premium only — but it is
+    /// shown to free users as a visibly locked row that opens the paywall,
+    /// never hidden, since a feature nobody can see sells nothing.
+    public static func canTakePostLessonTest(_ snapshot: EntitlementSnapshot) -> AccessDecision {
+        snapshot.tier.isPremium ? .allowed : .denied(.postLessonTestLocked)
     }
 
     /// Browsing suggestions for a locked window is allowed; committing isn't.
