@@ -147,6 +147,20 @@ Everything is driven from recorded wire fixtures in [`HTTPFixtures.swift`](Spare
 
 Verification against the real API is a manual step on a Mac with a key in Settings.
 
+## Recall, points, and the share card
+
+**Recall.** A `RecallQuestion` is generated once, at lesson completion, and stored as a `StoredRecallItem` with its own schedule (`RecallScheduler`'s five-stage spaced-repetition curve). Home shows at most one due item per app session — pinned in local `@State` the first time Home appears, so answering it (or a new item becoming due mid-session) never bumps a second card in front of the reader. Answering is immediate: tap, see the right answer and the stored explanation right there, no round trip.
+
+**Points.** [`Points.swift`](SpareCore/Sources/SpareCore/Points.swift) is the one rule: retention outweighs consumption. A finished lesson earns 10/20/30/60 by length; a correctly answered recall question earns a flat 30, the same whether it followed a 3-minute piece or a 45-minute course. [`PointsLedger.swift`](SpareCore/Sources/SpareCore/PointsLedger.swift) logs *every* recall attempt, correct or not, at 0 points when wrong — so retention rate, and anything else a future feature wants from the full history, is always computable from the ledger itself rather than a separately maintained counter. [`Level.swift`](SpareCore/Sources/SpareCore/Level.swift) turns cumulative points into a level on a square-root curve: each additional level costs meaningfully more than the last. [`Achievement.swift`](SpareCore/Sources/SpareCore/Achievement.swift) evaluates counts, breadth (all 24 canonical domains), depth (mini-courses), retention, and consistency (distinct active days, not an unbroken streak) as pure functions over the ledger and the library — nothing is ever "awarded" and stored.
+
+Every screen respects one aesthetic rule: no confetti, no trophy icons, no badges, no mascots, no "on fire" copy. Achievements are a single quiet line of text in Library. Points live on the Stats screen the user chooses to visit, never a counter shown elsewhere.
+
+**Post-lesson test.** Premium users can take an immediate, optional 3-question test right after a lesson, in addition to the single next-day recall question. It's a separate structured-output call (`generatePostLessonTest`, one request for all 3 questions) and, unlike the daily item, entirely ephemeral — answered on the spot, nothing persisted as a schedule.
+
+**Notifications.** One local notification, naming the specific lesson ("You read about *{title}*. One question."), at a Settings-configurable time, fired only on a day something is actually due. This is a locally computed schedule-ahead approximation, not a live check-at-fire-time system: [`NotificationScheduler.swift`](Spare/Recall/NotificationScheduler.swift) cancels and re-schedules the single pending request whenever recall state changes or the app returns to the foreground, rather than verifying freshness at the moment of delivery. A fully exact system would need either a server or a Notification Service Extension; both are out of scope for this offline-first v1. In the ordinary flow this doesn't bite — answering a recall item requires opening the app, which is exactly when the schedule gets recomputed.
+
+**Share card.** `ShareCardView` renders at a fixed 9:16 size via `ImageRenderer`, always against the theme's dark palette regardless of the app's own appearance setting — this is an artifact meant to travel outside the app, not a themed screen. Tapping Share on Stats renders it into a preview sheet with a native `ShareLink` — that preview step is also the only way this screen is reviewable from CI, since a rendered bitmap has no view hierarchy of its own to screenshot otherwise.
+
 ## Known deviations
 
 - **Toolbar button shadow — confirmed unfixable without abandoning `.toolbar`.** Toolbar items render with a soft shadow under a circular background the theme doesn't specify. Three fixes were tried and verified against CI screenshots, and all three left it unchanged:
@@ -156,11 +170,17 @@ Verification against the real API is a manual step on a Mac with a key in Settin
 
   That eliminates the bar as the source: it is iOS 26's per-item "glass" treatment on toolbar buttons, which has no SwiftUI-level override. Removing it would mean hand-rolling a header row instead of `.toolbar`, giving up native back-swipe and VoiceOver behaviour to delete a shadow. Not worth it. Both fixes are kept anyway — they're harmless and correct in intent.
 
+- **Notification scheduling is schedule-ahead, not verified-at-fire-time.** See "Notifications" above. The honest gap: if a recall item's due date changes without the app being reopened, a stale notification could in principle fire. This doesn't arise in the ordinary flow, since answering a recall item requires opening the app in the first place — but it's not the same guarantee a server-verified push would give.
+
+- **The recall reminder's time picker is a system `DatePicker(.compact)`.** Its popover chrome can't be re-themed any further than a `.tint()` — same accepted-platform-chrome category as the toolbar shadow above, not worth hand-rolling a custom time wheel to fully theme.
+
+- **"Take the test" is hidden entirely for free-tier users, not shown locked.** There's no paywall UI yet (roadmap item 5) to route a tap on a locked state to, so the premium-only post-lesson test simply doesn't appear for free users rather than dead-ending on a paywall that isn't built.
+
 ## Roadmap
 
 1. ✅ Scaffold, core package split, models, `MockProvider`, tests, CI
 2. ✅ Onboarding, Home, Suggestions, Reader, Completion, Library — all on `MockProvider`
 3. ✅ `AnthropicDirectProvider`: Keychain, streaming, two-pass pipeline, lazy chapters, usage ledger
-4. Recall system, scheduling, notifications
+4. ✅ Recall system, scheduling, notifications, points, post-lesson test, stats, share card
 5. StoreKit 2, `EntitlementService`, paywall
-6. Widget, App Intents, share card, markdown export, accessibility pass
+6. Widget, App Intents, markdown export, accessibility pass

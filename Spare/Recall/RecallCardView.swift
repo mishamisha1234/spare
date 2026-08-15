@@ -28,14 +28,22 @@ struct RecallCardView: View {
             Text(item.question)
                 .font(Theme.Font.headline.font)
                 .foregroundStyle(palette.text)
-                // Without this, a tight layout (this card plus the four
-                // circles all competing for one non-scrolling screen)
-                // compresses this Text vertically before it touches the
-                // Spacers -- confirmed on the CI screenshot, which showed
-                // the question cut off mid-word with an ellipsis. The option
-                // rows below don't have this problem because their
+                // .fixedSize without this, a tight layout (this card plus
+                // the four circles all competing for one non-scrolling
+                // screen) compresses this Text vertically before it touches
+                // the Spacers -- confirmed on the CI screenshot, which
+                // showed the question cut off mid-word with an ellipsis. The
+                // option rows below don't have this problem because their
                 // `.frame(minHeight:)` already protects them from being
                 // squeezed the same way.
+                // .lineLimit alongside it gives the card a real height
+                // ceiling: without one, a genuinely long question pushed the
+                // circles below it right off the fixed, non-scrolling
+                // screen -- also confirmed on a CI screenshot, this time the
+                // "10 min" circle overlapping the card's bottom edge. Recall
+                // questions are meant to be one short sentence, so 2 lines
+                // is generous, not a real-world truncation risk.
+                .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
 
             VStack(spacing: Theme.Spacing.xs) {
@@ -49,6 +57,7 @@ struct RecallCardView: View {
                     Text(item.explanation)
                         .font(Theme.Font.label.font)
                         .foregroundStyle(palette.secondaryText)
+                        .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
 
                     Button {
