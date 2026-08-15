@@ -280,13 +280,34 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
     /// generic "no matches found" with no indication of how long was waited.
     private func tap(_ app: XCUIApplication, _ identifier: String, scheme: String, step: String) throws {
         let target = element(app, identifier)
-        let ok = target.waitForExistence(timeout: defaultTimeout)
-        if !ok {
+        let exists = target.waitForExistence(timeout: defaultTimeout)
+        if !exists {
             capture(app, "FAILURE-\(step)", scheme: scheme)
             printHierarchy(app, scheme: scheme, context: step)
         }
-        XCTAssertTrue(ok, "\(step): \"\(identifier)\" never appeared within \(defaultTimeout)s")
+        XCTAssertTrue(exists, "\(step): \"\(identifier)\" never appeared within \(defaultTimeout)s")
+
+        // Existence is not readiness. A control that has just been laid out
+        // (or is mid appear-animation, or sits in a ScrollView that hasn't
+        // settled) exists at a correct on-screen frame while still being
+        // untappable, and `.tap()` does not wait that out on its own.
+        let ready = waitUntilHittable(target, timeout: defaultTimeout)
+        if !ready {
+            capture(app, "FAILURE-\(step)", scheme: scheme)
+            printHierarchy(app, scheme: scheme, context: "\(step) (exists but not hittable)")
+        }
+        XCTAssertTrue(ready, "\(step): \"\(identifier)\" never became hittable within \(defaultTimeout)s")
+
         target.tap()
+    }
+
+    private func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+        if element.isHittable { return true }
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "isHittable == true"),
+            object: element
+        )
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
     }
 
     /// Prints the live accessibility tree to stdout, same as the launch-time
