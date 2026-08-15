@@ -32,6 +32,7 @@ final class CompletionViewModel: ObservableObject {
         if let question = try? await provider.generateRecallQuestion(for: lesson.lesson) {
             modelContext.insert(StoredRecallItem(question: question, lessonID: lessonID))
             try? modelContext.save()
+            NotificationScheduler.reschedule(modelContext: modelContext)
         }
     }
 

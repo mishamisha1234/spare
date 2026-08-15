@@ -19,4 +19,11 @@ enum AppRoute: Hashable {
     /// render, not a new streaming session.
     case lessonDetail(UUID)
     case settings
+    /// The immediate, optional 3-question test right after a lesson
+    /// (premium). Separate from the daily recall card, which lives inline on
+    /// Home rather than as a pushed screen.
+    case postLessonTest(lessonID: UUID)
+    /// Points, level, achievements, and the domain fingerprint — reached
+    /// from the quiet achievements line in Library.
+    case stats
 }

@@ -10,8 +10,10 @@ struct SettingsView: View {
 
     @AppStorage(AppSettingsKey.appearanceMode) private var appearanceModeRaw = Theme.AppearanceMode.system.rawValue
     @AppStorage(AppSettingsKey.textSizeStep) private var textSizeStepRaw = TextSizeStep.standard.rawValue
+    @AppStorage(AppSettingsKey.recallNotificationTimeMinutes) private var recallNotificationTimeMinutes = NotificationScheduler.defaultMinutesSinceMidnight
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.modelContext) private var modelContext
     @State private var keyEntry = ""
     @State private var hasStoredKey = false
     @State private var statusMessage: String?
@@ -27,11 +29,33 @@ struct SettingsView: View {
         UsageSummary.total(usageEvents.map(\.event))
     }
 
+    /// `DatePicker` wants a `Date`; the stored preference is minutes since
+    /// midnight, since that's all a daily reminder time actually is — no
+    /// calendar day is meaningful to persist alongside it.
+    private var recallTimeBinding: Binding<Date> {
+        Binding(
+            get: {
+                Calendar.current.date(
+                    bySettingHour: recallNotificationTimeMinutes / 60,
+                    minute: recallNotificationTimeMinutes % 60,
+                    second: 0,
+                    of: .now
+                ) ?? .now
+            },
+            set: { newValue in
+                let components = Calendar.current.dateComponents([.hour, .minute], from: newValue)
+                recallNotificationTimeMinutes = (components.hour ?? 9) * 60 + (components.minute ?? 0)
+                NotificationScheduler.reschedule(modelContext: modelContext)
+            }
+        )
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.l) {
                 apiKeySection
                 readingSection
+                reminderSection
                 usageSection
                 aboutSection
             }
@@ -148,6 +172,22 @@ struct SettingsView: View {
                 )
                 .accessibilityIdentifier("settings.textSize")
             }
+        }
+    }
+
+    // MARK: - Reminder
+
+    private var reminderSection: some View {
+        section("Recall reminder") {
+            Text("One nudge a day, at most, and only when a question is actually due.")
+                .font(Theme.Font.label.font)
+                .foregroundStyle(palette.secondaryText)
+
+            DatePicker("Reminder time", selection: recallTimeBinding, displayedComponents: .hourAndMinute)
+                .labelsHidden()
+                .datePickerStyle(.compact)
+                .tint(palette.accent)
+                .accessibilityIdentifier("settings.recallTime")
         }
     }
 

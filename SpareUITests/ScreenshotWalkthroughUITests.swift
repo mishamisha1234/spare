@@ -100,8 +100,13 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             try waitAndCapture(app, "05-onboarding-notifications", scheme: colorScheme, identifier: "onboarding.primary")
             try tap(app, "onboarding.primary", scheme: colorScheme, step: "05-onboarding-notifications")
 
-            // MARK: Home
+            // MARK: Home — the recall card (`-UITEST_RESET_STATE` seeds one
+            // already-due item, so this is reachable without a multi-day
+            // simulated wait).
             try waitAndCapture(app, "06-home", scheme: colorScheme, identifier: "home.circle.ten")
+            try tap(app, "recall.option.Wind alone", scheme: colorScheme, step: "06-home-recall")
+            try waitAndCapture(app, "06a-recall-revealed", scheme: colorScheme, identifier: "recall.viewLesson")
+            try tap(app, "recall.dismiss", scheme: colorScheme, step: "06a-recall-revealed")
             try tap(app, "home.circle.ten", scheme: colorScheme, step: "06-home")
 
             // MARK: Suggestions
@@ -122,7 +127,40 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
 
             // MARK: Completion
             try waitAndCapture(app, "09-completion", scheme: colorScheme, identifier: "completion.returnHome")
-            try tap(app, "completion.returnHome", scheme: colorScheme, step: "09-completion")
+            try tap(app, "completion.markComplete", scheme: colorScheme, step: "09-completion")
+
+            // MARK: Post-lesson test (premium — `-UITEST_RESET_STATE` also
+            // seeds a premium entitlement, so this button is reachable
+            // without a purchase flow that doesn't exist yet).
+            try waitAndCapture(app, "09a-completion-premium", scheme: colorScheme, identifier: "completion.takeTest")
+            try tap(app, "completion.takeTest", scheme: colorScheme, step: "09a-completion-premium")
+
+            for questionNumber in 1...3 {
+                let option = app.descendants(matching: .any)
+                    .matching(NSPredicate(format: "identifier BEGINSWITH 'postLessonTest.option.'"))
+                    .firstMatch
+                if questionNumber == 1 {
+                    try waitAndCapture(
+                        app, "09b-postlessontest", scheme: colorScheme,
+                        element: option, step: "09b-postlessontest"
+                    )
+                } else {
+                    XCTAssertTrue(
+                        option.waitForExistence(timeout: defaultTimeout),
+                        "postlessontest question \(questionNumber): no option appeared"
+                    )
+                }
+                option.tap()
+                if questionNumber == 1 {
+                    try waitAndCapture(app, "09c-postlessontest-revealed", scheme: colorScheme, identifier: "postLessonTest.next")
+                }
+                try tap(app, "postLessonTest.next", scheme: colorScheme, step: "postlessontest-q\(questionNumber)")
+            }
+            try waitAndCapture(app, "09d-postlessontest-summary", scheme: colorScheme, identifier: "postLessonTest.done")
+            try tap(app, "postLessonTest.done", scheme: colorScheme, step: "09d-postlessontest-summary")
+
+            try waitAndCapture(app, "09e-completion-after-test", scheme: colorScheme, identifier: "completion.returnHome")
+            try tap(app, "completion.returnHome", scheme: colorScheme, step: "09e-completion-after-test")
 
             // MARK: Library (reached from Home)
             try waitAndCapture(app, "06b-home-again", scheme: colorScheme, identifier: "home.libraryButton")
@@ -135,9 +173,28 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
                 .firstMatch
             try waitAndCapture(app, "10-library", scheme: colorScheme, element: firstLibraryRow, step: "10-library")
 
+            // MARK: Stats (points, level, the quiet achievements line)
+            try tap(app, "library.stats", scheme: colorScheme, step: "10-library")
+            try waitAndCapture(app, "10a-stats", scheme: colorScheme, identifier: "stats.share")
+
+            // MARK: Share card render — the whole point of testing this in
+            // CI: the rendered bitmap has no view hierarchy of its own, so a
+            // screenshot of the preview sheet is the only way to review it
+            // without a Mac.
+            try tap(app, "stats.share", scheme: colorScheme, step: "10a-stats")
+            try waitAndCapture(app, "10b-sharecard", scheme: colorScheme, identifier: "shareCard.image")
+            try tap(app, "shareCard.close", scheme: colorScheme, step: "10b-sharecard")
+
+            let statsBackButton = app.navigationBars.buttons.firstMatch
+            XCTAssertTrue(
+                statsBackButton.waitForExistence(timeout: defaultTimeout),
+                "10c-library: no back button from Stats"
+            )
+            statsBackButton.tap()
+
             // MARK: Settings — last, deliberately. It needs a back-navigation
             // tap on system chrome, so if that proves flaky it costs only this
-            // step rather than the nine screenshots already captured.
+            // step rather than the screenshots already captured.
             let backButton = app.navigationBars.buttons.firstMatch
             XCTAssertTrue(
                 backButton.waitForExistence(timeout: defaultTimeout),

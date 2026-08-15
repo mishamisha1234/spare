@@ -7,6 +7,9 @@ enum AppSettingsKey {
     static let appearanceMode = "appearanceMode"
     static let textSizeStep = "textSizeStep"
     static let hasCompletedOnboarding = "hasCompletedOnboarding"
+    /// Minutes since midnight, local time. Default is 9:00 AM (540); see
+    /// `NotificationScheduler.defaultMinutesSinceMidnight`.
+    static let recallNotificationTimeMinutes = "recallNotificationTimeMinutes"
 }
 
 /// Reader text size: a small fixed set of steps, like Kindle's "Aa" control.

@@ -10,27 +10,36 @@ struct CompletionView: View {
     let modelContext: ModelContext
     var onGoDeeper: (DeeperAngle) -> Void
     var onReturnHome: () -> Void
+    var onTakeTest: () -> Void
 
     @StateObject private var viewModel: CompletionViewModel
     @State private var lesson: StoredLesson?
     @State private var isMarkedComplete = false
     @State private var isChoosingAngle = false
+    @Query private var entitlements: [StoredEntitlement]
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.pointsLedger) private var pointsLedger
     private var palette: Theme.Palette { Theme.palette(for: colorScheme) }
+
+    private var isPremium: Bool {
+        (entitlements.first?.snapshot ?? .free).tier.isPremium
+    }
 
     init(
         lessonID: UUID,
         provider: LessonProvider,
         modelContext: ModelContext,
         onGoDeeper: @escaping (DeeperAngle) -> Void,
-        onReturnHome: @escaping () -> Void
+        onReturnHome: @escaping () -> Void,
+        onTakeTest: @escaping () -> Void
     ) {
         self.lessonID = lessonID
         self.provider = provider
         self.modelContext = modelContext
         self.onGoDeeper = onGoDeeper
         self.onReturnHome = onReturnHome
+        self.onTakeTest = onTakeTest
         _viewModel = StateObject(wrappedValue: CompletionViewModel(provider: provider, modelContext: modelContext))
     }
 
@@ -52,8 +61,15 @@ struct CompletionView: View {
                             title: isMarkedComplete ? "Marked complete" : "Mark complete",
                             isDisabled: isMarkedComplete
                         ) {
+                            let alreadyCompleted = lesson.completedAt != nil
                             viewModel.markComplete(lesson)
                             isMarkedComplete = true
+                            // Idempotent: re-tapping an already-complete
+                            // lesson (or revisiting this screen) must not
+                            // mint points twice for the same lesson.
+                            if !alreadyCompleted {
+                                awardCompletionPoints(for: lesson)
+                            }
                         }
                         .accessibilityIdentifier("completion.markComplete")
 
@@ -61,6 +77,11 @@ struct CompletionView: View {
                             isChoosingAngle.toggle()
                         }
                         .accessibilityIdentifier("completion.goDeeper")
+
+                        if isPremium {
+                            secondaryButton(title: "Take a 3-question test", action: onTakeTest)
+                                .accessibilityIdentifier("completion.takeTest")
+                        }
 
                         if isChoosingAngle {
                             VStack(spacing: Theme.Spacing.xs) {
@@ -109,6 +130,17 @@ struct CompletionView: View {
         // one down and clobber every descendant's own identifier — confirmed
         // for OnboardingView via an app.debugDescription dump in CI. Every
         // control on this screen already carries its own identifier.
+    }
+
+    private func awardCompletionPoints(for lesson: StoredLesson) {
+        let ledger = pointsLedger
+        let event = PointEvent(
+            occurredAt: .now,
+            kind: .lessonCompleted,
+            amount: Points.forCompleting(lesson.window),
+            sourceID: lesson.id.uuidString
+        )
+        Task { await ledger.record(event) }
     }
 
     private func primaryButton(title: String, isDisabled: Bool, action: @escaping () -> Void) -> some View {

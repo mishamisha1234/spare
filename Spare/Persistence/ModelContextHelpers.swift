@@ -22,4 +22,15 @@ extension ModelContext {
         let descriptor = FetchDescriptor<StoredLesson>(predicate: #Predicate { $0.id == id })
         return try? fetch(descriptor).first
     }
+
+    // MARK: - Recall
+
+    /// The recall item due soonest, whether or not it's due yet — used by
+    /// `NotificationScheduler` to schedule ahead. Views decide what to show
+    /// *today* from their own `@Query`, which stays observation-tracked;
+    /// this one-off fetch is for a non-view context that has no `@Query`.
+    func nextRecallItem() -> StoredRecallItem? {
+        let items = (try? fetch(FetchDescriptor<StoredRecallItem>())) ?? []
+        return items.min { $0.dueAt < $1.dueAt }
+    }
 }

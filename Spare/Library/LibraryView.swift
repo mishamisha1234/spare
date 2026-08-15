@@ -6,14 +6,28 @@ import SpareCore
 /// month. Filterable by domain.
 struct LibraryView: View {
     var onSelect: (StoredLesson) -> Void
+    var onOpenStats: () -> Void
 
     @Query(sort: \StoredLesson.generatedAt, order: .reverse)
     private var lessons: [StoredLesson]
     @Query private var entitlements: [StoredEntitlement]
+    @Query private var pointEvents: [StoredPointEvent]
 
     @State private var selectedDomain: String?
     @Environment(\.colorScheme) private var colorScheme
     private var palette: Theme.Palette { Theme.palette(for: colorScheme) }
+
+    /// Full history, not `visibleLessons`: an achievement reflects what was
+    /// actually done, regardless of what the free-tier cap currently hides.
+    private var achievementCount: Int {
+        let completed = lessons.filter { $0.completedAt != nil }
+        let library = LibrarySnapshot(
+            completedLessonCount: completed.count,
+            completedMiniCourseCount: completed.filter { $0.window == .fortyFive }.count,
+            completedDomains: completed.map(\.topicTag)
+        )
+        return Achievements.unlocked(events: pointEvents.map(\.event), library: library).count
+    }
 
     private var entitlementSnapshot: EntitlementSnapshot {
         entitlements.first?.snapshot ?? .free
@@ -67,6 +81,8 @@ struct LibraryView: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: Theme.Spacing.l) {
+                        statsLine
+
                         if !domains.isEmpty {
                             domainFilter
                         }
@@ -106,6 +122,27 @@ struct LibraryView: View {
         .navigationTitle("Library")
         // No container-level accessibilityIdentifier: see OnboardingView.
         // library.filter.*, library.row.*, and library.empty are what's used.
+    }
+
+    /// The one place achievements surface: a single quiet line of text, not
+    /// a badge or a counter. Always present, even with zero achievements
+    /// yet, so Stats stays reachable from launch.
+    private var statsLine: some View {
+        Button(action: onOpenStats) {
+            Text(statsLineText)
+                .font(Theme.Font.label.font)
+                .foregroundStyle(palette.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, Theme.Spacing.m)
+        .accessibilityIdentifier("library.stats")
+    }
+
+    private var statsLineText: String {
+        achievementCount == 0
+            ? "Stats"
+            : "\(achievementCount) achievement\(achievementCount == 1 ? "" : "s") unlocked"
     }
 
     private var domainFilter: some View {

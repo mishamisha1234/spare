@@ -13,6 +13,7 @@ enum PersistenceStack {
             StoredSuggestionCache.self,
             StoredEntitlement.self,
             StoredUsageEvent.self,
+            StoredPointEvent.self,
         ])
     }
 

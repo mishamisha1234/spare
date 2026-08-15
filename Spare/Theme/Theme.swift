@@ -100,6 +100,12 @@ enum Theme {
         /// A small label sitting above a title — e.g. a suggestion's domain
         /// tag. Meant to outrank the title it sits over, not recede.
         case eyebrow
+        /// The share card's hero lesson titles: the serif at display size,
+        /// since the titles are the entire point of that graphic.
+        case shareHero
+        /// The share card's "spare" wordmark: small, quiet, serif to match
+        /// the reading font the rest of the app is built on.
+        case shareWordmark
 
         var font: SwiftUI.Font {
             switch self {
@@ -119,6 +125,10 @@ enum Theme {
                 return .system(size: 13, weight: .medium, design: .default)
             case .eyebrow:
                 return .system(size: 11, weight: .semibold, design: .default)
+            case .shareHero:
+                return .system(size: 30, weight: .semibold, design: .serif)
+            case .shareWordmark:
+                return .system(size: 15, weight: .medium, design: .serif)
             }
         }
 
@@ -222,6 +232,21 @@ enum Theme {
     /// The only appear animation in the app: a short scale-in, skipped
     /// entirely under reduce-motion.
     static let appearAnimation: Animation = .easeOut(duration: 0.28)
+
+    // MARK: - Share card
+
+    /// Fixed 9:16 render size for the share card (a story/reel aspect
+    /// ratio), independent of the device's own screen size — the card is
+    /// rendered off-screen via `ImageRenderer`, not laid out to fill a
+    /// visible frame.
+    enum ShareCard {
+        static let width: CGFloat = 405
+        static let height: CGFloat = 720
+        /// Height of the tallest domain bar in the fingerprint row; other
+        /// bars scale relative to it.
+        static let maxBarHeight: CGFloat = 64
+        static let barWidth: CGFloat = 4
+    }
 
     // MARK: - Home circle sizing
 

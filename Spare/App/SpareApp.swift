@@ -18,6 +18,7 @@ struct SpareApp: App {
 
     private let container: ModelContainer
     private let provider: any LessonProvider
+    private let pointsLedger: any PointsLedger
 
     @AppStorage(AppSettingsKey.appearanceMode) private var appearanceModeRaw = Theme.AppearanceMode.system.rawValue
 
@@ -26,12 +27,15 @@ struct SpareApp: App {
 
         let container = PersistenceStack.makeContainer(inMemory: Self.isUITestReset)
         self.container = container
+        self.pointsLedger = PointsLedgerActor(modelContainer: container)
 
         if Self.isUITestReset {
             let defaults = UserDefaults.standard
             defaults.removeObject(forKey: AppSettingsKey.hasCompletedOnboarding)
             defaults.removeObject(forKey: AppSettingsKey.appearanceMode)
             defaults.removeObject(forKey: AppSettingsKey.textSizeStep)
+            defaults.removeObject(forKey: AppSettingsKey.recallNotificationTimeMinutes)
+            Self.seedUITestState(container)
         }
 
         // UI tests must never reach the network or spend anything, whatever
@@ -52,6 +56,48 @@ struct SpareApp: App {
         }
     }
 
+    /// Seeds a completed lesson with an already-due recall item, and a
+    /// premium entitlement, so the screenshot walkthrough can reach the Home
+    /// recall card and the post-lesson test without a multi-day simulated
+    /// wait or a purchase flow that doesn't exist yet (Phase 5). Test-only:
+    /// this never runs without `-UITEST_RESET_STATE`.
+    private static func seedUITestState(_ container: ModelContainer) {
+        let context = ModelContext(container)
+        let lesson = StoredLesson(
+            title: "Why bridges hum",
+            subtitle: "A 3-minute one thing",
+            topicTag: "Engineering",
+            window: .three,
+            bodyMarkdown: MockProvider.fixtureLesson(
+                topic: TopicSuggestion(title: "Why bridges hum", hook: "", domainTag: "Engineering"),
+                window: .three
+            ).bodyMarkdown,
+            surprisingClaim: "Pedestrians synchronising their steps fed the wobble that was correcting it.",
+            deeperAngles: [
+                "The broader physics of resonance in built structures",
+                "How a tuned mass damper actually works",
+                "The case against over-damping: when flexibility is safer",
+            ],
+            completedAt: .now,
+            scrollProgress: 1
+        )
+        context.insert(lesson)
+        context.insert(StoredRecallItem(
+            lessonID: lesson.id,
+            question: "What actually drove the Millennium Bridge's sway?",
+            answer: "Pedestrians synchronising their steps with the deck",
+            distractors: [
+                "Wind alone",
+                "A construction fault in the deck",
+                "Traffic on a nearby road",
+            ],
+            explanation: "Each stride correction fed the wobble it was correcting.",
+            dueAt: .distantPast
+        ))
+        context.insert(StoredEntitlement(tier: .monthly))
+        try? context.save()
+    }
+
     /// `-UITEST_COLOR_SCHEME` (light/dark) forces the appearance for
     /// screenshot determinism, overriding both the stored preference and the
     /// simulator's actual system setting.
@@ -68,6 +114,7 @@ struct SpareApp: App {
             RootView()
                 .themedAppearance(appearanceMode)
                 .environment(\.lessonProvider, provider)
+                .environment(\.pointsLedger, pointsLedger)
         }
         .modelContainer(container)
     }

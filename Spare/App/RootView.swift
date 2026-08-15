@@ -9,13 +9,18 @@ struct RootView: View {
     @AppStorage(AppSettingsKey.hasCompletedOnboarding) private var hasCompletedOnboarding = false
     @Environment(\.modelContext) private var modelContext
     @Environment(\.lessonProvider) private var provider
+    @Environment(\.pointsLedger) private var pointsLedger
+    @Environment(\.scenePhase) private var scenePhase
     @State private var path: [AppRoute] = []
 
     var body: some View {
         Group {
             if hasCompletedOnboarding {
                 NavigationStack(path: $path) {
-                    HomeView(onSelect: { window in path.append(.suggestions(window)) })
+                    HomeView(
+                        onSelect: { window in path.append(.suggestions(window)) },
+                        onViewRecallLesson: { lessonID in path.append(.lessonDetail(lessonID)) }
+                    )
                         .toolbar {
                             ToolbarItem(placement: .topBarLeading) {
                                 Button {
@@ -49,6 +54,18 @@ struct RootView: View {
                 OnboardingView(onFinished: { hasCompletedOnboarding = true })
             }
         }
+        // Recomputed on every return to the foreground, not just when recall
+        // state actually changes — cheap, and it's the backstop that catches
+        // a due date drifting into "now" purely from time passing while the
+        // app was backgrounded.
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active, hasCompletedOnboarding else { return }
+            NotificationScheduler.reschedule(modelContext: modelContext)
+        }
+        .task {
+            guard hasCompletedOnboarding else { return }
+            NotificationScheduler.reschedule(modelContext: modelContext)
+        }
     }
 
     @ViewBuilder
@@ -75,13 +92,15 @@ struct RootView: View {
                     guard let lesson = modelContext.storedLesson(id: lessonID) else { return }
                     path.append(.reader(.goDeeper(parentLessonID: lessonID, angle: angle, window: lesson.window)))
                 },
-                onReturnHome: { path.removeAll() }
+                onReturnHome: { path.removeAll() },
+                onTakeTest: { path.append(.postLessonTest(lessonID: lessonID)) }
             )
 
         case .library:
-            LibraryView { lesson in
-                path.append(.lessonDetail(lesson.id))
-            }
+            LibraryView(
+                onSelect: { lesson in path.append(.lessonDetail(lesson.id)) },
+                onOpenStats: { path.append(.stats) }
+            )
 
         case .lessonDetail(let lessonID):
             if let lesson = modelContext.storedLesson(id: lessonID) {
@@ -90,6 +109,18 @@ struct RootView: View {
 
         case .settings:
             SettingsView()
+
+        case .postLessonTest(let lessonID):
+            PostLessonTestView(
+                lessonID: lessonID,
+                provider: provider,
+                modelContext: modelContext,
+                pointsLedger: pointsLedger,
+                onFinished: { path.removeLast() }
+            )
+
+        case .stats:
+            StatsView()
         }
     }
 }
