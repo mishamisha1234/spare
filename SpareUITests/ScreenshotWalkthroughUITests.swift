@@ -247,6 +247,13 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
         if let waitTarget {
             let ok = waitTarget.waitForExistence(timeout: timeout ?? defaultTimeout)
             capture(app, name, scheme: scheme)
+            // `continueAfterFailure = false` aborts the test via XCTest's own
+            // control flow, not a Swift `throw` -- the outer do/catch's
+            // attachFailureDiagnostics() never actually runs for an
+            // XCTAssertTrue failure. Printing here, unconditionally on
+            // failure, is what actually gets a real accessibility tree into
+            // the CI log for this class of failure.
+            if !ok { printHierarchy(app, scheme: scheme, context: step ?? name) }
             XCTAssertTrue(ok, "\(step ?? name): element never appeared")
             return waitTarget
         }
@@ -264,9 +271,19 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
         let ok = target.waitForExistence(timeout: defaultTimeout)
         if !ok {
             capture(app, "FAILURE-\(step)", scheme: scheme)
+            printHierarchy(app, scheme: scheme, context: step)
         }
         XCTAssertTrue(ok, "\(step): \"\(identifier)\" never appeared within \(defaultTimeout)s")
         target.tap()
+    }
+
+    /// Prints the live accessibility tree to stdout, same as the launch-time
+    /// dump — the one diagnostic proven to actually reach the CI log,
+    /// unlike an XCTAttachment queued for a catch block that never runs.
+    private func printHierarchy(_ app: XCUIApplication, scheme: String, context: String) {
+        print("=== \(scheme) accessibility tree at failure (\(context)) ===")
+        print(app.debugDescription)
+        print("=== end \(scheme) accessibility tree at failure ===")
     }
 
     private func capture(_ app: XCUIApplication, _ name: String, scheme: String) {

@@ -148,7 +148,10 @@ jobs:
           set -u
           if [ -f raw-test-output.log ] && grep -q 'accessibility tree' raw-test-output.log; then
             echo "::group::Test-printed accessibility tree diagnostics"
-            grep -A 200 'accessibility tree at launch' raw-test-output.log | grep -B 200 -m 1 'end .* accessibility tree' || true
+            # Every dumped tree, not just the first: the launch dump plus one
+            # per wait/tap failure (see ScreenshotWalkthroughUITests'
+            # printHierarchy), each bounded by its own start/end marker line.
+            awk '/accessibility tree at (launch|failure)/{on=1} on{print} /end .* accessibility tree/{on=0}' raw-test-output.log
             echo "::endgroup::"
           else
             echo "No test-printed accessibility tree diagnostics found in raw output."
