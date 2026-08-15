@@ -161,6 +161,30 @@ Every screen respects one aesthetic rule: no confetti, no trophy icons, no badge
 
 **Share card.** `ShareCardView` renders at a fixed 9:16 size via `ImageRenderer`, always against the theme's dark palette regardless of the app's own appearance setting — this is an artifact meant to travel outside the app, not a themed screen. Tapping Share on Stats renders it into a preview sheet with a native `ShareLink` — that preview step is also the only way this screen is reviewable from CI, since a rendered bitmap has no view hierarchy of its own to screenshot otherwise.
 
+## Entitlements and purchasing
+
+**One gate, one place.** `EntitlementService` is the only thing in the app that answers "is this allowed?". Views never read a tier and never call `EntitlementRules` themselves — they ask for an `AccessDecision` and render it. A grep for `EntitlementRules` or `StoredEntitlement` outside that service returns nothing but its own persistence.
+
+**A fair-use cap is not a paywall, and the types enforce that.** `AccessDecision` has three cases: `allowed`, `denied(PaywallTrigger)`, and `capped(UsageCap)`. The 8-mini-courses-a-month limit applies to people who already pay, so it returns `capped`, and `capped.trigger` is `nil`. "Route any denial to the paywall" therefore cannot be written by accident — a subscriber at the limit gets a plain explanation and the reset date. A test asserts this specific property.
+
+**Free** is 1 lesson/day, the 3- and 10-minute lengths, the last 10 library entries, no go-deeper, no post-lesson test. **Premium** is unlimited lessons, every length, the full library, unlimited go-deeper, post-lesson tests, and 8 mini-courses a month with the remaining count stated in Settings before it bites.
+
+Locked premium features render as **visibly locked rows that open the paywall**, never hidden — a feature nobody can see sells nothing. The exception is Home's duration circles, which carry no lock badge: size is the only thing allowed to mean anything on that screen, and lock glyphs on two of four would wreck it. Tapping a locked duration opens the paywall, which is where the lock gets stated.
+
+**Free-tier counting is local and therefore spoofable.** Accepted for v1, with no anti-tamper by design; it moves server-side later.
+
+### StoreKit
+
+`Transaction.currentEntitlements` is the authority on what someone owns — already OS-validated, already excluding expired and refunded purchases, and it survives a reinstall without a restore. The tier cached in SwiftData exists only so a cold launch knows the answer before StoreKit replies. `ProductCatalog.resolvedTier` takes the *strongest* of several owned identifiers, because a lifetime buyer who previously subscribed still has that subscription in `currentEntitlements` until it lapses and must not be downgraded.
+
+Purchases go through a `PurchaseStore` protocol, the same shape as `LessonProvider`: `StoreKitPurchaseStore` for real, `StubPurchaseStore` for UI tests and previews. CI screenshots the entire paywall and purchase flow with **no StoreKit configuration, no sandbox account, and no way to trigger a real charge**. `Products.storekit` is wired into the scheme's run action for local testing on a Mac only.
+
+### Paywall
+
+Priced claims are computed from the two real StoreKit prices, never hardcoded: `PricingSummary` derives the per-month equivalent and the saving percentage, **rounds the saving down**, and returns nothing at all when there is no honest claim to make (no baseline, yearly not actually cheaper, under 1%). An overstated saving is a false advertisement, not a rounding bug.
+
+No countdown, no "limited time", no strike-through on a price that was never charged, no framing that implies the reader is failing at something. The screen is built entirely from `Theme` — every colour, font, radius, and spacing value — because a paywall that looks like a different app is the usual tell that the design system was abandoned exactly where it mattered.
+
 ## Known deviations
 
 - **Toolbar button shadow — confirmed unfixable without abandoning `.toolbar`.** Toolbar items render with a soft shadow under a circular background the theme doesn't specify. Three fixes were tried and verified against CI screenshots, and all three left it unchanged:
@@ -170,11 +194,11 @@ Every screen respects one aesthetic rule: no confetti, no trophy icons, no badge
 
   That eliminates the bar as the source: it is iOS 26's per-item "glass" treatment on toolbar buttons, which has no SwiftUI-level override. Removing it would mean hand-rolling a header row instead of `.toolbar`, giving up native back-swipe and VoiceOver behaviour to delete a shadow. Not worth it. Both fixes are kept anyway — they're harmless and correct in intent.
 
-- **Notification scheduling is schedule-ahead, not verified-at-fire-time.** See "Notifications" above. The honest gap: if a recall item's due date changes without the app being reopened, a stale notification could in principle fire. This doesn't arise in the ordinary flow, since answering a recall item requires opening the app in the first place — but it's not the same guarantee a server-verified push would give.
+- **Notification scheduling is schedule-ahead, not verified-at-fire-time. Fix before launch.** See "Notifications" above. A notification that fires for an already-answered item is a real bug, not a cosmetic one; it just can't be fully closed without either a server or a Notification Service Extension. This doesn't arise in the ordinary flow, since answering a recall item requires opening the app, which is exactly when the schedule gets recomputed — but it is not the guarantee a verified push would give, and it is on the pre-launch list rather than accepted permanently.
 
 - **The recall reminder's time picker is a system `DatePicker(.compact)`.** Its popover chrome can't be re-themed any further than a `.tint()` — same accepted-platform-chrome category as the toolbar shadow above, not worth hand-rolling a custom time wheel to fully theme.
 
-- **"Take the test" is hidden entirely for free-tier users, not shown locked.** There's no paywall UI yet (roadmap item 5) to route a tap on a locked state to, so the premium-only post-lesson test simply doesn't appear for free users rather than dead-ending on a paywall that isn't built.
+- ~~"Take the test" is hidden entirely for free-tier users~~ — **fixed in Phase 5.** It is now a visibly locked row that opens the paywall, along with go-deeper.
 
 ## Roadmap
 
@@ -182,5 +206,5 @@ Every screen respects one aesthetic rule: no confetti, no trophy icons, no badge
 2. ✅ Onboarding, Home, Suggestions, Reader, Completion, Library — all on `MockProvider`
 3. ✅ `AnthropicDirectProvider`: Keychain, streaming, two-pass pipeline, lazy chapters, usage ledger
 4. ✅ Recall system, scheduling, notifications, points, post-lesson test, stats, share card
-5. StoreKit 2, `EntitlementService`, paywall
+5. ✅ StoreKit 2, `EntitlementService`, paywall, locked states
 6. Widget, App Intents, markdown export, accessibility pass

@@ -202,15 +202,25 @@ struct CompletionView: View {
 
     private func primaryButton(title: String, isDisabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
+            // Border-only when disabled, matching the Save key button in
+            // Settings. A dimmed accent fill turns muddy in dark mode, where
+            // the accent already sits close to the background in luminance —
+            // "Marked complete" was rendering as brown-on-brown.
             Text(title)
                 .font(Theme.Font.headline.font)
-                .foregroundStyle(palette.textOnAccent)
+                .foregroundStyle(isDisabled ? palette.secondaryText : palette.textOnAccent)
                 .frame(maxWidth: .infinity)
                 .frame(height: Theme.ControlSize.button)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                        .fill(palette.accent)
-                        .opacity(isDisabled ? Theme.Interaction.disabledOpacity : 1)
+                        .fill(isDisabled ? Color.clear : palette.accent)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.cornerRadius)
+                        .strokeBorder(
+                            isDisabled ? palette.border : Color.clear,
+                            lineWidth: Theme.borderWidth
+                        )
                 )
         }
         .buttonStyle(.plain)

@@ -216,7 +216,12 @@ enum Theme {
     /// constant can come from.
     enum Interaction {
         static let pressedOpacity: Double = 0.75
-        static let disabledOpacity: Double = 0.6
+        // No `disabledOpacity`, deliberately. Dimming an accent fill to show
+        // a disabled state turns muddy in dark mode, where the accent is
+        // already close to the background in luminance. Disabled controls
+        // use a border instead — see the Save key and Mark complete buttons.
+        // The token is gone rather than merely unused so the pattern can't
+        // quietly come back.
         /// Floor for `.minimumScaleFactor` on the Home circle labels, so the
         /// 3-minute circle's text never shrinks past legibility.
         static let circleLabelMinimumScale: Double = 0.7
