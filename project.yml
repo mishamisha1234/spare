@@ -72,6 +72,10 @@ schemes:
         SpareUITests: [test]
     run:
       config: Debug
+      # Local StoreKit testing only — lets a Mac run the paywall against
+      # Products.storekit with no App Store Connect setup and no real charge.
+      # CI never depends on this: UI tests inject StubPurchaseStore instead.
+      storeKitConfiguration: Products.storekit
     test:
       config: Debug
       targets:

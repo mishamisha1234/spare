@@ -11,14 +11,17 @@ struct RootView: View {
     @Environment(\.lessonProvider) private var provider
     @Environment(\.pointsLedger) private var pointsLedger
     @Environment(\.scenePhase) private var scenePhase
+    @EnvironmentObject private var entitlements: EntitlementService
     @State private var path: [AppRoute] = []
+    @State private var paywall: PaywallPresentation?
+    @State private var capMessage: String?
 
     var body: some View {
         Group {
             if hasCompletedOnboarding {
                 NavigationStack(path: $path) {
                     HomeView(
-                        onSelect: { window in path.append(.suggestions(window)) },
+                        onSelect: startLesson(in:),
                         onViewRecallLesson: { lessonID in path.append(.lessonDetail(lessonID)) }
                     )
                         .toolbar {
@@ -66,6 +69,39 @@ struct RootView: View {
             guard hasCompletedOnboarding else { return }
             NotificationScheduler.reschedule(modelContext: modelContext)
         }
+        .task { entitlements.start() }
+        .sheet(item: $paywall) { presentation in
+            PaywallView(trigger: presentation.trigger)
+                .entitlementService(entitlements)
+        }
+        .alert(
+            "Mini-course limit reached",
+            isPresented: Binding(get: { capMessage != nil }, set: { if !$0 { capMessage = nil } })
+        ) {
+            Button("OK", role: .cancel) { capMessage = nil }
+        } message: {
+            Text(capMessage ?? "")
+        }
+    }
+
+    /// The gate for picking a duration on Home.
+    ///
+    /// A denial with a trigger opens the paywall; a `.capped` decision (a
+    /// paying user at the mini-course limit) surfaces the limit instead,
+    /// since selling them something they already own would be absurd. The
+    /// circles themselves carry no lock badge: on Home, size is the only
+    /// thing allowed to mean anything, and lock icons on two of four would
+    /// wreck that. The lock is stated on the paywall the tap opens.
+    private func startLesson(in window: TimeWindow) {
+        let decision = entitlements.canStartLesson(window: window)
+        switch decision {
+        case .allowed:
+            path.append(.suggestions(window))
+        case .denied(let trigger):
+            paywall = PaywallPresentation(trigger: trigger)
+        case .capped(.miniCoursesThisMonth(_, let cap)):
+            capMessage = "You've started all \(cap) mini-courses included this month. The count resets on the 1st — shorter lessons are unaffected."
+        }
     }
 
     @ViewBuilder
@@ -75,6 +111,9 @@ struct RootView: View {
             SuggestionsView(
                 window: window, provider: provider, modelContext: modelContext
             ) { suggestion in
+                // Committing to a topic is what spends the free daily
+                // allowance — browsing suggestions doesn't.
+                entitlements.recordLessonStarted(window: window)
                 path.append(.reader(.newTopic(suggestion, window: window)))
             }
 
@@ -93,7 +132,8 @@ struct RootView: View {
                     path.append(.reader(.goDeeper(parentLessonID: lessonID, angle: angle, window: lesson.window)))
                 },
                 onReturnHome: { path.removeAll() },
-                onTakeTest: { path.append(.postLessonTest(lessonID: lessonID)) }
+                onTakeTest: { path.append(.postLessonTest(lessonID: lessonID)) },
+                onPaywall: { trigger in paywall = PaywallPresentation(trigger: trigger) }
             )
 
         case .library:
@@ -125,7 +165,17 @@ struct RootView: View {
     }
 }
 
+/// `.sheet(item:)` needs an `Identifiable`, and `PaywallTrigger` is a plain
+/// value type in SpareCore that shouldn't take on a UI-framework conformance
+/// just to be presented.
+private struct PaywallPresentation: Identifiable {
+    let trigger: PaywallTrigger
+    var id: String { String(describing: trigger) }
+}
+
 #Preview {
-    RootView()
-        .modelContainer(PersistenceStack.makeContainer(inMemory: true))
+    let container = PersistenceStack.makeContainer(inMemory: true)
+    return RootView()
+        .modelContainer(container)
+        .entitlementService(EntitlementService(store: StubPurchaseStore(), container: container))
 }

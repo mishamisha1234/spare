@@ -125,15 +125,27 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             )
             continueButton.tap()
 
-            // MARK: Completion
+            // MARK: Completion — still on the free tier here, so both premium
+            // rows show as visibly locked rather than being hidden.
             try waitAndCapture(app, "09-completion", scheme: colorScheme, identifier: "completion.returnHome")
             try tap(app, "completion.markComplete", scheme: colorScheme, step: "09-completion")
 
-            // MARK: Post-lesson test (premium — `-UITEST_RESET_STATE` also
-            // seeds a premium entitlement, so this button is reachable
-            // without a purchase flow that doesn't exist yet).
-            try waitAndCapture(app, "09a-completion-premium", scheme: colorScheme, identifier: "completion.takeTest")
-            try tap(app, "completion.takeTest", scheme: colorScheme, step: "09a-completion-premium")
+            // MARK: Paywall, reached by tapping the locked post-lesson test.
+            // This is the real trigger path, not a debug entry point.
+            try waitAndCapture(app, "09a-completion-locked", scheme: colorScheme, identifier: "completion.takeTest")
+            try tap(app, "completion.takeTest", scheme: colorScheme, step: "09a-completion-locked")
+            try waitAndCapture(app, "09b-paywall", scheme: colorScheme, identifier: "paywall.buy")
+
+            // Buying through StubPurchaseStore: no StoreKit configuration, no
+            // sandbox account, and no possibility of a real charge in CI.
+            try tap(app, "paywall.option.lifetime", scheme: colorScheme, step: "09b-paywall")
+            try waitAndCapture(app, "09c-paywall-lifetime", scheme: colorScheme, identifier: "paywall.buy")
+            try tap(app, "paywall.buy", scheme: colorScheme, step: "09c-paywall-lifetime")
+
+            // The paywall dismisses itself once the entitlement lands, which
+            // is also the assertion that the purchase actually took effect.
+            try waitAndCapture(app, "09d-completion-unlocked", scheme: colorScheme, identifier: "completion.takeTest")
+            try tap(app, "completion.takeTest", scheme: colorScheme, step: "09d-completion-unlocked")
 
             for questionNumber in 1...3 {
                 let option = app.descendants(matching: .any)
@@ -141,8 +153,8 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
                     .firstMatch
                 if questionNumber == 1 {
                     try waitAndCapture(
-                        app, "09b-postlessontest", scheme: colorScheme,
-                        element: option, step: "09b-postlessontest"
+                        app, "09e-postlessontest", scheme: colorScheme,
+                        element: option, step: "09e-postlessontest"
                     )
                 } else {
                     XCTAssertTrue(
@@ -152,15 +164,15 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
                 }
                 option.tap()
                 if questionNumber == 1 {
-                    try waitAndCapture(app, "09c-postlessontest-revealed", scheme: colorScheme, identifier: "postLessonTest.next")
+                    try waitAndCapture(app, "09f-postlessontest-revealed", scheme: colorScheme, identifier: "postLessonTest.next")
                 }
                 try tap(app, "postLessonTest.next", scheme: colorScheme, step: "postlessontest-q\(questionNumber)")
             }
-            try waitAndCapture(app, "09d-postlessontest-summary", scheme: colorScheme, identifier: "postLessonTest.done")
-            try tap(app, "postLessonTest.done", scheme: colorScheme, step: "09d-postlessontest-summary")
+            try waitAndCapture(app, "09g-postlessontest-summary", scheme: colorScheme, identifier: "postLessonTest.done")
+            try tap(app, "postLessonTest.done", scheme: colorScheme, step: "09g-postlessontest-summary")
 
-            try waitAndCapture(app, "09e-completion-after-test", scheme: colorScheme, identifier: "completion.returnHome")
-            try tap(app, "completion.returnHome", scheme: colorScheme, step: "09e-completion-after-test")
+            try waitAndCapture(app, "09h-completion-after-test", scheme: colorScheme, identifier: "completion.returnHome")
+            try tap(app, "completion.returnHome", scheme: colorScheme, step: "09h-completion-after-test")
 
             // MARK: Library (reached from Home)
             try waitAndCapture(app, "06b-home-again", scheme: colorScheme, identifier: "home.libraryButton")

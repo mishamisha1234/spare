@@ -10,7 +10,7 @@ struct LibraryView: View {
 
     @Query(sort: \StoredLesson.generatedAt, order: .reverse)
     private var lessons: [StoredLesson]
-    @Query private var entitlements: [StoredEntitlement]
+    @EnvironmentObject private var entitlements: EntitlementService
     @Query private var pointEvents: [StoredPointEvent]
 
     @State private var selectedDomain: String?
@@ -29,19 +29,15 @@ struct LibraryView: View {
         return Achievements.unlocked(events: pointEvents.map(\.event), library: library).count
     }
 
-    private var entitlementSnapshot: EntitlementSnapshot {
-        entitlements.first?.snapshot ?? .free
-    }
-
     /// The free tier hides — never deletes — everything past the most
-    /// recent 10 entries.
+    /// recent 10 entries. The rule itself lives in `EntitlementService`;
+    /// this view only asks.
     private var visibleLessons: [StoredLesson] {
-        let count = EntitlementRules.visibleLibraryCount(entitlementSnapshot, totalEntries: lessons.count)
-        return Array(lessons.prefix(count))
+        Array(lessons.prefix(entitlements.visibleLibraryCount(totalEntries: lessons.count)))
     }
 
     private var hiddenCount: Int {
-        EntitlementRules.hiddenLibraryCount(entitlementSnapshot, totalEntries: lessons.count)
+        entitlements.hiddenLibraryCount(totalEntries: lessons.count)
     }
 
     private var domains: [String] {

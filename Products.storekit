@@ -1,0 +1,85 @@
+{
+  "identifier" : "A1B2C3D4",
+  "nonRenewingSubscriptions" : [],
+  "products" : [
+    {
+      "displayPrice" : "99.99",
+      "familyShareable" : false,
+      "internalID" : "3001",
+      "localizations" : [
+        {
+          "description" : "Every length, unlimited lessons, your whole library, and the post-lesson test. One payment.",
+          "displayName" : "Lifetime",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "app.spare.premium.lifetime",
+      "referenceName" : "Spare Premium Lifetime",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "1000",
+    "_developerTeamID" : "SPARE0000",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 0,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : []
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "2001",
+      "localizations" : [],
+      "name" : "Spare Premium",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "2101",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Every length, unlimited lessons, your whole library, and the post-lesson test.",
+              "displayName" : "Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "app.spare.premium.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Spare Premium Monthly",
+          "subscriptionGroupID" : "2001",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "39.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "2102",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Every length, unlimited lessons, your whole library, and the post-lesson test.",
+              "displayName" : "Yearly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "app.spare.premium.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Spare Premium Yearly",
+          "subscriptionGroupID" : "2001",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

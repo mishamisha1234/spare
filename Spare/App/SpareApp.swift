@@ -19,6 +19,7 @@ struct SpareApp: App {
     private let container: ModelContainer
     private let provider: any LessonProvider
     private let pointsLedger: any PointsLedger
+    private let entitlements: EntitlementService
 
     @AppStorage(AppSettingsKey.appearanceMode) private var appearanceModeRaw = Theme.AppearanceMode.system.rawValue
 
@@ -39,7 +40,14 @@ struct SpareApp: App {
         }
 
         // UI tests must never reach the network or spend anything, whatever
-        // happens to be in this simulator's Keychain.
+        // happens to be in this simulator's Keychain. The stub store also
+        // means the paywall screenshots need no StoreKit configuration and
+        // can never trigger a real purchase sheet.
+        self.entitlements = EntitlementService(
+            store: Self.isUITestReset ? StubPurchaseStore() : StoreKitPurchaseStore(),
+            container: container
+        )
+
         if Self.isUITestReset {
             self.provider = MockProvider()
         } else {
@@ -56,11 +64,14 @@ struct SpareApp: App {
         }
     }
 
-    /// Seeds a completed lesson with an already-due recall item, and a
-    /// premium entitlement, so the screenshot walkthrough can reach the Home
-    /// recall card and the post-lesson test without a multi-day simulated
-    /// wait or a purchase flow that doesn't exist yet (Phase 5). Test-only:
-    /// this never runs without `-UITEST_RESET_STATE`.
+    /// Seeds a completed lesson with an already-due recall item, so the
+    /// screenshot walkthrough can reach the Home recall card without a
+    /// multi-day simulated wait. Test-only: never runs without
+    /// `-UITEST_RESET_STATE`.
+    ///
+    /// Deliberately seeds no entitlement, so the walkthrough starts on the
+    /// free tier and photographs the locked states and the paywall before
+    /// buying its way past them through `StubPurchaseStore`.
     private static func seedUITestState(_ container: ModelContainer) {
         let context = ModelContext(container)
         let lesson = StoredLesson(
@@ -94,7 +105,6 @@ struct SpareApp: App {
             explanation: "Each stride correction fed the wobble it was correcting.",
             dueAt: .distantPast
         ))
-        context.insert(StoredEntitlement(tier: .monthly))
         try? context.save()
     }
 
@@ -115,6 +125,7 @@ struct SpareApp: App {
                 .themedAppearance(appearanceMode)
                 .environment(\.lessonProvider, provider)
                 .environment(\.pointsLedger, pointsLedger)
+                .entitlementService(entitlements)
         }
         .modelContainer(container)
     }

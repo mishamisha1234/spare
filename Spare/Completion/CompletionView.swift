@@ -11,20 +11,17 @@ struct CompletionView: View {
     var onGoDeeper: (DeeperAngle) -> Void
     var onReturnHome: () -> Void
     var onTakeTest: () -> Void
+    var onPaywall: (PaywallTrigger) -> Void
 
     @StateObject private var viewModel: CompletionViewModel
     @State private var lesson: StoredLesson?
     @State private var isMarkedComplete = false
     @State private var isChoosingAngle = false
-    @Query private var entitlements: [StoredEntitlement]
 
+    @EnvironmentObject private var entitlements: EntitlementService
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.pointsLedger) private var pointsLedger
     private var palette: Theme.Palette { Theme.palette(for: colorScheme) }
-
-    private var isPremium: Bool {
-        (entitlements.first?.snapshot ?? .free).tier.isPremium
-    }
 
     init(
         lessonID: UUID,
@@ -32,7 +29,8 @@ struct CompletionView: View {
         modelContext: ModelContext,
         onGoDeeper: @escaping (DeeperAngle) -> Void,
         onReturnHome: @escaping () -> Void,
-        onTakeTest: @escaping () -> Void
+        onTakeTest: @escaping () -> Void,
+        onPaywall: @escaping (PaywallTrigger) -> Void
     ) {
         self.lessonID = lessonID
         self.provider = provider
@@ -40,6 +38,7 @@ struct CompletionView: View {
         self.onGoDeeper = onGoDeeper
         self.onReturnHome = onReturnHome
         self.onTakeTest = onTakeTest
+        self.onPaywall = onPaywall
         _viewModel = StateObject(wrappedValue: CompletionViewModel(provider: provider, modelContext: modelContext))
     }
 
@@ -73,15 +72,24 @@ struct CompletionView: View {
                         }
                         .accessibilityIdentifier("completion.markComplete")
 
-                        secondaryButton(title: "Go deeper") {
+                        // Both premium actions stay visible when locked, with
+                        // the lock shown rather than the row hidden: a
+                        // feature nobody can see sells nothing, and silently
+                        // missing rows are worse UX than an honest lock.
+                        lockableButton(
+                            title: "Go deeper",
+                            decision: entitlements.canGoDeeper(),
+                            identifier: "completion.goDeeper"
+                        ) {
                             isChoosingAngle.toggle()
                         }
-                        .accessibilityIdentifier("completion.goDeeper")
 
-                        if isPremium {
-                            secondaryButton(title: "Take a 3-question test", action: onTakeTest)
-                                .accessibilityIdentifier("completion.takeTest")
-                        }
+                        lockableButton(
+                            title: "Take a 3-question test",
+                            decision: entitlements.canTakePostLessonTest(),
+                            identifier: "completion.takeTest",
+                            action: onTakeTest
+                        )
 
                         if isChoosingAngle {
                             VStack(spacing: Theme.Spacing.xs) {
@@ -147,6 +155,49 @@ struct CompletionView: View {
             sourceID: lesson.id.uuidString
         )
         Task { await ledger.record(event) }
+    }
+
+    /// A secondary button that either performs its action or, when the gate
+    /// says no, routes to the paywall carrying the specific trigger.
+    ///
+    /// Note it reads the whole `AccessDecision`, not a bool: a `.capped`
+    /// decision (a paying user at the mini-course limit) shows the lock
+    /// without offering to sell them anything, because `.trigger` is nil.
+    private func lockableButton(
+        title: String,
+        decision: AccessDecision,
+        identifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        let isLocked = !decision.isAllowed
+        return Button {
+            if let trigger = decision.trigger {
+                onPaywall(trigger)
+            } else if !isLocked {
+                action()
+            }
+        } label: {
+            HStack(spacing: Theme.Spacing.xs) {
+                Text(title)
+                    .font(Theme.Font.headline.font)
+                    .foregroundStyle(isLocked ? palette.secondaryText : palette.text)
+                if isLocked {
+                    Image(systemName: "lock")
+                        .font(Theme.Font.caption.font)
+                        .foregroundStyle(palette.secondaryText)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: Theme.ControlSize.button)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.cornerRadius)
+                    .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(identifier)
+        .accessibilityLabel(isLocked ? "\(title), Premium" : title)
     }
 
     private func primaryButton(title: String, isDisabled: Bool, action: @escaping () -> Void) -> some View {

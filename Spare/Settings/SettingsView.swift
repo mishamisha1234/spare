@@ -12,6 +12,7 @@ struct SettingsView: View {
     @AppStorage(AppSettingsKey.textSizeStep) private var textSizeStepRaw = TextSizeStep.standard.rawValue
     @AppStorage(AppSettingsKey.recallNotificationTimeMinutes) private var recallNotificationTimeMinutes = NotificationScheduler.defaultMinutesSinceMidnight
 
+    @EnvironmentObject private var entitlements: EntitlementService
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.modelContext) private var modelContext
     @State private var keyEntry = ""
@@ -53,6 +54,7 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.l) {
+                planSection
                 apiKeySection
                 readingSection
                 reminderSection
@@ -66,6 +68,41 @@ struct SettingsView: View {
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .task { hasStoredKey = await keyStore.currentKey() != nil }
+    }
+
+    // MARK: - Plan
+
+    /// States the plan and, for premium, the mini-course allowance — before
+    /// it bites rather than at the moment it does. A cap discovered only on
+    /// refusal is a worse deal than the same cap stated up front.
+    private var planSection: some View {
+        section("Plan") {
+            HStack {
+                Text(entitlements.isPremium ? "Premium" : "Free")
+                    .font(Theme.Font.headline.font)
+                    .foregroundStyle(palette.text)
+                Spacer()
+                if !entitlements.isPremium {
+                    Text("1 lesson a day")
+                        .font(Theme.Font.label.font)
+                        .foregroundStyle(palette.secondaryText)
+                }
+            }
+            .accessibilityIdentifier("settings.plan")
+
+            if entitlements.isPremium {
+                Text("\(entitlements.miniCoursesRemaining) of \(EntitlementRules.premiumMiniCoursesPerMonth) mini-courses left this month. Shorter lessons are unlimited.")
+                    .font(Theme.Font.caption.font)
+                    .foregroundStyle(palette.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("settings.miniCourseAllowance")
+            } else {
+                Text("Free covers the 3- and 10-minute lengths, one lesson a day, and your last \(EntitlementRules.freeLibraryLimit) library entries.")
+                    .font(Theme.Font.caption.font)
+                    .foregroundStyle(palette.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     // MARK: - API key
