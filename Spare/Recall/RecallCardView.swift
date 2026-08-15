@@ -103,6 +103,12 @@ struct RecallCardView: View {
                 RoundedRectangle(cornerRadius: Theme.cornerRadius)
                     .strokeBorder(rowBorderColor(isCorrectOption: isCorrectOption), lineWidth: Theme.borderWidth)
             )
+            // A stroke only draws pixels along the border, so without this
+            // the row's interior isn't hit-testable at all -- confirmed via
+            // the CI accessibility tree: the tap landed at the frame's
+            // center, past the short left-aligned label, and silently did
+            // nothing because nothing there could receive it.
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(isRevealed)

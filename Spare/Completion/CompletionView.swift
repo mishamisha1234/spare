@@ -99,6 +99,12 @@ struct CompletionView: View {
                                                 RoundedRectangle(cornerRadius: Theme.cornerRadius)
                                                     .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
                                             )
+                                            // A stroke only draws pixels along the border, so
+                                            // without this the row's interior — everything past
+                                            // the label glyphs — isn't hit-testable at all,
+                                            // exactly where XCUITest's tap-at-frame-center lands
+                                            // on a short, left-aligned label.
+                                            .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)
                                     .accessibilityIdentifier("completion.angle.\(angle.id)")

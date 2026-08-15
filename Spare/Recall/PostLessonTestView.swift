@@ -109,6 +109,10 @@ struct PostLessonTestView: View {
                 RoundedRectangle(cornerRadius: Theme.cornerRadius)
                     .strokeBorder(rowBorderColor(isCorrectOption: isCorrectOption), lineWidth: Theme.borderWidth)
             )
+            // See RecallCardView's identical fix: a stroke only draws pixels
+            // along the border, so without this the row's interior isn't
+            // hit-testable at all.
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(viewModel.isRevealed)
