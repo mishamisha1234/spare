@@ -28,6 +28,15 @@ struct RecallCardView: View {
             Text(item.question)
                 .font(Theme.Font.headline.font)
                 .foregroundStyle(palette.text)
+                // Without this, a tight layout (this card plus the four
+                // circles all competing for one non-scrolling screen)
+                // compresses this Text vertically before it touches the
+                // Spacers -- confirmed on the CI screenshot, which showed
+                // the question cut off mid-word with an ellipsis. The option
+                // rows below don't have this problem because their
+                // `.frame(minHeight:)` already protects them from being
+                // squeezed the same way.
+                .fixedSize(horizontal: false, vertical: true)
 
             VStack(spacing: Theme.Spacing.xs) {
                 ForEach(options, id: \.self) { option in
@@ -40,6 +49,7 @@ struct RecallCardView: View {
                     Text(item.explanation)
                         .font(Theme.Font.label.font)
                         .foregroundStyle(palette.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
 
                     Button {
                         onViewLesson(item.lessonID)
