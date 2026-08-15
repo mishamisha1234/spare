@@ -73,41 +73,87 @@ final class ProductCatalogTests: XCTestCase {
     }
 
     // MARK: - Pricing claims
+    //
+    // Money is built with `Decimal(string:)` throughout, never a float
+    // literal: `Decimal` conforms to ExpressibleByFloatLiteral by way of
+    // `Double`, so `4.99` as a literal is really 4.990000000000000213… and
+    // an exact-equality assertion against it is testing binary error rather
+    // than the arithmetic. This is also how StoreKit supplies prices —
+    // `Product.price` is a true decimal, not a converted float.
 
-    func testPerMonthDividesTheYearlyPrice() {
-        XCTAssertEqual(PricingSummary.perMonth(yearly: 24), 2)
-        XCTAssertEqual(PricingSummary.perMonth(yearly: 59.88), 4.99)
+    private func money(_ string: String) -> Decimal {
+        guard let value = Decimal(string: string) else {
+            XCTFail("not a decimal: \(string)")
+            return 0
+        }
+        return value
     }
 
-    func testPerMonthRoundsToTwoPlaces() {
+    func testPerMonthDividesTheYearlyPrice() {
+        XCTAssertEqual(PricingSummary.perMonth(yearly: money("24")), money("2"))
+        XCTAssertEqual(PricingSummary.perMonth(yearly: money("59.88")), money("4.99"))
+    }
+
+    func testPerMonthIsExactToTwoPlaces() {
         // 49.99 / 12 = 4.16583...
-        XCTAssertEqual(PricingSummary.perMonth(yearly: 49.99), 4.17)
+        let result = PricingSummary.perMonth(yearly: money("49.99"))
+        XCTAssertEqual(result, money("4.17"))
+        // Guards the actual defect this caught: rounding that leaves a value
+        // like 4.990000000000001024 satisfies neither the contract nor a
+        // price label.
+        XCTAssertEqual("\(result)", "4.17", "must be exactly 2dp, not merely close")
+    }
+
+    func testPerMonthSurvivesAPriceThatIsNotCleanlyDivisible() {
+        // 100 / 12 = 8.3333...
+        XCTAssertEqual(PricingSummary.perMonth(yearly: money("100")), money("8.33"))
     }
 
     func testSavingPercentAgainstTwelveMonthlyPayments() {
         // 12 x 4.99 = 59.88; 39.99 saves 33.2% -> 33 rounded down.
-        XCTAssertEqual(PricingSummary.savingPercent(yearly: 39.99, monthly: 4.99), 33)
+        XCTAssertEqual(
+            PricingSummary.savingPercent(yearly: money("39.99"), monthly: money("4.99")),
+            33
+        )
     }
 
     /// Rounding *down* is the whole point: the advertised saving must never
     /// exceed the real one.
     func testSavingPercentRoundsDownNotToNearest() {
         // 12 x 1.00 = 12.00; 8.05 saves 32.9%, which must not read as 33%.
-        XCTAssertEqual(PricingSummary.savingPercent(yearly: 8.05, monthly: 1.00), 32)
+        XCTAssertEqual(
+            PricingSummary.savingPercent(yearly: money("8.05"), monthly: money("1.00")),
+            32
+        )
+    }
+
+    /// An exactly-round saving must not be dragged down to 49 by float dust
+    /// in the division.
+    func testExactlyHalfPriceReadsAsFiftyPercent() {
+        XCTAssertEqual(
+            PricingSummary.savingPercent(yearly: money("60"), monthly: money("10")),
+            50
+        )
     }
 
     func testNoSavingClaimedWhenYearlyIsNotCheaper() {
-        XCTAssertNil(PricingSummary.savingPercent(yearly: 59.88, monthly: 4.99), "identical cost")
-        XCTAssertNil(PricingSummary.savingPercent(yearly: 79.99, monthly: 4.99), "yearly is worse")
+        XCTAssertNil(
+            PricingSummary.savingPercent(yearly: money("59.88"), monthly: money("4.99")),
+            "identical cost"
+        )
+        XCTAssertNil(
+            PricingSummary.savingPercent(yearly: money("79.99"), monthly: money("4.99")),
+            "yearly is worse"
+        )
     }
 
     func testNoSavingClaimedWithoutAMonthlyBaseline() {
-        XCTAssertNil(PricingSummary.savingPercent(yearly: 39.99, monthly: 0))
-        XCTAssertNil(PricingSummary.savingPercent(yearly: 39.99, monthly: -1))
+        XCTAssertNil(PricingSummary.savingPercent(yearly: money("39.99"), monthly: 0))
+        XCTAssertNil(PricingSummary.savingPercent(yearly: money("39.99"), monthly: money("-1")))
     }
 
     func testSavingBelowOnePercentIsNotClaimedAtAll() {
         // 12 x 10 = 120; 119.5 is a 0.4% saving -> nothing worth a badge.
-        XCTAssertNil(PricingSummary.savingPercent(yearly: 119.5, monthly: 10))
+        XCTAssertNil(PricingSummary.savingPercent(yearly: money("119.5"), monthly: money("10")))
     }
 }

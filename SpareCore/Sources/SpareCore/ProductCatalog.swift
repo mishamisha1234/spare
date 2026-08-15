@@ -116,14 +116,20 @@ public struct PurchaseProduct: Sendable, Equatable, Identifiable {
 ///
 /// Pure and separately tested because it is a claim about money: an
 /// overstated saving is a false advertisement, not a rounding bug.
+///
+/// Rounding goes through a formatted-string round-trip rather than
+/// `NSDecimalRound`. That looks roundabout, and it is deliberate: a `Decimal`
+/// built from a float literal carries the binary error of the `Double` it
+/// passed through, and rounding such a value in place left results like
+/// `4.990000000000001024` — visibly not the "2dp" the signature promises.
+/// Formatting to a fixed 2dp string and parsing it back yields an exact
+/// decimal on every platform.
 public enum PricingSummary {
 
-    /// The yearly price expressed per month, rounded to 2dp.
+    /// The yearly price expressed per month, exact to 2dp.
     public static func perMonth(yearly: Decimal) -> Decimal {
-        var result = yearly / 12
-        var rounded = Decimal()
-        NSDecimalRound(&rounded, &result, 2, .plain)
-        return rounded
+        let monthly = double(yearly) / 12
+        return exactTwoPlaces(monthly) ?? yearly
     }
 
     /// Whole-percent saving of the yearly plan against 12x the monthly price.
@@ -134,16 +140,23 @@ public enum PricingSummary {
     /// shown is never larger than the real saving.
     public static func savingPercent(yearly: Decimal, monthly: Decimal) -> Int? {
         guard monthly > 0 else { return nil }
-        let twelveMonths = monthly * 12
-        guard yearly < twelveMonths else { return nil }
+        let twelveMonths = double(monthly) * 12
+        let yearlyValue = double(yearly)
+        guard yearlyValue < twelveMonths, twelveMonths > 0 else { return nil }
 
-        let saved = twelveMonths - yearly
-        let fraction = (saved / twelveMonths) * 100
-        var rounded = Decimal()
-        var mutable = fraction
-        NSDecimalRound(&rounded, &mutable, 0, .down)
+        let percent = ((twelveMonths - yearlyValue) / twelveMonths) * 100
+        // Scrub float dust before flooring, so a saving that is exactly 33%
+        // can't land as 32 because the division came back 32.999999999999996.
+        let cleaned = (percent * 1e6).rounded() / 1e6
+        let floored = Int(cleaned.rounded(.down))
+        return floored > 0 ? floored : nil
+    }
 
-        let percent = NSDecimalNumber(decimal: rounded).intValue
-        return percent > 0 ? percent : nil
+    private static func double(_ value: Decimal) -> Double {
+        NSDecimalNumber(decimal: value).doubleValue
+    }
+
+    private static func exactTwoPlaces(_ value: Double) -> Decimal? {
+        Decimal(string: String(format: "%.2f", value))
     }
 }
