@@ -95,7 +95,12 @@ final class PromptsTests: XCTestCase {
     }
 
     func testFormattingSectionStatesTheMarkdownRules() {
-        let prompt = Prompts.editorialSystemPrompt
+        // Source-wrapped, not model-wrapped: the multiline literal soft-wraps
+        // at the file's line width like every other paragraph in this file,
+        // so a phrase can straddle a newline that reads as a plain space to
+        // anyone (or anything) reading the rendered prompt. Collapse before
+        // matching so the test tracks meaning, not incidental line breaks.
+        let prompt = Prompts.editorialSystemPrompt.replacingOccurrences(of: "\n", with: " ")
         for required in [
             "FORMATTING",
             "\"## \" headings",
