@@ -58,7 +58,13 @@ struct RecallCardView: View {
             RoundedRectangle(cornerRadius: Theme.cornerRadius)
                 .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
         )
-        .accessibilityIdentifier("recall.card")
+        // No container-level accessibilityIdentifier: see OnboardingView —
+        // confirmed to clobber every descendant's own identifier. This is
+        // exactly what broke here: "recall.option.*" existed visually
+        // (confirmed via the CI screenshot) but wasn't findable by identifier
+        // once a "recall.card" identifier sat on the container above it.
+        // recall.option.*, recall.viewLesson, and recall.dismiss are what's
+        // tested; nothing needs one at this level too.
     }
 
     private var header: some View {

@@ -108,6 +108,9 @@ struct StatsView: View {
     }
 
     private var achievementsSection: some View {
+        // No container-level accessibilityIdentifier: see OnboardingView —
+        // confirmed elsewhere in this phase (RecallCardView) to clobber
+        // every descendant's own identifier. Each row gets its own instead.
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             Text("ACHIEVEMENTS")
                 .font(Theme.Font.caption.font)
@@ -118,9 +121,9 @@ struct StatsView: View {
                 Text(achievement.title)
                     .font(Theme.Font.label.font)
                     .foregroundStyle(palette.text)
+                    .accessibilityIdentifier("stats.achievement.\(achievement.id)")
             }
         }
-        .accessibilityIdentifier("stats.achievements")
     }
 
     private var shareSection: some View {
