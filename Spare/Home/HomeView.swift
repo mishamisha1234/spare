@@ -30,6 +30,34 @@ struct HomeView: View {
     private static let bottomRow: [TimeWindow] = [.fifteen, .fortyFive]
 
     var body: some View {
+        // GeometryReader + a `minHeight` on the content is the standard way
+        // to get both things at once: the existing Spacer-based centering
+        // when content fits (the common case, no card or a short one), and
+        // real scrolling instead of an overlap when it doesn't. Confirmed
+        // necessary via CI screenshot: the recall card's header + question +
+        // four option rows + explanation + link is tall enough on its own
+        // (~450-500pt) that no amount of text line-limiting keeps the full
+        // circle grid on screen underneath it without this.
+        GeometryReader { geometry in
+            ScrollView {
+                content
+                    .frame(minHeight: geometry.size.height)
+            }
+        }
+        .background(palette.background)
+        .themedAppear()
+        .onAppear {
+            if pinnedRecallItem == nil {
+                pinnedRecallItem = RecallScheduler.nextDueItem(from: recallItems, now: .now) { $0.dueAt }
+            }
+        }
+        // No container-level accessibilityIdentifier: see OnboardingView for
+        // why (confirmed to clobber descendant identifiers). Nothing needs
+        // this one — home.circle.*, home.libraryButton, and recall.* are
+        // what's tested.
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
             // Capped like the title-to-circles gap below: an uncapped Spacer
             // here grows in lockstep with the uncapped one at the bottom —
@@ -69,21 +97,13 @@ struct HomeView: View {
             // Uncapped: absorbs the rest of the screen below the group so the
             // group sits in the optical center of the space under the title,
             // rather than the exact geometric center two equal spacers give.
+            // Inside the ScrollView this still works exactly as before when
+            // content fits its minHeight floor; it only stops mattering once
+            // content genuinely needs to scroll, which is the point.
             Spacer(minLength: Theme.Spacing.l)
         }
         .padding(.horizontal, Theme.Spacing.m)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(palette.background)
-        .themedAppear()
-        .onAppear {
-            if pinnedRecallItem == nil {
-                pinnedRecallItem = RecallScheduler.nextDueItem(from: recallItems, now: .now) { $0.dueAt }
-            }
-        }
-        // No container-level accessibilityIdentifier: see OnboardingView for
-        // why (confirmed to clobber descendant identifiers). Nothing needs
-        // this one — home.circle.*, home.libraryButton, and recall.* are
-        // what's tested.
+        .frame(maxWidth: .infinity)
     }
 
     private var visibleRecallItem: StoredRecallItem? {
