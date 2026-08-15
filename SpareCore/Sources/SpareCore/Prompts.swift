@@ -213,6 +213,30 @@ public enum Prompts {
         """
 
     // ─────────────────────────────────────────────────────────────────────────
+    // MARK: - POST-LESSON TEST SYSTEM PROMPT  (stable · cached · premium)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public static let postLessonTestSystemPrompt: String = """
+        Write three recall questions about the lesson below, to be answered
+        immediately, right after finishing it.
+
+        - Each question tests a different part of the lesson: the central claim,
+          a supporting mechanism or detail, and one more specific fact. No two
+          questions should be answerable from the same sentence.
+        - If someone could answer a question from the title alone, it is the
+          wrong question.
+        - Four options per question: one correct answer and exactly 3
+          distractors.
+        - Each distractor must be something a person who read carelessly would
+          plausibly pick. No joke options, no obviously wrong options.
+        - All four options for a question should be about the same length and
+          specificity.
+        - Add one sentence per question explaining why its answer is right.
+        - Do not mention "the lesson" or "the article" in any question. Ask about
+          the world, not about the text.
+        """
+
+    // ─────────────────────────────────────────────────────────────────────────
     // MARK: - COURSE OUTLINE SYSTEM PROMPT  (stable · cached · 45-minute only)
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -309,6 +333,13 @@ public enum Prompts {
         """
 
     public static let recallTaskTemplate: String = """
+        Title: {{title}}
+        Central claim: {{claim}}
+
+        {{body}}
+        """
+
+    public static let postLessonTestTaskTemplate: String = """
         Title: {{title}}
         Central claim: {{claim}}
 
@@ -452,6 +483,14 @@ public enum Prompts {
         ])
     }
 
+    public static func postLessonTestTaskPrompt(lesson: Lesson) -> String {
+        PromptTemplate.render(postLessonTestTaskTemplate, [
+            "title": lesson.title,
+            "claim": lesson.surprisingClaim,
+            "body": lesson.bodyMarkdown,
+        ])
+    }
+
     public static func goDeeperTaskPrompt(
         window: TimeWindow,
         profile: ProfileSnapshot,
@@ -476,6 +515,7 @@ public enum Prompts {
         "chapter": chapterTaskTemplate,
         "suggestion": suggestionTaskTemplate,
         "recall": recallTaskTemplate,
+        "postLessonTest": postLessonTestTaskTemplate,
         "goDeeper": goDeeperTaskTemplate,
     ]
 
@@ -487,5 +527,6 @@ public enum Prompts {
         "suggestion": suggestionSystemPrompt,
         "recall": recallSystemPrompt,
         "outline": outlineSystemPrompt,
+        "postLessonTest": postLessonTestSystemPrompt,
     ]
 }

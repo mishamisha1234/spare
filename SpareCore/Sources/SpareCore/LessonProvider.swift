@@ -72,6 +72,12 @@ public protocol LessonProvider: Sendable {
 
     func generateRecallQuestion(for lesson: Lesson) async throws -> RecallQuestion
 
+    /// The immediate, optional 3-question test offered right after a lesson
+    /// (premium). A separate call from `generateRecallQuestion`: that one
+    /// question is scheduled for tomorrow and stored for offline use; this
+    /// one is answered on the spot and never persisted as a schedule.
+    func generatePostLessonTest(for lesson: Lesson) async throws -> [RecallQuestion]
+
     func goDeeper(
         from lesson: Lesson,
         angle: DeeperAngle,

@@ -146,6 +146,42 @@ public struct MockProvider: LessonProvider {
         )
     }
 
+    public func generatePostLessonTest(for lesson: Lesson) async throws -> [RecallQuestion] {
+        try await pause(milliseconds: 400)
+        return [
+            RecallQuestion(
+                question: "What actually drove the effect described in \u{201C}\(lesson.title)\u{201D}?",
+                answer: lesson.surprisingClaim,
+                distractors: [
+                    "A difference of scale rather than of mechanism",
+                    "An artifact of how the measurement was taken",
+                    "The intuitive cause most people would name first",
+                ],
+                explanation: "The central claim of the piece: \(lesson.surprisingClaim)"
+            ),
+            RecallQuestion(
+                question: "Which domain does \u{201C}\(lesson.title)\u{201D} sit in?",
+                answer: lesson.domainTag,
+                distractors: [
+                    "A neighbouring field that sounds similar but isn't it",
+                    "The domain of the previous lesson in this format",
+                    "A domain nobody would seriously propose",
+                ],
+                explanation: "The piece is tagged \(lesson.domainTag)."
+            ),
+            RecallQuestion(
+                question: "Which of these best matches the piece's subtitle framing?",
+                answer: lesson.subtitle,
+                distractors: [
+                    "A framing that inverts the actual claim",
+                    "A generic framing that could fit almost any topic",
+                    "A framing borrowed from a different subject entirely",
+                ],
+                explanation: "The piece's own subtitle: \(lesson.subtitle)"
+            ),
+        ]
+    }
+
     public func goDeeper(
         from lesson: Lesson,
         angle: DeeperAngle,

@@ -104,6 +104,32 @@ public enum Schemas {
         required: ["heading", "bodyMarkdown"]
     )
 
+    /// Three recall questions for the immediate, optional post-lesson test
+    /// (premium). Wrapped in an object like `topicSuggestions`, since a
+    /// top-level array is not a valid structured-output root.
+    public static let postLessonTest: JSONValue = object(
+        properties: [
+            "questions": .object([
+                "type": .string("array"),
+                "description": .string("Exactly 3 questions, each testing a different part of the lesson."),
+                "items": object(
+                    properties: [
+                        "question": string("One question testing part of the lesson, not a trivia detail."),
+                        "answer": string("The correct option."),
+                        "distractors": .object([
+                            "type": .string("array"),
+                            "description": .string("Exactly 3 plausible wrong options a careless reader would fall for."),
+                            "items": .object(["type": .string("string")]),
+                        ]),
+                        "explanation": string("One sentence on why the answer is right."),
+                    ],
+                    required: ["question", "answer", "distractors", "explanation"]
+                ),
+            ]),
+        ],
+        required: ["questions"]
+    )
+
     /// A recall question.
     public static let recallQuestion: JSONValue = object(
         properties: [
@@ -168,6 +194,21 @@ public struct CourseOutlineResponse: Codable, Sendable, Equatable {
 
     public var metadata: LessonMetadata {
         LessonMetadata(title: title, subtitle: subtitle, domainTag: domainTag)
+    }
+}
+
+public struct PostLessonTestResponse: Codable, Sendable, Equatable {
+    public var questions: [RecallQuestion]
+
+    public init(questions: [RecallQuestion]) {
+        self.questions = questions
+    }
+
+    /// JSON Schema can't constrain array length. Truncating an over-long
+    /// response is safe; padding a short one is not — a fabricated recall
+    /// question would be worse content than simply showing fewer than 3.
+    public var normalizedQuestions: [RecallQuestion] {
+        Array(questions.prefix(3))
     }
 }
 

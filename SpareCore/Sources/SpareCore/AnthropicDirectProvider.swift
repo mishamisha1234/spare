@@ -115,6 +115,20 @@ public struct AnthropicDirectProvider: LessonProvider {
         return try await sendStructured(request, kind: .recallQuestion)
     }
 
+    public func generatePostLessonTest(for lesson: Lesson) async throws -> [RecallQuestion] {
+        let request = MessagesRequest(
+            model: configuration.model,
+            maxTokens: 3_500,
+            system: Prompts.postLessonTestSystemPrompt,
+            messages: [.user(Prompts.postLessonTestTaskPrompt(lesson: lesson))],
+            effort: configuration.effort,
+            outputSchema: Schemas.postLessonTest,
+            cacheSystemPrompt: configuration.cacheSystemPrompt
+        )
+        let response: PostLessonTestResponse = try await sendStructured(request, kind: .postLessonTest)
+        return response.normalizedQuestions
+    }
+
     // MARK: - Go deeper
 
     public func goDeeper(

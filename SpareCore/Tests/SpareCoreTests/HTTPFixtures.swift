@@ -164,6 +164,14 @@ enum HTTPFixtures {
     static let recallJSON = """
     {"question":"What drove the sway?","answer":"Pedestrians synchronising with the deck","distractors":["Wind alone","A construction fault","Traffic on a nearby road"],"explanation":"Each correction fed the wobble it corrected."}
     """
+
+    static let postLessonTestJSON = """
+    {"questions":[
+      {"question":"What drove the sway?","answer":"Pedestrians synchronising with the deck","distractors":["Wind alone","A construction fault","Traffic on a nearby road"],"explanation":"Each correction fed the wobble it corrected."},
+      {"question":"What is the fix called?","answer":"A tuned mass damper","distractors":["A stiffening truss","A base isolator","A cross-brace"],"explanation":"A weight on a spring that swings out of phase."},
+      {"question":"When did the bridge close?","answer":"Two days after opening","distractors":["The day it opened","One week after opening","It never closed"],"explanation":"It closed within two days of the wobble."}
+    ]}
+    """
 }
 
 // MARK: - Replay transport

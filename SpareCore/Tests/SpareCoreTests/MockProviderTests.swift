@@ -251,6 +251,26 @@ final class MockProviderTests: XCTestCase {
         XCTAssertEqual(Set(question.options(seed: 0)).count, 4)
     }
 
+    // MARK: - Post-lesson test
+
+    func testPostLessonTestReturnsExactlyThreeWellFormedQuestions() async throws {
+        let lesson = try await provider.generateLesson(topic: topic(for: .three), window: .three, profile: profile)
+        let questions = try await provider.generatePostLessonTest(for: lesson)
+        XCTAssertEqual(questions.count, 3)
+        for question in questions {
+            XCTAssertEqual(question.distractors.count, 3)
+            XCTAssertFalse(question.question.isEmpty)
+            XCTAssertFalse(question.answer.isEmpty)
+            XCTAssertFalse(question.distractors.contains(question.answer))
+        }
+    }
+
+    func testPostLessonTestQuestionsAreNotAllIdentical() async throws {
+        let lesson = try await provider.generateLesson(topic: topic(for: .three), window: .three, profile: profile)
+        let questions = try await provider.generatePostLessonTest(for: lesson)
+        XCTAssertEqual(Set(questions.map(\.question)).count, questions.count, "each question should ask something different")
+    }
+
     // MARK: - Go deeper
 
     func testGoDeeperStaysInBudgetAndReferencesTheParent() async throws {

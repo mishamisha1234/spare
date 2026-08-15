@@ -10,6 +10,7 @@ public enum UsageKind: String, Codable, Sendable, CaseIterable {
     case chapterDraft
     case chapterRevision
     case recallQuestion
+    case postLessonTest
     case goDeeperDraft
     case goDeeperRevision
 
@@ -22,6 +23,7 @@ public enum UsageKind: String, Codable, Sendable, CaseIterable {
         case .chapterDraft: "Chapter draft"
         case .chapterRevision: "Chapter revision"
         case .recallQuestion: "Recall question"
+        case .postLessonTest: "Post-lesson test"
         case .goDeeperDraft: "Go deeper draft"
         case .goDeeperRevision: "Go deeper revision"
         }

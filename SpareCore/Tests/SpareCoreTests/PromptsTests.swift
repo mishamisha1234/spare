@@ -169,6 +169,14 @@ final class PromptsTests: XCTestCase {
         XCTAssertTrue(prompt.contains("not about the text"))
     }
 
+    func testPostLessonTestPromptDemandsThreeDistinctQuestions() {
+        let prompt = Prompts.postLessonTestSystemPrompt
+        XCTAssertTrue(prompt.contains("three recall questions"))
+        XCTAssertTrue(prompt.contains("different part of the lesson"))
+        XCTAssertTrue(prompt.contains("exactly 3"))
+        XCTAssertTrue(prompt.contains("not about the text"))
+    }
+
     func testOutlinePromptDemandsAnglesAndBuildingChapters() {
         let prompt = Prompts.outlineSystemPrompt
         XCTAssertTrue(prompt.contains("Exactly 3"))
@@ -266,6 +274,14 @@ final class PromptsTests: XCTestCase {
         XCTAssertTrue(prompt.contains("Millennium Bridge"))
     }
 
+    func testPostLessonTestTaskPromptCarriesTitleClaimAndBody() {
+        let lesson = MockProvider.fixtureLesson(topic: topic, window: .three)
+        let prompt = Prompts.postLessonTestTaskPrompt(lesson: lesson)
+        XCTAssertTrue(prompt.contains(lesson.title))
+        XCTAssertTrue(prompt.contains(lesson.surprisingClaim))
+        XCTAssertTrue(prompt.contains("Millennium Bridge"))
+    }
+
     func testGoDeeperTaskPromptNamesParentAndForbidsRepetition() {
         let prompt = Prompts.goDeeperTaskPrompt(
             window: .ten, profile: profile, parentTitle: "Why bridges hum",
@@ -309,6 +325,7 @@ final class PromptsTests: XCTestCase {
                 window: .ten, profile: profile, history: []
             ),
             "recall": Prompts.recallTaskPrompt(lesson: lesson),
+            "postLessonTest": Prompts.postLessonTestTaskPrompt(lesson: lesson),
             "goDeeper": Prompts.goDeeperTaskPrompt(
                 window: .ten, profile: profile, parentTitle: "P", angle: DeeperAngle(text: "A")
             ),

@@ -454,6 +454,41 @@ final class AnthropicDirectProviderTests: XCTestCase {
         XCTAssertFalse(question.answer.isEmpty)
     }
 
+    func testPostLessonTestDecodesExactlyThreeQuestions() async throws {
+        let transport = FixtureTransport(.body(
+            status: 200, text: HTTPFixtures.messageBody(json: HTTPFixtures.postLessonTestJSON)
+        ))
+        let ledger = InMemoryUsageLedger()
+        let provider = makeProvider(transport, ledger: ledger)
+        let questions = try await provider.generatePostLessonTest(
+            for: MockProvider.fixtureLesson(topic: topic, window: .three)
+        )
+        XCTAssertEqual(questions.count, 3)
+        for question in questions {
+            XCTAssertEqual(question.distractors.count, 3)
+            XCTAssertFalse(question.answer.isEmpty)
+        }
+        let kinds = await ledger.events.map(\.kind)
+        XCTAssertEqual(kinds, [.postLessonTest])
+    }
+
+    func testPostLessonTestTruncatesAnOverLongResponseRatherThanFail() async throws {
+        let overLong = """
+        {"questions":[
+          {"question":"Q1","answer":"A1","distractors":["D1","D2","D3"],"explanation":"E1"},
+          {"question":"Q2","answer":"A2","distractors":["D1","D2","D3"],"explanation":"E2"},
+          {"question":"Q3","answer":"A3","distractors":["D1","D2","D3"],"explanation":"E3"},
+          {"question":"Q4","answer":"A4","distractors":["D1","D2","D3"],"explanation":"E4"}
+        ]}
+        """
+        let transport = FixtureTransport(.body(status: 200, text: HTTPFixtures.messageBody(json: overLong)))
+        let provider = makeProvider(transport)
+        let questions = try await provider.generatePostLessonTest(
+            for: MockProvider.fixtureLesson(topic: topic, window: .three)
+        )
+        XCTAssertEqual(questions.count, 3)
+    }
+
     func testGoDeeperRunsBothPasses() async throws {
         let transport = FixtureTransport([
             .body(status: 200, text: HTTPFixtures.messageBody(json: HTTPFixtures.lessonJSON(body: "deeper draft"))),
