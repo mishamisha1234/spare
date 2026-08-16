@@ -2,7 +2,7 @@
 
 A time-first micro-learning iOS app. You tell it how long you have — 3, 10, 15, or 30 minutes — and it finds you something worth learning. **Time is the input; topic is the output.** That inversion is the product.
 
-**Status: Phase 5 complete.** All six screens, live generation, recall and scheduling, points and stats, StoreKit purchasing. See the roadmap at the bottom for what's left.
+**Status: all six phases complete.** Six screens, live generation, recall and scheduling, points and stats, StoreKit purchasing, widget, export, and an accessibility pass. What remains before this could ship is listed under Known deviations and Before launch.
 
 ---
 
@@ -185,6 +185,25 @@ Priced claims are computed from the two real StoreKit prices, never hardcoded: `
 
 No countdown, no "limited time", no strike-through on a price that was never charged, no framing that implies the reader is failing at something. The screen is built entirely from `Theme` — every colour, font, radius, and spacing value — because a paywall that looks like a different app is the usual tell that the design system was abandoned exactly where it mattered.
 
+## Widget, export, accessibility
+
+**Widget.** Small and lock-screen show the duration picker (or a course's resume position); medium shows the finished-lesson count. Both read the app's SwiftData store through an App Group.
+
+The group identifier lives in [one file compiled into both targets](Shared/AppGroup.swift) and both entitlements name it, so the app and the extension can't drift apart by a typo. Two consequences are handled rather than assumed:
+
+- `containerURL` is `nil` whenever the entitlement isn't in effect — which includes every unsigned build, so CI. The store falls back to the app's own container so the app keeps working, and the widget renders *"Open Spare once to set this up"* rather than a `0`. An unreachable store is a claim about the app; a zero is a claim about the reader.
+- Moving the store into the group container would otherwise silently empty every existing library. `migrateLegacyStoreIfNeeded` copies the old store across on first launch, including the `-wal` and `-shm` sidecars, which have to travel or the copy opens as corrupt.
+
+Widget taps are URLs, not App Intents: opening the app at a destination is what a URL does, and it survives the widget process being terminated between render and tap. The app re-checks the destination against the live entitlement rather than trusting it, since a timeline can be an hour stale — someone who bought Premium since the last refresh gets their lesson, not a paywall for something they own.
+
+**Export.** The whole library as one Markdown file via the share sheet. It exports everything, not the free-tier-visible slice: the 10-entry cap hides entries, it doesn't unmake them, and an export that silently dropped older lessons would be a data-loss trap dressed as a limit. Shared as a real `.md` file rather than a string, because "Save to Files" and "Open in…" are the point.
+
+**Accessibility.** Controls use `minHeight`, so they grow with their text. At `.isAccessibilitySize` Home swaps its circles for full-width rows — two 160pt circles already fill the screen, so they cannot grow, and size-as-meaning does not survive an accessibility text size; a legible list beats an illegible diagram. Identifiers and spoken labels are identical in both layouts. The share card is pinned to `.large` because it is a fixed 9:16 artifact leaving the app, not a screen being read.
+
+Contrast is **measured, not eyeballed** — [`ThemeContrastTests`](SpareTests/ThemeContrastTests.swift) recomputes every pair from the palette, so a future tweak fails a test rather than reaching a screenshot. That check found a real defect: light mode's amber was 3.03:1 and its secondary text 3.53:1, both below the 4.5:1 AA needs for body-size text and both in use at body size. Darkened along the same hue to `0xA06525` and `0x78716A`. Dark mode already passed everywhere.
+
+**Empty and error states** come from one place. [`ProviderErrorCopy`](SpareCore/Sources/SpareCore/ProviderErrorCopy.swift) maps each `LessonProviderError` to a title, a message, whether retrying could help, and whether the fix is in Settings. Before it, three screens each had their own "Couldn't load…" string and being offline read identically to being rate limited — which matters, since one resolves by reconnecting and the other by waiting. "Try again" is offered only where it can work: an action that cannot help implies the failure is the reader's for not trying hard enough. A test asserts the copy's retryability agrees with the provider's own retry policy.
+
 ## Known deviations
 
 - **Toolbar button shadow — confirmed unfixable without abandoning `.toolbar`.** Toolbar items render with a soft shadow under a circular background the theme doesn't specify. Three fixes were tried and verified against CI screenshots, and all three left it unchanged:
@@ -200,6 +219,17 @@ No countdown, no "limited time", no strike-through on a price that was never cha
 
 - ~~"Take the test" is hidden entirely for free-tier users~~ — **fixed in Phase 5.** It is now a visibly locked row that opens the paywall, along with go-deeper.
 
+## Before launch
+
+Things this codebase cannot verify about itself, and which need a signed run on a Mac or a decision:
+
+1. **The App Group has never actually been exercised.** Entitlements aren't applied to unsigned builds, so CI proves the widget compiles and its views render, not that it can read the app's store. This is the single most likely thing to be quietly broken.
+2. **The store migration has never run against a real pre-App-Group store.** Same reason. Worth testing with a populated library before shipping, because the failure mode is someone's whole library appearing to vanish.
+3. **Notification fire-time verification** (see Known deviations) — a notification firing for an already-answered item is a real bug.
+4. **No real API call has ever been made.** Every provider test runs against recorded fixtures. Word counts, prompt quality, and cost per lesson are all unmeasured against the live API.
+5. **StoreKit has only run against `StubPurchaseStore`.** The real purchase, restore, and lapse paths need a sandbox account.
+6. **Prices are placeholders** (`$4.99` / `$39.99` / `$99.99`) and exist only in `Products.storekit`.
+
 ## Roadmap
 
 1. ✅ Scaffold, core package split, models, `MockProvider`, tests, CI
@@ -207,4 +237,4 @@ No countdown, no "limited time", no strike-through on a price that was never cha
 3. ✅ `AnthropicDirectProvider`: Keychain, streaming, two-pass pipeline, lazy chapters, usage ledger
 4. ✅ Recall system, scheduling, notifications, points, post-lesson test, stats, share card
 5. ✅ StoreKit 2, `EntitlementService`, paywall, locked states
-6. Widget, App Intents, markdown export, accessibility pass
+6. ✅ Widget, deep links, markdown export, accessibility pass, empty/error states
