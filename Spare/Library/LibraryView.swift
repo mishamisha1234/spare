@@ -116,8 +116,33 @@ struct LibraryView: View {
         }
         .background(palette.background)
         .navigationTitle("Library")
+        .toolbar {
+            if !lessons.isEmpty {
+                ToolbarItem(placement: .primaryAction) {
+                    // Exports the *whole* library, not the free-tier-visible
+                    // slice: the cap hides entries, it doesn't unmake them,
+                    // and an export that silently dropped someone's older
+                    // lessons would be a data-loss trap rather than a limit.
+                    ShareLink(
+                        item: exportDocument,
+                        preview: SharePreview(MarkdownExport.filename())
+                    ) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .foregroundStyle(palette.text)
+                    .accessibilityLabel("Export library as Markdown")
+                    .accessibilityIdentifier("library.export")
+                }
+            }
+        }
         // No container-level accessibilityIdentifier: see OnboardingView.
         // library.filter.*, library.row.*, and library.empty are what's used.
+    }
+
+    private var exportDocument: MarkdownLibraryDocument {
+        MarkdownLibraryDocument(
+            text: MarkdownExport.document(lessons: lessons.map(\.exportable))
+        )
     }
 
     /// The one place achievements surface: a single quiet line of text, not
