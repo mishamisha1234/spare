@@ -58,7 +58,11 @@ struct StatsView: View {
 
     private var shareData: ShareCardData {
         ShareCardData(
-            lessons: completedLessons.map { ($0.title, $0.topicTag, $0.window.minutes, $0.generatedAt) },
+            lessons: completedLessons.map {
+                // Labels are explicit: without them Swift infers `[Any]`
+                // for a four-element tuple and the call stops compiling.
+                (title: $0.title, domain: $0.topicTag, minutes: $0.window.minutes, generatedAt: $0.generatedAt)
+            },
             events: events
         )
     }

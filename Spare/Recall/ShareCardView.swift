@@ -152,11 +152,11 @@ struct ShareCardView: View {
 #Preview {
     ShareCardView(data: ShareCardData(
         lessons: [
-            ("Why bridges hum", "Engineering", .now),
-            ("The florin that priced Europe", "History", .now),
-            ("Why sourdough never dies", "Biology", .now),
-            ("Container ships and the box", "Economics", .now),
-            ("How typefaces steer trust", "Design", .now),
+            (title: "Why bridges hum", domain: "Engineering", minutes: 3, generatedAt: Date()),
+            (title: "The florin that priced Europe", domain: "History", minutes: 3, generatedAt: Date()),
+            (title: "Why sourdough never dies", domain: "Biology", minutes: 10, generatedAt: Date()),
+            (title: "Container ships and the box", domain: "Economics", minutes: 10, generatedAt: Date()),
+            (title: "How typefaces steer trust", domain: "Design", minutes: 15, generatedAt: Date()),
         ],
         events: [
             PointEvent(occurredAt: .now, kind: .recallCorrect, amount: 30, sourceID: "1"),
