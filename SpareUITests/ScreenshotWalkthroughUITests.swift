@@ -37,12 +37,31 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = [
             "-UITEST_RESET_STATE",
-            // The documented override for driving Dynamic Type from a UI
-            // test without going through Settings.
+            // Drives Dynamic Type without going through Settings. The value
+            // is a `UICTContentSizeCategory*` constant and the abbreviated
+            // spelling is the real one — "AccessibilityExtraExtraExtraLarge"
+            // is silently ignored and the app just launches at the default
+            // size, which is exactly what the first run of this test did.
             "-UIPreferredContentSizeCategoryName",
-            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+            "UICTContentSizeCategoryAccessibilityXXXL",
         ]
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = "light"
+
+        // Same system-alert handling as the main walkthrough. This test sorts
+        // first alphabetically, so on a clean simulator it is the run that
+        // actually meets the notification prompt.
+        let notificationMonitor = addUIInterruptionMonitor(withDescription: "System alert") { alert in
+            for button in alert.buttons.allElementsBoundByIndex {
+                let label = button.label.lowercased()
+                if label.contains("allow") || label.contains("ok") || label.contains("don") {
+                    button.tap()
+                    return true
+                }
+            }
+            return false
+        }
+        defer { removeUIInterruptionMonitor(notificationMonitor) }
+
         app.launch()
 
         let scheme = "ax5"
@@ -56,6 +75,7 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             try tap(app, "onboarding.skip", scheme: scheme, step: "ax-03-skip-work")
             try tap(app, "onboarding.skip", scheme: scheme, step: "ax-04-skip-gaps")
             try tap(app, "onboarding.primary", scheme: scheme, step: "ax-05-notifications")
+            dismissNotificationPromptIfPresent()
 
             // Home is the screen this test exists for: at AX5 the circles are
             // replaced by full-width rows, since two 160pt circles already
@@ -373,6 +393,25 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
         XCTAssertTrue(ready, "\(step): \"\(identifier)\" never became hittable within \(defaultTimeout)s")
 
         target.tap()
+    }
+
+    /// Dismisses the notification permission alert directly on Springboard.
+    ///
+    /// `addUIInterruptionMonitor` only fires on the *next* interaction with
+    /// the app, which isn't deterministic when the following step is a
+    /// `waitForExistence` — an element behind the alert still "exists", so
+    /// the wait succeeds and the screenshot captures the alert sitting over
+    /// the screen under review. That is exactly what the first AX5 run did.
+    /// Reaching for the alert directly is explicit and ordered.
+    private func dismissNotificationPromptIfPresent() {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        for label in ["Allow", "Don't Allow", "Don’t Allow"] {
+            let button = springboard.buttons[label]
+            if button.waitForExistence(timeout: 3) {
+                button.tap()
+                return
+            }
+        }
     }
 
     /// Scrolls until a known-existing element is actually reachable.
