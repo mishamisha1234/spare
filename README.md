@@ -1,8 +1,8 @@
 # Spare
 
-A time-first micro-learning iOS app. You tell it how long you have — 3, 10, 15, or 45 minutes — and it finds you something worth learning. **Time is the input; topic is the output.** That inversion is the product.
+A time-first micro-learning iOS app. You tell it how long you have — 3, 10, 15, or 30 minutes — and it finds you something worth learning. **Time is the input; topic is the output.** That inversion is the product.
 
-**Status: Phase 1.** Scaffold, models, generation logic, mock provider, and tests. No UI beyond a placeholder Home.
+**Status: Phase 5 complete.** All six screens, live generation, recall and scheduling, points and stats, StoreKit purchasing. See the roadmap at the bottom for what's left.
 
 ---
 
@@ -49,7 +49,7 @@ Lessons are generated twice: **pass 1 drafts, pass 2 revises against the editori
 
 **2. Display is held until revision covers the opening.** Nothing renders until pass 2 has produced roughly 250 words, or has finished outright for a body shorter than that. `holdProgress` drives a determinate indicator so the wait is legible rather than a spinner.
 
-**3. Chaptered formats work one chapter ahead.** For the 45-minute mini-course, while the reader is in chapter N, chapter N+1 is being **drafted and revised**. `nextChapterToGenerate` prioritises any chapter at or behind the reader over prefetching, so the reader's own chapter is never the one that's missing.
+**3. Chaptered formats work one chapter ahead.** For the 30-minute course, while the reader is in chapter N, chapter N+1 is being **drafted and revised**. `nextChapterToGenerate` prioritises any chapter at or behind the reader over prefetching, so the reader's own chapter is never the one that's missing.
 
 **4. Text already shown is immutable.** Displayed text only ever grows, and only by appending. A candidate update that would rewrite shown text is **rejected and counted** (`appendOnlyViolations`) rather than applied — so "never mutate text already scrolled past" is structural, not aspirational.
 
@@ -117,7 +117,7 @@ A test asserts the system prompts contain no placeholders, because one byte of p
 
 ### Cost control
 
-A 45-minute mini-course is an outline call plus two calls per chapter — 13 requests if fully generated. Three things keep that honest:
+A 30-minute course is an outline call plus two calls per chapter — 9 requests if fully generated. Three things keep that honest:
 
 1. **Lazy chapters.** Generation blocks on `ChapterDemand` before each chapter. The Reader advances it as the reader scrolls, so a reader who stops at chapter 2 triggers 5 calls, not 13. Leaving the Reader cancels the stream outright.
 2. **Cached prefix**, above.
@@ -151,7 +151,7 @@ Verification against the real API is a manual step on a Mac with a key in Settin
 
 **Recall.** A `RecallQuestion` is generated once, at lesson completion, and stored as a `StoredRecallItem` with its own schedule (`RecallScheduler`'s five-stage spaced-repetition curve). Home shows at most one due item per app session — pinned in local `@State` the first time Home appears, so answering it (or a new item becoming due mid-session) never bumps a second card in front of the reader. Answering is immediate: tap, see the right answer and the stored explanation right there, no round trip.
 
-**Points.** [`Points.swift`](SpareCore/Sources/SpareCore/Points.swift) is the one rule: retention outweighs consumption. A finished lesson earns 10/20/30/60 by length; a correctly answered recall question earns a flat 30, the same whether it followed a 3-minute piece or a 45-minute course. [`PointsLedger.swift`](SpareCore/Sources/SpareCore/PointsLedger.swift) logs *every* recall attempt, correct or not, at 0 points when wrong — so retention rate, and anything else a future feature wants from the full history, is always computable from the ledger itself rather than a separately maintained counter. [`Level.swift`](SpareCore/Sources/SpareCore/Level.swift) turns cumulative points into a level on a square-root curve: each additional level costs meaningfully more than the last. [`Achievement.swift`](SpareCore/Sources/SpareCore/Achievement.swift) evaluates counts, breadth (all 24 canonical domains), depth (mini-courses), retention, and consistency (distinct active days, not an unbroken streak) as pure functions over the ledger and the library — nothing is ever "awarded" and stored.
+**Points.** [`Points.swift`](SpareCore/Sources/SpareCore/Points.swift) is the one rule: retention outweighs consumption. A finished lesson earns 10/20/30/60 by length; a correctly answered recall question earns a flat 30, the same whether it followed a 3-minute piece or a 30-minute course. [`PointsLedger.swift`](SpareCore/Sources/SpareCore/PointsLedger.swift) logs *every* recall attempt, correct or not, at 0 points when wrong — so retention rate, and anything else a future feature wants from the full history, is always computable from the ledger itself rather than a separately maintained counter. [`Level.swift`](SpareCore/Sources/SpareCore/Level.swift) turns cumulative points into a level on a square-root curve: each additional level costs meaningfully more than the last. [`Achievement.swift`](SpareCore/Sources/SpareCore/Achievement.swift) evaluates counts, breadth (all 24 canonical domains), depth (mini-courses), retention, and consistency (distinct active days, not an unbroken streak) as pure functions over the ledger and the library — nothing is ever "awarded" and stored.
 
 Every screen respects one aesthetic rule: no confetti, no trophy icons, no badges, no mascots, no "on fire" copy. Achievements are a single quiet line of text in Library. Points live on the Stats screen the user chooses to visit, never a counter shown elsewhere.
 
@@ -165,9 +165,9 @@ Every screen respects one aesthetic rule: no confetti, no trophy icons, no badge
 
 **One gate, one place.** `EntitlementService` is the only thing in the app that answers "is this allowed?". Views never read a tier and never call `EntitlementRules` themselves — they ask for an `AccessDecision` and render it. A grep for `EntitlementRules` or `StoredEntitlement` outside that service returns nothing but its own persistence.
 
-**A fair-use cap is not a paywall, and the types enforce that.** `AccessDecision` has three cases: `allowed`, `denied(PaywallTrigger)`, and `capped(UsageCap)`. The 8-mini-courses-a-month limit applies to people who already pay, so it returns `capped`, and `capped.trigger` is `nil`. "Route any denial to the paywall" therefore cannot be written by accident — a subscriber at the limit gets a plain explanation and the reset date. A test asserts this specific property.
+**A fair-use cap is not a paywall, and the types enforce that.** `AccessDecision` has three cases: `allowed`, `denied(PaywallTrigger)`, and `capped(UsageCap)`. The 12-courses-a-month limit applies to people who already pay, so it returns `capped`, and `capped.trigger` is `nil`. "Route any denial to the paywall" therefore cannot be written by accident — a subscriber at the limit gets a plain explanation and the reset date. A test asserts this specific property.
 
-**Free** is 1 lesson/day, the 3- and 10-minute lengths, the last 10 library entries, no go-deeper, no post-lesson test. **Premium** is unlimited lessons, every length, the full library, unlimited go-deeper, post-lesson tests, and 8 mini-courses a month with the remaining count stated in Settings before it bites.
+**Free** is 1 lesson/day, the 3- and 10-minute lengths, the last 10 library entries, no go-deeper, no post-lesson test. **Premium** is unlimited lessons, every length, the full library, unlimited go-deeper, post-lesson tests, and 12 courses a month with the remaining count stated in Settings before it bites.
 
 Locked premium features render as **visibly locked rows that open the paywall**, never hidden — a feature nobody can see sells nothing. The exception is Home's duration circles, which carry no lock badge: size is the only thing allowed to mean anything on that screen, and lock glyphs on two of four would wreck it. Tapping a locked duration opens the paywall, which is where the lock gets stated.
 

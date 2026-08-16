@@ -225,6 +225,13 @@ enum Theme {
         /// Recedes without becoming unreadable — a lock the reader can't read
         /// is not an argument for anything.
         static let lockedContentOpacity: Double = 0.45
+        /// The same recession, against the accent fill. Near-white text on
+        /// the accent loses legibility far faster than dark text on the page
+        /// background does, so it needs a gentler reduction to read as
+        /// equally recessive — confirmed against the CI screenshot, where
+        /// the locked course circle was noticeably fainter than the locked
+        /// 15-minute one beside it.
+        static let lockedContentOpacityOnAccent: Double = 0.72
         // No `disabledOpacity`, deliberately. Dimming an accent fill to show
         // a disabled state turns muddy in dark mode, where the accent is
         // already close to the background in luminance. Disabled controls

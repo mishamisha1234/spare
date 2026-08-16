@@ -128,8 +128,17 @@ struct HomeView: View {
         }
     }
 
+    /// Not offered while the window is locked. A lapsed subscriber with a
+    /// half-read course would otherwise see a dashed lock and an invitation
+    /// to "Continue" on the same circle, which contradict each other. The
+    /// lock is the honest thing to show — they can't start a new course —
+    /// and the existing one is still readable from the Library.
     private func resumeChapter(for window: TimeWindow) -> Int? {
-        guard window.format.isChaptered, let course = resumableCourse else { return nil }
+        guard
+            window.format.isChaptered,
+            !entitlements.isWindowLocked(window),
+            let course = resumableCourse
+        else { return nil }
         return CourseProgress.chapterIndex(
             scrollProgress: course.scrollProgress,
             chapterCount: window.format.chapterCount

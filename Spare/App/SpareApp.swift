@@ -105,6 +105,26 @@ struct SpareApp: App {
             explanation: "Each stride correction fed the wobble it was correcting.",
             dueAt: .distantPast
         ))
+        // A part-read course, so the walkthrough can photograph the resume
+        // state on the Home circle. Deliberately not visible at the start:
+        // the walkthrough begins on the free tier, where the course window
+        // is locked and resume is suppressed, so this only surfaces after
+        // the purchase step — which is also the correct product behaviour.
+        let course = StoredLesson(
+            title: "How planes got safe",
+            subtitle: "A 30-minute course",
+            topicTag: "Engineering",
+            window: .thirty,
+            bodyMarkdown: MockProvider.fixtureChapterBodies(
+                topic: TopicSuggestion(title: "How planes got safe", hook: "", domainTag: "Engineering"),
+                window: .thirty
+            ).joined(separator: "\n\n"),
+            surprisingClaim: "Every rule in the manual was written after a crash.",
+            deeperAngles: ["Context", "Mechanism", "Counterargument"],
+            scrollProgress: 0.4
+        )
+        context.insert(course)
+
         try? context.save()
     }
 

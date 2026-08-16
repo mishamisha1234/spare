@@ -54,8 +54,16 @@ struct DurationCircleView: View {
     /// the usual hairline.
     private var lockedStrokeColor: Color {
         isAnchor
-            ? palette.textOnAccent.opacity(Theme.Interaction.lockedContentOpacity)
+            ? palette.textOnAccent.opacity(lockedOpacity)
             : palette.border
+    }
+
+    /// Text on the accent fill needs a gentler reduction than text on the
+    /// page background to read as equally recessive.
+    private var lockedOpacity: Double {
+        isAnchor
+            ? Theme.Interaction.lockedContentOpacityOnAccent
+            : Theme.Interaction.lockedContentOpacity
     }
 
     var body: some View {
@@ -93,7 +101,7 @@ struct DurationCircleView: View {
                 }
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, Theme.Spacing.xs)
-                .opacity(isLocked ? Theme.Interaction.lockedContentOpacity : 1)
+                .opacity(isLocked ? lockedOpacity : 1)
             }
             .frame(width: diameter, height: diameter)
             // Tap target never shrinks below the accessibility minimum, even

@@ -184,6 +184,10 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             try tap(app, "completion.returnHome", scheme: colorScheme, step: "09h-completion-after-test")
 
             // MARK: Library (reached from Home)
+            // Premium by now, so this is also where the course circle shows
+            // its resume state: the seeded part-read course surfaces as
+            // "Chapter 2 of 4 / Continue" instead of the offer, where a
+            // moment ago (06b, free tier) the same circle was dash-locked.
             try waitAndCapture(app, "09i-home-again", scheme: colorScheme, identifier: "home.libraryButton")
             try tap(app, "home.libraryButton", scheme: colorScheme, step: "09i-home-again")
             // Wait for the lesson we just read to actually appear in the
