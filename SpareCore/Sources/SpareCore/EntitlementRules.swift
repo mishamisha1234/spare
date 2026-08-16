@@ -74,7 +74,7 @@ public enum EntitlementRules {
     /// rather than discovered at the moment it bites.
     ///
     /// Raised from 8 to 12 when courses went from 45 minutes to 30: at 4
-    /// chapters and ~5,500 words instead of 6 and ~8,000, a course costs
+    /// chapters and ~6,200 words instead of 6 and ~8,000, a course costs
     /// roughly a third less to generate, so 12 of the new ones is cheaper
     /// than 8 of the old.
     public static let premiumMiniCoursesPerMonth = 12

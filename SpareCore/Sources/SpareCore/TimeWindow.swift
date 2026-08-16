@@ -66,7 +66,11 @@ public enum TimeWindow: String, Codable, CaseIterable, Sendable, Identifiable, H
         case .three: return 500...650
         case .ten: return 1600...2000
         case .fifteen: return 2400...3000
-        case .thirty: return 5000...6000
+        // 6,000-6,400 divides cleanly by 4 chapters into 1,500-1,600 words
+        // each. Four rather than three deliberately: three chapters collapse
+        // into intro/middle/conclusion, and the chapter break is what makes a
+        // course resumable on a phone.
+        case .thirty: return 6000...6400
         }
     }
 

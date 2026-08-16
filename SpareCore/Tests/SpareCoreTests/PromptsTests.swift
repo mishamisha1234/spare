@@ -225,7 +225,7 @@ final class PromptsTests: XCTestCase {
         let chapterBudget = TimeWindow.thirty.chapterWordBudget
         XCTAssertTrue(prompt.contains("\(chapterBudget.lowerBound)"))
         XCTAssertTrue(prompt.contains("\(chapterBudget.upperBound)"))
-        XCTAssertFalse(prompt.contains("5000–6000"), "a chapter must not get the whole-course budget")
+        XCTAssertFalse(prompt.contains("6000–6400"), "a chapter must not get the whole-course budget")
         XCTAssertTrue(prompt.contains("chapter 1 of 4"))
         XCTAssertTrue(prompt.contains("reflection prompt"))
     }

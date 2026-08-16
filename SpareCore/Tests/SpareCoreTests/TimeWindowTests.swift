@@ -18,7 +18,7 @@ final class TimeWindowTests: XCTestCase {
         XCTAssertEqual(TimeWindow.three.wordBudget, 500...650)
         XCTAssertEqual(TimeWindow.ten.wordBudget, 1600...2000)
         XCTAssertEqual(TimeWindow.fifteen.wordBudget, 2400...3000)
-        XCTAssertEqual(TimeWindow.thirty.wordBudget, 5000...6000)
+        XCTAssertEqual(TimeWindow.thirty.wordBudget, 6000...6400)
     }
 
     func testFormatsMatchSpec() {
