@@ -9,11 +9,56 @@ struct ThemedSegmentedControl<Option: Identifiable & Hashable>: View {
     var label: (Option) -> String
     @Binding var selection: Option
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
     private var palette: Theme.Palette { Theme.palette(for: colorScheme) }
     private var segmentRadius: CGFloat { Theme.cornerRadius - Theme.borderWidth }
 
     var body: some View {
+        // Four segments truncate to illegibility well before the largest
+        // sizes, so past xxLarge this becomes a list of full-width rows with
+        // a checkmark on the selected one.
+        if dynamicTypeSize >= .xxLarge {
+            verticalRows
+        } else {
+            segmented
+        }
+    }
+
+    private var verticalRows: some View {
+        VStack(spacing: 0) {
+            ForEach(options) { option in
+                let isSelected = option == selection
+                Button {
+                    selection = option
+                } label: {
+                    HStack {
+                        Text(label(option))
+                            .font(Theme.Font.label.font)
+                            .foregroundStyle(palette.text)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        if isSelected {
+                            Image(systemName: "checkmark")
+                                .font(Theme.Font.caption.font)
+                                .foregroundStyle(palette.accent)
+                        }
+                    }
+                    .padding(.horizontal, Theme.Spacing.s)
+                    .frame(minHeight: Theme.ControlSize.chip)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: Theme.cornerRadius)
+                .strokeBorder(palette.borderInteractive, lineWidth: Theme.borderWidth)
+        )
+    }
+
+    private var segmented: some View {
         HStack(spacing: 0) {
             ForEach(options) { option in
                 let isSelected = option == selection

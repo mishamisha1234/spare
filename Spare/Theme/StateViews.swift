@@ -8,6 +8,10 @@ import SpareCore
 struct EmptyStateView: View {
     let title: String
     let message: String
+    /// One action, accent-filled, or none. The review's structure: a line
+    /// stating what's missing, a line saying what fills it, one way forward.
+    var actionTitle: String?
+    var action: (() -> Void)?
     var identifier: String?
 
     @Environment(\.colorScheme) private var colorScheme
@@ -23,10 +27,27 @@ struct EmptyStateView: View {
                 .foregroundStyle(palette.secondaryText)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if let actionTitle, let action {
+                Button(action: action) {
+                    Text(actionTitle)
+                        .font(Theme.Font.headline.font)
+                        .foregroundStyle(palette.textOnAccent)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: Theme.ControlSize.button)
+                        .background(
+                            RoundedRectangle(cornerRadius: Theme.cornerRadius)
+                                .fill(palette.accent)
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, Theme.Spacing.s)
+                .accessibilityIdentifier("\(identifier ?? "state.empty").action")
+            }
         }
         .padding(Theme.Spacing.m)
         .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
         .accessibilityIdentifier(identifier ?? "state.empty")
     }
 }

@@ -7,6 +7,8 @@ import SpareCore
 struct LibraryView: View {
     var onSelect: (StoredLesson) -> Void
     var onOpenStats: () -> Void
+    /// Sends an empty library back to Home to choose a duration.
+    var onPickLength: () -> Void
 
     @Query(sort: \StoredLesson.generatedAt, order: .reverse)
     private var lessons: [StoredLesson]
@@ -115,7 +117,7 @@ struct LibraryView: View {
             }
         }
         .background(palette.background)
-        .navigationTitle("Library")
+        .navigationTitle("Things I know")
         .toolbar {
             if !lessons.isEmpty {
                 ToolbarItem(placement: .primaryAction) {
@@ -149,14 +151,23 @@ struct LibraryView: View {
     /// a badge or a counter. Always present, even with zero achievements
     /// yet, so Stats stays reachable from launch.
     private var statsLine: some View {
+        // A row, not a bare label: as a lone line of secondary text it read
+        // as a section header for the filter chips underneath it.
         Button(action: onOpenStats) {
-            Text(statsLineText)
-                .font(Theme.Font.label.font)
-                .foregroundStyle(palette.secondaryText)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack {
+                Text(statsLineText)
+                    .font(Theme.Font.headline.font)
+                    .foregroundStyle(palette.text)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(Theme.Font.caption.font)
+                    .foregroundStyle(palette.secondaryText)
+            }
+            .padding(.horizontal, Theme.Spacing.m)
+            .frame(minHeight: Theme.ControlSize.button)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, Theme.Spacing.m)
         .accessibilityIdentifier("library.stats")
     }
 
@@ -167,7 +178,7 @@ struct LibraryView: View {
     }
 
     private var domainFilter: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        ScrollView(.horizontal) {
             HStack(spacing: Theme.Spacing.xs) {
                 filterChip("All", isSelected: selectedDomain == nil) { selectedDomain = nil }
                 ForEach(domains, id: \.self) { domain in
@@ -176,6 +187,7 @@ struct LibraryView: View {
             }
             .padding(.horizontal, Theme.Spacing.m)
         }
+        .scrollIndicators(.hidden)
     }
 
     private func filterChip(_ title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
@@ -185,13 +197,12 @@ struct LibraryView: View {
                 .foregroundStyle(isSelected ? palette.textOnAccent : palette.text)
                 .padding(.horizontal, Theme.Spacing.s)
                 .frame(minHeight: Theme.ControlSize.filterChip)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                        .fill(isSelected ? palette.accent : Color.clear)
-                )
+                .background(Capsule().fill(isSelected ? palette.accent : Color.clear))
                 .overlay(
-                    RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                        .strokeBorder(isSelected ? Color.clear : palette.borderInteractive, lineWidth: Theme.borderWidth)
+                    Capsule().strokeBorder(
+                        isSelected ? Color.clear : palette.borderInteractive,
+                        lineWidth: Theme.borderWidth
+                    )
                 )
         }
         .buttonStyle(.plain)
@@ -218,15 +229,13 @@ struct LibraryView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: Theme.Spacing.xs) {
-            Text("Nothing yet")
-                .font(Theme.Font.title.font)
-                .foregroundStyle(palette.text)
-            Text("Finish a lesson and it will show up here.")
-                .font(Theme.Font.label.font)
-                .foregroundStyle(palette.secondaryText)
-        }
+        EmptyStateView(
+            title: "Nothing here yet.",
+            message: "Finished lessons land here.",
+            actionTitle: "Pick a length",
+            action: onPickLength,
+            identifier: "library.empty"
+        )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityIdentifier("library.empty")
     }
 }

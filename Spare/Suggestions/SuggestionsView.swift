@@ -55,8 +55,10 @@ struct SuggestionsView: View {
                     // Distinct from a failure: nothing came back, but nothing
                     // broke either. Shuffling is the honest next move.
                     EmptyStateView(
-                        title: "No suggestions",
-                        message: "Nothing came back for this length. Shuffle to ask again.",
+                        title: "Nothing came back for \(viewModel.window.label).",
+                        message: "Try another length, or shuffle.",
+                        actionTitle: "Shuffle",
+                        action: { Task { await viewModel.shuffle() } },
                         identifier: "suggestions.empty"
                     )
                     .padding(.top, Theme.Spacing.l)

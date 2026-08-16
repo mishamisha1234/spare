@@ -85,6 +85,9 @@ struct RootView: View {
         .sheet(item: $paywall) { presentation in
             PaywallView(trigger: presentation.trigger)
                 .entitlementService(entitlements)
+                // Sized to the content: at .large there was ~300pt of empty
+                // sheet under the fine print.
+                .presentationDetents([.height(720), .large])
         }
         .alert(
             "Mini-course limit reached",
@@ -175,7 +178,8 @@ struct RootView: View {
         case .library:
             LibraryView(
                 onSelect: { lesson in path.append(.lessonDetail(lesson.id)) },
-                onOpenStats: { path.append(.stats) }
+                onOpenStats: { path.append(.stats) },
+                onPickLength: { path.removeAll() }
             )
 
         case .lessonDetail(let lessonID):

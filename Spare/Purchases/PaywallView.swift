@@ -18,6 +18,9 @@ struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
 
+    /// Yearly at every entry point. It was defaulting to whichever plan the
+    /// enum happened to order first from some triggers, so the post-lesson
+    /// lock opened on Lifetime and the duration lock on Yearly.
     @State private var selected: PurchaseProductKind = .yearly
 
     private var palette: Theme.Palette { Theme.palette(for: colorScheme) }

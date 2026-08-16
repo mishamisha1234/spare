@@ -13,6 +13,7 @@ struct SettingsView: View {
     @AppStorage(AppSettingsKey.recallNotificationTimeMinutes) private var recallNotificationTimeMinutes = NotificationScheduler.defaultMinutesSinceMidnight
 
     @EnvironmentObject private var entitlements: EntitlementService
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.modelContext) private var modelContext
     @State private var keyEntry = ""
