@@ -73,6 +73,10 @@ struct RootView: View {
             NotificationScheduler.reschedule(modelContext: modelContext)
         }
         .task { entitlements.start() }
+        .onOpenURL { url in
+            guard hasCompletedOnboarding, let link = WidgetDeepLink(url: url) else { return }
+            open(link)
+        }
         .sheet(item: $paywall) { presentation in
             PaywallView(trigger: presentation.trigger)
                 .entitlementService(entitlements)
@@ -84,6 +88,28 @@ struct RootView: View {
             Button("OK", role: .cancel) { capMessage = nil }
         } message: {
             Text(capMessage ?? "")
+        }
+    }
+
+    /// Handles a widget tap.
+    ///
+    /// The destination is re-checked against the live entitlement rather than
+    /// trusted: the widget's timeline can be an hour stale, so a length it
+    /// rendered as open may have locked since (or the reverse). The widget
+    /// picks the likely destination; this decides the real one.
+    private func open(_ link: WidgetDeepLink) {
+        path.removeAll()
+        switch link {
+        case .suggestions(let window):
+            startLesson(in: window)
+        case .paywall(let window):
+            // Still routed through the gate: if they bought Premium since the
+            // widget last refreshed, send them to the lesson they wanted
+            // rather than a paywall for something they already own.
+            startLesson(in: window)
+        case .resumeCourse(let lessonID, let chapterIndex):
+            guard modelContext.storedLesson(id: lessonID) != nil else { return }
+            path.append(.resumeCourse(lessonID: lessonID, chapterIndex: chapterIndex))
         }
     }
 

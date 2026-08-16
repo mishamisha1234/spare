@@ -24,9 +24,16 @@ targets:
       - path: Spare
         excludes:
           - Info.plist
+          - Spare.entitlements
+      # Compiled into both the app and the widget: the App Group identifier
+      # and the deep-link contract have to agree across the process boundary,
+      # and one shared file is what guarantees they do.
+      - path: Shared
     dependencies:
       - package: SpareCore
         product: SpareCore
+      - target: SpareWidget
+        embed: true
     info:
       path: Spare/Info.plist
       properties:
@@ -35,9 +42,43 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         ITSAppUsesNonExemptEncryption: false
+        # Registers the scheme the widget's links use.
+        CFBundleURLTypes:
+          - CFBundleURLName: app.spare.ios.deeplink
+            CFBundleURLSchemes: [spare]
+    entitlements:
+      path: Spare/Spare.entitlements
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.spare.ios
+        GENERATE_INFOPLIST_FILE: NO
+        SWIFT_UPCOMING_FEATURE_CONCURRENCY: YES
+  SpareWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: SpareWidget
+        excludes:
+          - SpareWidget.entitlements
+      - path: Shared
+      # The widget reads the same SwiftData store, so it needs the same
+      # model definitions. Only the persistence layer — none of the app's
+      # views or view models come across.
+      - path: Spare/Persistence
+    dependencies:
+      - package: SpareCore
+        product: SpareCore
+    info:
+      path: SpareWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Spare
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: SpareWidget/SpareWidget.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.spare.ios.widget
         GENERATE_INFOPLIST_FILE: NO
         SWIFT_UPCOMING_FEATURE_CONCURRENCY: YES
   SpareTests:
