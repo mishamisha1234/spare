@@ -72,9 +72,10 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             try waitAndCapture(app, "ax-02-onboarding-interests", scheme: scheme, identifier: "onboarding.chip.History")
             try tap(app, "onboarding.chip.History", scheme: scheme, step: "ax-02-onboarding-interests")
             try tap(app, "onboarding.primary", scheme: scheme, step: "ax-02-onboarding-interests")
-            try tap(app, "onboarding.skip", scheme: scheme, step: "ax-03-skip-work")
-            try tap(app, "onboarding.skip", scheme: scheme, step: "ax-04-skip-gaps")
-            try tap(app, "onboarding.primary", scheme: scheme, step: "ax-05-notifications")
+            // One "about you" screen now, not two single-field screens.
+            try waitAndCapture(app, "ax-03-onboarding-about", scheme: scheme, identifier: "onboarding.work")
+            try tap(app, "onboarding.skip", scheme: scheme, step: "ax-03-onboarding-about")
+            try tap(app, "onboarding.primary", scheme: scheme, step: "ax-04-notifications")
             dismissNotificationPromptIfPresent()
 
             // Home is the screen this test exists for: at AX5 the circles are
@@ -154,24 +155,23 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             try tap(app, "onboarding.chip.Physics", scheme: colorScheme, step: "02-onboarding-interests")
             try tap(app, "onboarding.primary", scheme: colorScheme, step: "02-onboarding-interests")
 
-            // MARK: Onboarding — step 3: work
-            try waitAndCapture(app, "03-onboarding-work", scheme: colorScheme, identifier: "onboarding.work")
+            // MARK: Onboarding — step 3: about you (work + curiosity gaps,
+            // previously two separate screens)
+            try waitAndCapture(app, "03-onboarding-about", scheme: colorScheme, identifier: "onboarding.work")
             let workField = element(app, "onboarding.work")
             workField.tap()
             workField.typeText("Product designer")
-            try tap(app, "onboarding.primary", scheme: colorScheme, step: "03-onboarding-work")
 
-            // MARK: Onboarding — step 4: curiosity gaps
-            try waitAndCapture(app, "04-onboarding-curiosity-gaps", scheme: colorScheme, identifier: "onboarding.curiosityGapEntry")
             let gapField = element(app, "onboarding.curiosityGapEntry")
             gapField.tap()
             gapField.typeText("how interest rates work")
-            try tap(app, "onboarding.addCuriosityGap", scheme: colorScheme, step: "04-onboarding-curiosity-gaps")
-            try tap(app, "onboarding.primary", scheme: colorScheme, step: "04-onboarding-curiosity-gaps")
+            try tap(app, "onboarding.addCuriosityGap", scheme: colorScheme, step: "03-onboarding-about")
+            try waitAndCapture(app, "03a-onboarding-about-filled", scheme: colorScheme, identifier: "onboarding.primary")
+            try tap(app, "onboarding.primary", scheme: colorScheme, step: "03-onboarding-about")
 
             // MARK: Onboarding — step 5: notifications
-            try waitAndCapture(app, "05-onboarding-notifications", scheme: colorScheme, identifier: "onboarding.primary")
-            try tap(app, "onboarding.primary", scheme: colorScheme, step: "05-onboarding-notifications")
+            try waitAndCapture(app, "04-onboarding-notifications", scheme: colorScheme, identifier: "onboarding.primary")
+            try tap(app, "onboarding.primary", scheme: colorScheme, step: "04-onboarding-notifications")
 
             // MARK: Home — the recall card (`-UITEST_RESET_STATE` seeds one
             // already-due item, so this is reachable without a multi-day

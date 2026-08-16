@@ -21,8 +21,14 @@ struct OnboardingView: View {
 
     private var palette: Theme.Palette { Theme.palette(for: colorScheme) }
 
+    /// Four steps, not five.
+    ///
+    /// "What do you do?" and "What do you nod along to?" were two screens
+    /// each holding one skippable free-text field, and both were asking a
+    /// version of the same question. Merging them takes a screen out of a
+    /// fifteen-second goal.
     enum Step: Int, CaseIterable {
-        case pitch, interests, work, curiosityGaps, notifications
+        case pitch, interests, about, notifications
 
         /// Steps 1 and 2 are mandatory; from step 3 onward the user can skip.
         var isSkippable: Bool { rawValue >= 2 }
@@ -39,8 +45,7 @@ struct OnboardingView: View {
                 switch step {
                 case .pitch: pitchStep
                 case .interests: interestsStep
-                case .work: workStep
-                case .curiosityGaps: curiosityGapsStep
+                case .about: aboutStep
                 case .notifications: notificationsStep
                 }
             }
@@ -84,10 +89,9 @@ struct OnboardingView: View {
             stepHeader("What are you drawn to?", subtitle: "Pick as many as you like.")
 
             ScrollView {
-                LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 108), spacing: Theme.Spacing.xs)],
-                    spacing: Theme.Spacing.xs
-                ) {
+                // Flow layout, not a fixed grid: equal-width columns forced
+                // "Food & Cooking" to truncate while shorter chips left gaps.
+                ChipFlowLayout(spacing: Theme.Spacing.xs, lineSpacing: Theme.Spacing.xs) {
                     ForEach(OnboardingDomains.all, id: \.self) { domain in
                         chip(domain, isSelected: interests.contains(domain)) {
                             toggle(domain)
@@ -120,32 +124,18 @@ struct OnboardingView: View {
         }
     }
 
-    private var workStep: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
-            stepHeader("What do you do?", subtitle: "Helps us pick examples that land.")
-            TextField("e.g. physiotherapist, teacher, product manager", text: $work)
-                .textFieldStyle(.plain)
-                .font(Theme.Font.label.font)
-                .foregroundStyle(palette.text)
-                .padding(.horizontal, Theme.Spacing.s)
-                .frame(minHeight: Theme.ControlSize.textField)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                        .strokeBorder(palette.borderInteractive, lineWidth: Theme.borderWidth)
-                )
-                .accessibilityIdentifier("onboarding.work")
-        }
-    }
-
-    private var curiosityGapsStep: some View {
+    /// One screen, two fields. Both were single skippable text inputs
+    /// asking adjacent questions.
+    private var aboutStep: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.m) {
             stepHeader(
-                "What do you nod along to but not actually understand?",
-                subtitle: "No wrong answers here — this is the fun part."
+                "A little about you",
+                subtitle: "Both optional. They only shape which examples you get."
             )
 
-            HStack(spacing: Theme.Spacing.xs) {
-                TextField("e.g. how interest rates work", text: $currentGapEntry)
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                fieldLabel("What do you do?")
+                TextField("e.g. physiotherapist, teacher, product manager", text: $work)
                     .textFieldStyle(.plain)
                     .font(Theme.Font.label.font)
                     .foregroundStyle(palette.text)
@@ -155,42 +145,72 @@ struct OnboardingView: View {
                         RoundedRectangle(cornerRadius: Theme.cornerRadius)
                             .strokeBorder(palette.borderInteractive, lineWidth: Theme.borderWidth)
                     )
-                    .onSubmit(addCuriosityGap)
-                    .accessibilityIdentifier("onboarding.curiosityGapEntry")
-
-                if !currentGapEntry.trimmingCharacters(in: .whitespaces).isEmpty {
-                    Button("Add", action: addCuriosityGap)
-                        .font(Theme.Font.label.font)
-                        .foregroundStyle(palette.accent)
-                        .accessibilityIdentifier("onboarding.addCuriosityGap")
-                }
+                    .accessibilityIdentifier("onboarding.work")
             }
 
-            if !curiosityGaps.isEmpty {
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    ForEach(curiosityGaps, id: \.self) { gap in
-                        HStack {
-                            Text(gap)
-                                .font(Theme.Font.label.font)
-                                .foregroundStyle(palette.text)
-                            Spacer()
-                            Button {
-                                curiosityGaps.removeAll { $0 == gap }
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .foregroundStyle(palette.secondaryText)
-                            }
-                        }
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                fieldLabel("What do you nod along to but not actually understand?")
+
+                HStack(spacing: Theme.Spacing.xs) {
+                    TextField("e.g. how interest rates work", text: $currentGapEntry)
+                        .textFieldStyle(.plain)
+                        .font(Theme.Font.label.font)
+                        .foregroundStyle(palette.text)
                         .padding(.horizontal, Theme.Spacing.s)
-                        .frame(minHeight: Theme.ControlSize.chip)
+                        .frame(minHeight: Theme.ControlSize.textField)
                         .background(
                             RoundedRectangle(cornerRadius: Theme.cornerRadius)
                                 .strokeBorder(palette.borderInteractive, lineWidth: Theme.borderWidth)
                         )
+                        .onSubmit(addCuriosityGap)
+                        .accessibilityIdentifier("onboarding.curiosityGapEntry")
+
+                    if !currentGapEntry.trimmingCharacters(in: .whitespaces).isEmpty {
+                        Button("Add", action: addCuriosityGap)
+                            .font(Theme.Font.label.font)
+                            .foregroundStyle(palette.accent)
+                            .accessibilityIdentifier("onboarding.addCuriosityGap")
+                    }
+                }
+
+                if !curiosityGaps.isEmpty {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                        ForEach(curiosityGaps, id: \.self) { gap in
+                            gapRow(gap)
+                        }
                     }
                 }
             }
         }
+    }
+
+    private func fieldLabel(_ text: String) -> some View {
+        Text(text)
+            .font(Theme.Font.label.font)
+            .foregroundStyle(palette.text)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func gapRow(_ gap: String) -> some View {
+        HStack {
+            Text(gap)
+                .font(Theme.Font.label.font)
+                .foregroundStyle(palette.text)
+            Spacer()
+            Button {
+                curiosityGaps.removeAll { $0 == gap }
+            } label: {
+                Image(systemName: "xmark")
+                    .foregroundStyle(palette.secondaryText)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove " + gap)
+        }
+        .padding(.horizontal, Theme.Spacing.s)
+        .frame(minHeight: Theme.ControlSize.chip)
+        .background(
+            Capsule().strokeBorder(palette.borderInteractive, lineWidth: Theme.borderWidth)
+        )
     }
 
     private var notificationsStep: some View {
@@ -220,17 +240,15 @@ struct OnboardingView: View {
             Text(text)
                 .font(Theme.Font.label.font)
                 .lineLimit(1)
-                .minimumScaleFactor(Theme.Interaction.chipLabelMinimumScale)
                 .foregroundStyle(isSelected ? palette.textOnAccent : palette.text)
                 .padding(.horizontal, Theme.Spacing.s)
                 .frame(minHeight: Theme.ControlSize.chip)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                        .fill(isSelected ? palette.accent : Color.clear)
-                )
+                .background(Capsule().fill(isSelected ? palette.accent : Color.clear))
                 .overlay(
-                    RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                        .strokeBorder(isSelected ? Color.clear : palette.borderInteractive, lineWidth: Theme.borderWidth)
+                    Capsule().strokeBorder(
+                        isSelected ? Color.clear : palette.borderInteractive,
+                        lineWidth: Theme.borderWidth
+                    )
                 )
         }
         .buttonStyle(.plain)
