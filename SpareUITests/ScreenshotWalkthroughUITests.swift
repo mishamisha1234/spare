@@ -15,6 +15,9 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
     /// not a warm device. Individual steps rarely need this long, but a slow
     /// runner shouldn't turn into a false failure.
     private let defaultTimeout: TimeInterval = 30
+    /// A first, cheap wait before trying to scroll. Something already on
+    /// screen becomes hittable well inside this.
+    private let shortTimeout: TimeInterval = 3
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -383,11 +386,20 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
         }
         XCTAssertTrue(exists, "\(step): \"\(identifier)\" never appeared within \(defaultTimeout)s")
 
-        // Existence is not readiness. A control that has just been laid out
-        // (or is mid appear-animation, or sits in a ScrollView that hasn't
-        // settled) exists at a correct on-screen frame while still being
-        // untappable, and `.tap()` does not wait that out on its own.
-        let ready = waitUntilHittable(target, timeout: defaultTimeout)
+        // Existence is not readiness, and this has now bitten in four
+        // different ways: an identifier clobbered by a container, a
+        // stroke-only background with no hit area, an element below the fold,
+        // and an element under an animating sheet. Wait for hittability, and
+        // if it never comes, try scrolling before giving up — "exists but is
+        // further down the page" is the common case now that Home and the
+        // Completion screen both scroll.
+        var ready = waitUntilHittable(target, timeout: shortTimeout)
+        if !ready {
+            ready = scrollUntilHittable(app, target)
+        }
+        if !ready {
+            ready = waitUntilHittable(target, timeout: defaultTimeout)
+        }
         if !ready {
             capture(app, "FAILURE-\(step)", scheme: scheme)
             printHierarchy(app, scheme: scheme, context: "\(step) (exists but not hittable)")
