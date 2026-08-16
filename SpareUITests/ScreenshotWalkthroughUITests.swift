@@ -90,6 +90,7 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             try tap(app, "home.circle.thirty", scheme: scheme, step: "ax-06-home")
             try waitAndCapture(app, "ax-07-paywall", scheme: scheme, identifier: "paywall.buy")
             try tap(app, "paywall.close", scheme: scheme, step: "ax-07-paywall")
+            waitUntilGone(element(app, "paywall.buy"))
 
             try waitAndCapture(app, "ax-08-home-settings", scheme: scheme, identifier: "home.settingsButton")
             try tap(app, "home.settingsButton", scheme: scheme, step: "ax-08-home-settings")
@@ -187,6 +188,7 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             try tap(app, "home.circle.thirty", scheme: colorScheme, step: "06b-home-locked-durations")
             try waitAndCapture(app, "06c-paywall-from-duration", scheme: colorScheme, identifier: "paywall.buy")
             try tap(app, "paywall.close", scheme: colorScheme, step: "06c-paywall-from-duration")
+            waitUntilGone(element(app, "paywall.buy"))
 
             try tap(app, "home.circle.ten", scheme: colorScheme, step: "06-home")
 
@@ -393,6 +395,26 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
         XCTAssertTrue(ready, "\(step): \"\(identifier)\" never became hittable within \(defaultTimeout)s")
 
         target.tap()
+    }
+
+    /// Waits for an element to actually go away.
+    ///
+    /// Dismissing a sheet is animated, so the tap that closes it returns long
+    /// before the content underneath is reachable — the next step then finds
+    /// its target "existing" (it is in the tree, just covered) and fails on
+    /// hittability instead. Waiting for the sheet's own content to disappear
+    /// is the barrier that makes the following step deterministic.
+    @discardableResult
+    private func waitUntilGone(
+        _ element: XCUIElement,
+        timeout: TimeInterval = 10
+    ) -> Bool {
+        if !element.exists { return true }
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"),
+            object: element
+        )
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
     }
 
     /// Dismisses the notification permission alert directly on Springboard.
