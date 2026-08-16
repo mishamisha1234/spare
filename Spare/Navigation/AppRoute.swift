@@ -18,6 +18,11 @@ enum AppRoute: Hashable {
     /// Re-reading an already-generated lesson from the Library — a static
     /// render, not a new streaming session.
     case lessonDetail(UUID)
+    /// Reopening a part-read course from Home, landing on the chapter the
+    /// reader stopped at. Same view as `lessonDetail`, different entry
+    /// intent — kept separate so the scroll target is explicit in the route
+    /// rather than inferred at the destination.
+    case resumeCourse(lessonID: UUID, chapterIndex: Int)
     case settings
     /// The immediate, optional 3-question test right after a lesson
     /// (premium). Separate from the daily recall card, which lives inline on

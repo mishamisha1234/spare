@@ -11,12 +11,43 @@ struct DurationCircleView: View {
     /// owns the 3- and 10-minute lengths, and marking all four circles
     /// because of a daily limit would say something false about the plan.
     var isLocked: Bool = false
+    /// Zero-based chapter a part-read course is waiting at. Non-nil turns the
+    /// circle into a resume affordance: the label becomes the position rather
+    /// than the offer, because the reader is being invited back into
+    /// something they started, not asked to pick a length.
+    var resumeChapterIndex: Int?
     var action: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
     private var palette: Theme.Palette { Theme.palette(for: colorScheme) }
     private var diameter: CGFloat { Theme.CircleSize.diameter(for: window) }
     private var isAnchor: Bool { window == .thirty }
+
+    private var isResuming: Bool { resumeChapterIndex != nil }
+
+    /// Courses get a second line ("30 min · 4 chapters"), or the resume
+    /// position once one is underway. The single-sitting windows have
+    /// nothing to add below their own duration.
+    private var title: String {
+        guard let index = resumeChapterIndex else { return window.circleTitle }
+        return CourseProgress.positionLabel(
+            chapterIndex: index,
+            chapterCount: window.format.chapterCount
+        )
+    }
+
+    private var subtitle: String? {
+        isResuming ? "Continue" : window.circleSubtitle
+    }
+
+    /// The two-line course label needs to be smaller than a bare "3 min", or
+    /// it collides with the circle's edge. Derived from the same diameter
+    /// scale so it still tracks size rather than inventing a constant.
+    private var titleFont: SwiftUI.Font {
+        subtitle == nil
+            ? Theme.Font.circleLabel(diameter: diameter)
+            : Theme.Font.circleLabel(diameter: diameter * Theme.CircleSize.stackedLabelScale)
+    }
 
     /// The dashed ring has to sit on whatever is behind it. On the
     /// accent-filled anchor that means the on-accent colour; everywhere else
@@ -45,16 +76,28 @@ struct DurationCircleView: View {
                         .strokeBorder(isAnchor ? Color.clear : palette.border, lineWidth: Theme.borderWidth)
                 }
 
-                Text(window.label)
-                    .font(Theme.Font.circleLabel(diameter: diameter))
-                    .foregroundStyle(isAnchor ? palette.textOnAccent : palette.text)
-                    .opacity(isLocked ? Theme.Interaction.lockedContentOpacity : 1)
-                    .minimumScaleFactor(Theme.Interaction.circleLabelMinimumScale)
-                    .lineLimit(1)
+                VStack(spacing: Theme.Spacing.xxs) {
+                    Text(title)
+                        .font(titleFont)
+                        .foregroundStyle(isAnchor ? palette.textOnAccent : palette.text)
+                        .minimumScaleFactor(Theme.Interaction.circleLabelMinimumScale)
+                        .lineLimit(1)
+
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(Theme.Font.caption.font)
+                            .foregroundStyle(isAnchor ? palette.textOnAccent : palette.secondaryText)
+                            .minimumScaleFactor(Theme.Interaction.circleLabelMinimumScale)
+                            .lineLimit(1)
+                    }
+                }
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, Theme.Spacing.xs)
+                .opacity(isLocked ? Theme.Interaction.lockedContentOpacity : 1)
             }
             .frame(width: diameter, height: diameter)
             // Tap target never shrinks below the accessibility minimum, even
-            // for the smallest (58pt) circle.
+            // for the smallest circle.
             .frame(
                 minWidth: Theme.CircleSize.minimumTapTarget,
                 minHeight: Theme.CircleSize.minimumTapTarget
@@ -63,13 +106,28 @@ struct DurationCircleView: View {
         }
         .buttonStyle(CircleButtonStyle())
         .accessibilityIdentifier("home.circle.\(window.rawValue)")
-        // The dashed ring is a purely visual cue, so the lock has to be said
-        // out loud for VoiceOver rather than left to the border style.
-        .accessibilityLabel(
-            isLocked
-                ? "\(window.label), \(window.format.displayName), Premium"
-                : "\(window.label), \(window.format.displayName)"
-        )
+        // The dashed ring and the stacked label are both purely visual, so
+        // the lock and the resume position have to be said out loud rather
+        // than left to a border style and a font size.
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var accessibilityText: String {
+        if let index = resumeChapterIndex {
+            let position = CourseProgress.positionLabel(
+                chapterIndex: index,
+                chapterCount: window.format.chapterCount
+            )
+            return "Course, \(position), continue"
+        }
+        var text = "\(window.circleTitle), \(window.format.displayName)"
+        if let subtitle = window.circleSubtitle {
+            text = "\(window.circleTitle), \(subtitle)"
+        }
+        if isLocked {
+            text += ", Premium"
+        }
+        return text
     }
 }
 

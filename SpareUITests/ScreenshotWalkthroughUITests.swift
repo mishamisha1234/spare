@@ -110,7 +110,7 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
 
             // MARK: A locked duration still opens the paywall. 06b is also
             // the screenshot that shows the dashed lock marking on the 15-
-            // and 30-minute circles, with 3 and 10 left plain.
+            // and 30-minute course circles, with 3 and 10 left plain.
             try waitAndCapture(app, "06b-home-locked-durations", scheme: colorScheme, identifier: "home.circle.thirty")
             try tap(app, "home.circle.thirty", scheme: colorScheme, step: "06b-home-locked-durations")
             try waitAndCapture(app, "06c-paywall-from-duration", scheme: colorScheme, identifier: "paywall.buy")

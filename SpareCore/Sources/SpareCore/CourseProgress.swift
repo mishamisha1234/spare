@@ -44,6 +44,32 @@ public enum CourseProgress {
         return "chapter \(clamped) of \(chapterCount) done"
     }
 
+    /// Maps a block's id to the 1-based chapter number it closes.
+    ///
+    /// Every chapter ends with an italic reflection prompt (the content spec
+    /// requires one), so reflections are the chapter boundaries. Returning a
+    /// lookup keyed by block id rather than position means the caller can
+    /// render it inline without tracking a running count itself — and it
+    /// stays correct while a course is still streaming in.
+    public static func chapterEndsByBlockID(blocks: [LessonBlock]) -> [Int: Int] {
+        var result: [Int: Int] = [:]
+        var chapter = 0
+        for block in blocks where block.kind == .reflection {
+            chapter += 1
+            result[block.id] = chapter
+        }
+        return result
+    }
+
+    /// The index of the block that opens a given zero-based chapter, for
+    /// scrolling a resumed course back to where the reader stopped. `nil` if
+    /// that chapter has no heading yet.
+    public static func blockID(openingChapter index: Int, blocks: [LessonBlock]) -> Int? {
+        let headings = blocks.filter { $0.kind == .heading }
+        guard index >= 0, index < headings.count else { return nil }
+        return headings[index].id
+    }
+
     /// A course worth offering to resume: chaptered, started, and neither
     /// finished nor still sitting at the very beginning.
     public static func isResumable(

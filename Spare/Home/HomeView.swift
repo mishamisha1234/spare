@@ -10,8 +10,13 @@ import SpareCore
 struct HomeView: View {
     var onSelect: (TimeWindow) -> Void
     var onViewRecallLesson: (UUID) -> Void
+    /// Resuming a part-read course: the lesson to reopen and the chapter to
+    /// land on.
+    var onResumeCourse: (UUID, Int) -> Void
 
     @Query private var recallItems: [StoredRecallItem]
+    @Query(sort: \StoredLesson.generatedAt, order: .reverse)
+    private var lessons: [StoredLesson]
     @EnvironmentObject private var entitlements: EntitlementService
     @Environment(\.colorScheme) private var colorScheme
 
@@ -111,14 +116,43 @@ struct HomeView: View {
         isRecallDismissed ? nil : pinnedRecallItem
     }
 
+    /// The most recent course the reader started and hasn't finished. Only
+    /// one can be offered — the circle has room for a position, not a list.
+    private var resumableCourse: StoredLesson? {
+        lessons.first {
+            CourseProgress.isResumable(
+                window: $0.window,
+                scrollProgress: $0.scrollProgress,
+                completedAt: $0.completedAt
+            )
+        }
+    }
+
+    private func resumeChapter(for window: TimeWindow) -> Int? {
+        guard window.format.isChaptered, let course = resumableCourse else { return nil }
+        return CourseProgress.chapterIndex(
+            scrollProgress: course.scrollProgress,
+            chapterCount: window.format.chapterCount
+        )
+    }
+
     private func row(_ windows: [TimeWindow]) -> some View {
         HStack(spacing: Theme.Spacing.m) {
             ForEach(windows) { window in
+                let resumeIndex = resumeChapter(for: window)
                 DurationCircleView(
                     window: window,
-                    isLocked: entitlements.isWindowLocked(window)
+                    isLocked: entitlements.isWindowLocked(window),
+                    resumeChapterIndex: resumeIndex
                 ) {
-                    onSelect(window)
+                    // Resuming takes priority over starting something new:
+                    // the circle is showing a position, so tapping it has to
+                    // honour that rather than silently offering fresh topics.
+                    if let resumeIndex, let course = resumableCourse {
+                        onResumeCourse(course.id, resumeIndex)
+                    } else {
+                        onSelect(window)
+                    }
                 }
             }
         }
@@ -128,14 +162,14 @@ struct HomeView: View {
 
 #Preview("Free tier") {
     let container = PersistenceStack.makeContainer(inMemory: true)
-    return HomeView(onSelect: { _ in }, onViewRecallLesson: { _ in })
+    return HomeView(onSelect: { _ in }, onViewRecallLesson: { _ in }, onResumeCourse: { _, _ in })
         .modelContainer(container)
         .entitlementService(EntitlementService(store: StubPurchaseStore(), container: container))
 }
 
 #Preview("Free tier, dark") {
     let container = PersistenceStack.makeContainer(inMemory: true)
-    return HomeView(onSelect: { _ in }, onViewRecallLesson: { _ in })
+    return HomeView(onSelect: { _ in }, onViewRecallLesson: { _ in }, onResumeCourse: { _, _ in })
         .modelContainer(container)
         .entitlementService(EntitlementService(store: StubPurchaseStore(), container: container))
         .preferredColorScheme(.dark)

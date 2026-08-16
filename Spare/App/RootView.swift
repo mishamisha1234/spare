@@ -22,7 +22,10 @@ struct RootView: View {
                 NavigationStack(path: $path) {
                     HomeView(
                         onSelect: startLesson(in:),
-                        onViewRecallLesson: { lessonID in path.append(.lessonDetail(lessonID)) }
+                        onViewRecallLesson: { lessonID in path.append(.lessonDetail(lessonID)) },
+                        onResumeCourse: { lessonID, chapterIndex in
+                            path.append(.resumeCourse(lessonID: lessonID, chapterIndex: chapterIndex))
+                        }
                     )
                         .toolbar {
                             ToolbarItem(placement: .topBarLeading) {
@@ -145,6 +148,11 @@ struct RootView: View {
         case .lessonDetail(let lessonID):
             if let lesson = modelContext.storedLesson(id: lessonID) {
                 LessonDetailView(lesson: lesson)
+            }
+
+        case .resumeCourse(let lessonID, let chapterIndex):
+            if let lesson = modelContext.storedLesson(id: lessonID) {
+                LessonDetailView(lesson: lesson, resumeChapterIndex: chapterIndex)
             }
 
         case .settings:

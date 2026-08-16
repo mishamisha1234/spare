@@ -110,6 +110,13 @@ struct ReaderView: View {
             } else {
                 ForEach(viewModel.blocks) { block in
                     blockView(block)
+                    // A chapter end is a legitimate place to stop, so it says
+                    // so. Waiting until the whole course is finished to
+                    // acknowledge anything would treat a 4-chapter course
+                    // like a single sitting, which is the thing it isn't.
+                    if let chapter = chapterEnds[block.id] {
+                        chapterProgress(chapter)
+                    }
                 }
 
                 if viewModel.isFinished {
@@ -138,6 +145,26 @@ struct ReaderView: View {
         .frame(maxWidth: .infinity)
         .padding(.top, Theme.Spacing.xl)
         .accessibilityIdentifier("reader.holding")
+    }
+
+    /// Empty for every non-chaptered format, so the single-sitting windows
+    /// render exactly as before.
+    private var chapterEnds: [Int: Int] {
+        guard viewModel.window.format.isChaptered else { return [:] }
+        return CourseProgress.chapterEndsByBlockID(blocks: viewModel.blocks)
+    }
+
+    /// Deliberately quiet: one line of secondary text, no divider, no tick,
+    /// no congratulation. It states a fact about where the reader is.
+    private func chapterProgress(_ chapter: Int) -> some View {
+        Text(CourseProgress.completionLabel(
+            chaptersCompleted: chapter,
+            chapterCount: viewModel.window.format.chapterCount
+        ))
+        .font(Theme.Font.caption.font)
+        .foregroundStyle(palette.secondaryText)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("reader.chapterProgress.\(chapter)")
     }
 
     @ViewBuilder

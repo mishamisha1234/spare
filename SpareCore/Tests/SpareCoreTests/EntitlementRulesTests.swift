@@ -147,7 +147,10 @@ final class EntitlementRulesTests: XCTestCase {
                 premium, window: .thirty, miniCourseStartDates: atCap,
                 now: now, calendar: calendar
             ),
-            .capped(.miniCoursesThisMonth(used: 8, cap: 8))
+            .capped(.miniCoursesThisMonth(
+                used: EntitlementRules.premiumMiniCoursesPerMonth,
+                cap: EntitlementRules.premiumMiniCoursesPerMonth
+            ))
         )
     }
 

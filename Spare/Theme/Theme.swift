@@ -275,6 +275,12 @@ enum Theme {
         /// Minimum interactive area regardless of visual diameter.
         static let minimumTapTarget: CGFloat = 44
 
+        /// A course circle stacks a title over a subtitle, so its title is
+        /// sized against a notionally smaller circle to leave room for the
+        /// second line. Expressed as a factor of the diameter rather than a
+        /// fixed point size, so it keeps tracking the size scale.
+        static let stackedLabelScale: CGFloat = 0.62
+
         /// The visual diameter for a given window. The only place this
         /// mapping is allowed to exist.
         static func diameter(for window: TimeWindow) -> CGFloat {

@@ -92,6 +92,56 @@ final class CourseProgressTests: XCTestCase {
         )
     }
 
+    // MARK: - Chapter boundaries in rendered blocks
+
+    private func courseBlocks(chapters: Int) -> [LessonBlock] {
+        var markdown: [String] = []
+        for chapter in 1...chapters {
+            markdown.append("## Chapter \(chapter): Heading \(chapter)")
+            markdown.append("Body of chapter \(chapter).")
+            markdown.append("*A reflection for chapter \(chapter).*")
+        }
+        return LessonBlockParser.parse(markdown.joined(separator: "\n\n"))
+    }
+
+    func testEachReflectionClosesTheNextChapterInOrder() {
+        let blocks = courseBlocks(chapters: 4)
+        let ends = CourseProgress.chapterEndsByBlockID(blocks: blocks)
+
+        XCTAssertEqual(ends.count, 4, "one chapter end per reflection prompt")
+        let reflections = blocks.filter { $0.kind == .reflection }
+        for (offset, block) in reflections.enumerated() {
+            XCTAssertEqual(ends[block.id], offset + 1)
+        }
+    }
+
+    /// The lookup has to stay right mid-stream, when only some chapters have
+    /// arrived — a partially generated course still shows honest progress.
+    func testChapterEndsAreCorrectWhileStillStreaming() {
+        let ends = CourseProgress.chapterEndsByBlockID(blocks: courseBlocks(chapters: 2))
+        XCTAssertEqual(ends.count, 2)
+        XCTAssertEqual(Set(ends.values), [1, 2])
+    }
+
+    func testProseOnlyContentHasNoChapterEnds() {
+        let blocks = LessonBlockParser.parse("Just one idea.\n\nNo headings, no reflection.")
+        XCTAssertTrue(CourseProgress.chapterEndsByBlockID(blocks: blocks).isEmpty)
+    }
+
+    func testOpeningBlockOfEachChapterIsItsHeading() {
+        let blocks = courseBlocks(chapters: 4)
+        let headings = blocks.filter { $0.kind == .heading }
+        for index in 0..<4 {
+            XCTAssertEqual(CourseProgress.blockID(openingChapter: index, blocks: blocks), headings[index].id)
+        }
+    }
+
+    func testResumingPastTheGeneratedChaptersFindsNothingToScrollTo() {
+        let blocks = courseBlocks(chapters: 2)
+        XCTAssertNil(CourseProgress.blockID(openingChapter: 3, blocks: blocks))
+        XCTAssertNil(CourseProgress.blockID(openingChapter: -1, blocks: blocks))
+    }
+
     // MARK: - Resumability
 
     func testAPartlyReadCourseIsResumable() {

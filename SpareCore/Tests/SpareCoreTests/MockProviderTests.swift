@@ -67,11 +67,11 @@ final class MockProviderTests: XCTestCase {
         XCTAssertEqual(lesson.metadata.title, source.title)
     }
 
-    func testMiniCourseHasSixNumberedChapters() async throws {
+    func testMiniCourseChaptersAreAllNumberedInOrder() async throws {
         let lesson = try await provider.generateLesson(
             topic: topic(for: .thirty), window: .thirty, profile: profile
         )
-        for chapter in 1...6 {
+        for chapter in 1...TimeWindow.thirty.format.chapterCount {
             XCTAssertTrue(
                 lesson.bodyMarkdown.contains("## Chapter \(chapter):"),
                 "missing chapter \(chapter)"
@@ -159,8 +159,8 @@ final class MockProviderTests: XCTestCase {
         }
 
         XCTAssertTrue(sawMetadata)
-        XCTAssertEqual(draftFinishedChapters, Set(0..<6))
-        XCTAssertEqual(revisedStartedChapters, Set(0..<6))
+        XCTAssertEqual(draftFinishedChapters, Set(0..<TimeWindow.thirty.format.chapterCount))
+        XCTAssertEqual(revisedStartedChapters, Set(0..<TimeWindow.thirty.format.chapterCount))
         XCTAssertNotNil(finished)
     }
 
