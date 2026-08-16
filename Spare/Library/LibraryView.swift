@@ -184,7 +184,7 @@ struct LibraryView: View {
                 .font(Theme.Font.label.font)
                 .foregroundStyle(isSelected ? palette.textOnAccent : palette.text)
                 .padding(.horizontal, Theme.Spacing.s)
-                .frame(height: Theme.ControlSize.filterChip)
+                .frame(minHeight: Theme.ControlSize.filterChip)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
                         .fill(isSelected ? palette.accent : Color.clear)

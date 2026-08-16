@@ -102,7 +102,7 @@ struct CompletionView: View {
                                             .foregroundStyle(palette.text)
                                             .frame(maxWidth: .infinity, alignment: .leading)
                                             .padding(.horizontal, Theme.Spacing.s)
-                                            .frame(height: Theme.ControlSize.optionRow)
+                                            .frame(minHeight: Theme.ControlSize.optionRow)
                                             .background(
                                                 RoundedRectangle(cornerRadius: Theme.cornerRadius)
                                                     .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
@@ -188,7 +188,7 @@ struct CompletionView: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: Theme.ControlSize.button)
+            .frame(minHeight: Theme.ControlSize.button)
             .background(
                 RoundedRectangle(cornerRadius: Theme.cornerRadius)
                     .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
@@ -210,7 +210,7 @@ struct CompletionView: View {
                 .font(Theme.Font.headline.font)
                 .foregroundStyle(isDisabled ? palette.secondaryText : palette.textOnAccent)
                 .frame(maxWidth: .infinity)
-                .frame(height: Theme.ControlSize.button)
+                .frame(minHeight: Theme.ControlSize.button)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
                         .fill(isDisabled ? Color.clear : palette.accent)
@@ -233,7 +233,7 @@ struct CompletionView: View {
                 .font(Theme.Font.headline.font)
                 .foregroundStyle(palette.text)
                 .frame(maxWidth: .infinity)
-                .frame(height: Theme.ControlSize.button)
+                .frame(minHeight: Theme.ControlSize.button)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
                         .strokeBorder(palette.border, lineWidth: Theme.borderWidth)

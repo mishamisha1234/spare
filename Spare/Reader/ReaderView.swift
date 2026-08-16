@@ -196,7 +196,7 @@ struct ReaderView: View {
                 .font(Theme.Font.headline.font)
                 .foregroundStyle(palette.textOnAccent)
                 .frame(maxWidth: .infinity)
-                .frame(height: Theme.ControlSize.button)
+                .frame(minHeight: Theme.ControlSize.button)
                 .background(RoundedRectangle(cornerRadius: Theme.cornerRadius).fill(palette.accent))
         }
         .buttonStyle(.plain)

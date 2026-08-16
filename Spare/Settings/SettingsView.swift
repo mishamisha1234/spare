@@ -122,7 +122,7 @@ struct SettingsView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .padding(.horizontal, Theme.Spacing.s)
-                .frame(height: Theme.ControlSize.textField)
+                .frame(minHeight: Theme.ControlSize.textField)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
                         .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
@@ -140,7 +140,7 @@ struct SettingsView: View {
                         .font(Theme.Font.headline.font)
                         .foregroundStyle(keyEntry.isEmpty ? palette.secondaryText : palette.textOnAccent)
                         .frame(maxWidth: .infinity)
-                        .frame(height: Theme.ControlSize.button)
+                        .frame(minHeight: Theme.ControlSize.button)
                         .background(
                             RoundedRectangle(cornerRadius: Theme.cornerRadius)
                                 .fill(keyEntry.isEmpty ? Color.clear : palette.accent)
@@ -163,7 +163,7 @@ struct SettingsView: View {
                             .font(Theme.Font.headline.font)
                             .foregroundStyle(palette.text)
                             .frame(maxWidth: .infinity)
-                            .frame(height: Theme.ControlSize.button)
+                            .frame(minHeight: Theme.ControlSize.button)
                             .background(
                                 RoundedRectangle(cornerRadius: Theme.cornerRadius)
                                     .strokeBorder(palette.border, lineWidth: Theme.borderWidth)

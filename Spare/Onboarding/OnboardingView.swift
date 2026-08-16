@@ -102,7 +102,7 @@ struct OnboardingView: View {
                     .font(Theme.Font.label.font)
                     .foregroundStyle(palette.text)
                     .padding(.horizontal, Theme.Spacing.s)
-                    .frame(height: Theme.ControlSize.textField)
+                    .frame(minHeight: Theme.ControlSize.textField)
                     .background(
                         RoundedRectangle(cornerRadius: Theme.cornerRadius)
                             .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
@@ -128,7 +128,7 @@ struct OnboardingView: View {
                 .font(Theme.Font.label.font)
                 .foregroundStyle(palette.text)
                 .padding(.horizontal, Theme.Spacing.s)
-                .frame(height: Theme.ControlSize.textField)
+                .frame(minHeight: Theme.ControlSize.textField)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
                         .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
@@ -150,7 +150,7 @@ struct OnboardingView: View {
                     .font(Theme.Font.label.font)
                     .foregroundStyle(palette.text)
                     .padding(.horizontal, Theme.Spacing.s)
-                    .frame(height: Theme.ControlSize.textField)
+                    .frame(minHeight: Theme.ControlSize.textField)
                     .background(
                         RoundedRectangle(cornerRadius: Theme.cornerRadius)
                             .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
@@ -182,7 +182,7 @@ struct OnboardingView: View {
                             }
                         }
                         .padding(.horizontal, Theme.Spacing.s)
-                        .frame(height: Theme.ControlSize.chip)
+                        .frame(minHeight: Theme.ControlSize.chip)
                         .background(
                             RoundedRectangle(cornerRadius: Theme.cornerRadius)
                                 .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
@@ -223,7 +223,7 @@ struct OnboardingView: View {
                 .minimumScaleFactor(Theme.Interaction.chipLabelMinimumScale)
                 .foregroundStyle(isSelected ? palette.textOnAccent : palette.text)
                 .padding(.horizontal, Theme.Spacing.s)
-                .frame(height: Theme.ControlSize.chip)
+                .frame(minHeight: Theme.ControlSize.chip)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
                         .fill(isSelected ? palette.accent : Color.clear)
@@ -254,7 +254,7 @@ struct OnboardingView: View {
                     .font(Theme.Font.headline.font)
                     .foregroundStyle(palette.textOnAccent)
                     .frame(maxWidth: .infinity)
-                    .frame(height: Theme.ControlSize.button)
+                    .frame(minHeight: Theme.ControlSize.button)
                     .background(
                         RoundedRectangle(cornerRadius: Theme.cornerRadius)
                             .fill(palette.accent)

@@ -28,6 +28,58 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
         try walkthrough(colorScheme: "dark")
     }
 
+    /// The largest accessibility text size, which is where layouts actually
+    /// break. Screenshots only — it stops after the first few screens rather
+    /// than repeating the whole flow, because the point is to see whether
+    /// text fits, and a third full pass would add ~3 minutes to every run for
+    /// screens whose behaviour is already covered twice.
+    func testLargestDynamicTypeLayout() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-UITEST_RESET_STATE",
+            // The documented override for driving Dynamic Type from a UI
+            // test without going through Settings.
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+        ]
+        app.launchEnvironment["UITEST_COLOR_SCHEME"] = "light"
+        app.launch()
+
+        let scheme = "ax5"
+        do {
+            try waitAndCapture(app, "ax-01-onboarding-pitch", scheme: scheme, identifier: "onboarding.primary")
+            try tap(app, "onboarding.primary", scheme: scheme, step: "ax-01-onboarding-pitch")
+
+            try waitAndCapture(app, "ax-02-onboarding-interests", scheme: scheme, identifier: "onboarding.chip.History")
+            try tap(app, "onboarding.chip.History", scheme: scheme, step: "ax-02-onboarding-interests")
+            try tap(app, "onboarding.primary", scheme: scheme, step: "ax-02-onboarding-interests")
+            try tap(app, "onboarding.skip", scheme: scheme, step: "ax-03-skip-work")
+            try tap(app, "onboarding.skip", scheme: scheme, step: "ax-04-skip-gaps")
+            try tap(app, "onboarding.primary", scheme: scheme, step: "ax-05-notifications")
+
+            // Home is the screen this test exists for: at AX5 the circles are
+            // replaced by full-width rows, since two 160pt circles already
+            // fill the screen and can't grow.
+            try waitAndCapture(app, "ax-06-home", scheme: scheme, identifier: "home.circle.thirty")
+            try tap(app, "recall.option.Wind alone", scheme: scheme, step: "ax-06-home-recall")
+            try waitAndCapture(app, "ax-06a-recall-revealed", scheme: scheme, identifier: "recall.viewLesson")
+            try tap(app, "recall.dismiss", scheme: scheme, step: "ax-06a-recall-revealed")
+
+            // The paywall is dense and full of derived copy, so it's the
+            // other likely overflow.
+            try tap(app, "home.circle.thirty", scheme: scheme, step: "ax-06-home")
+            try waitAndCapture(app, "ax-07-paywall", scheme: scheme, identifier: "paywall.buy")
+            try tap(app, "paywall.close", scheme: scheme, step: "ax-07-paywall")
+
+            try waitAndCapture(app, "ax-08-home-settings", scheme: scheme, identifier: "home.settingsButton")
+            try tap(app, "home.settingsButton", scheme: scheme, step: "ax-08-home-settings")
+            try waitAndCapture(app, "ax-09-settings", scheme: scheme, identifier: "settings.apiKeyField")
+        } catch {
+            attachFailureDiagnostics(app, scheme: scheme)
+            throw error
+        }
+    }
+
     // MARK: - Walkthrough
 
     private func walkthrough(colorScheme: String) throws {

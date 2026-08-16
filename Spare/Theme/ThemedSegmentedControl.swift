@@ -26,7 +26,7 @@ struct ThemedSegmentedControl<Option: Identifiable & Hashable>: View {
                         .lineLimit(1)
                         .minimumScaleFactor(Theme.Interaction.chipLabelMinimumScale)
                         .frame(maxWidth: .infinity)
-                        .frame(height: Theme.ControlSize.chip)
+                        .frame(minHeight: Theme.ControlSize.chip)
                         .background(
                             RoundedRectangle(cornerRadius: segmentRadius)
                                 .fill(isSelected ? palette.accent : Color.clear)

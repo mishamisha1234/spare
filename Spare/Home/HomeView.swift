@@ -19,6 +19,7 @@ struct HomeView: View {
     private var lessons: [StoredLesson]
     @EnvironmentObject private var entitlements: EntitlementService
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     /// Pinned once per session the first time Home appears, then held
     /// through answering and dismissal regardless of how `dueAt` changes
@@ -95,9 +96,23 @@ struct HomeView: View {
                 .padding(.bottom, Theme.Spacing.m)
             }
 
-            VStack(spacing: Theme.Spacing.m) {
-                row(Self.topRow)
-                row(Self.bottomRow)
+            // At accessibility text sizes the circles stop working: two 160pt
+            // circles plus their gap already fill a 402pt screen, so there is
+            // no room to grow them, and holding the size fixed while the type
+            // doubles just truncates the labels. Size-as-meaning cannot
+            // survive that, and a legible list beats an illegible diagram —
+            // so the same four options become full-width rows.
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: Theme.Spacing.xs) {
+                    ForEach(TimeWindow.allCases) { window in
+                        durationRow(window)
+                    }
+                }
+            } else {
+                VStack(spacing: Theme.Spacing.m) {
+                    row(Self.topRow)
+                    row(Self.bottomRow)
+                }
             }
 
             // Uncapped: absorbs the rest of the screen below the group so the
@@ -143,6 +158,81 @@ struct HomeView: View {
             scrollProgress: course.scrollProgress,
             chapterCount: window.format.chapterCount
         )
+    }
+
+    /// The accessibility-size form of a duration circle. Same identifier and
+    /// same spoken label, so VoiceOver and the UI tests see no difference —
+    /// only the visual arrangement changes.
+    private func durationRow(_ window: TimeWindow) -> some View {
+        let isLocked = entitlements.isWindowLocked(window)
+        let resumeIndex = resumeChapter(for: window)
+        let isAnchor = window.format.isChaptered
+
+        return Button {
+            if let resumeIndex, let course = resumableCourse {
+                onResumeCourse(course.id, resumeIndex)
+            } else {
+                onSelect(window)
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
+                Text(rowTitle(window, resumeIndex: resumeIndex))
+                    .font(Theme.Font.title.font)
+                    .foregroundStyle(isAnchor ? palette.textOnAccent : palette.text)
+                if let subtitle = rowSubtitle(window, resumeIndex: resumeIndex) {
+                    Text(subtitle)
+                        .font(Theme.Font.label.font)
+                        .foregroundStyle(isAnchor ? palette.textOnAccent : palette.secondaryText)
+                }
+            }
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .opacity(isLocked ? Theme.Interaction.lockedContentOpacity : 1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(Theme.Spacing.s)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.cornerRadius)
+                    .fill(isAnchor ? palette.accent : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.cornerRadius)
+                    .strokeBorder(
+                        isAnchor && !isLocked ? Color.clear : palette.border,
+                        style: StrokeStyle(
+                            lineWidth: Theme.borderWidth,
+                            dash: isLocked ? Theme.lockedDash : []
+                        )
+                    )
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("home.circle.\(window.rawValue)")
+        .accessibilityLabel(accessibilityText(window, isLocked: isLocked, resumeIndex: resumeIndex))
+    }
+
+    private func rowTitle(_ window: TimeWindow, resumeIndex: Int?) -> String {
+        guard let resumeIndex else { return window.circleTitle }
+        return CourseProgress.positionLabel(
+            chapterIndex: resumeIndex, chapterCount: window.format.chapterCount
+        )
+    }
+
+    private func rowSubtitle(_ window: TimeWindow, resumeIndex: Int?) -> String? {
+        resumeIndex == nil ? window.circleSubtitle : "Continue"
+    }
+
+    private func accessibilityText(_ window: TimeWindow, isLocked: Bool, resumeIndex: Int?) -> String {
+        if let resumeIndex {
+            let position = CourseProgress.positionLabel(
+                chapterIndex: resumeIndex, chapterCount: window.format.chapterCount
+            )
+            return "Course, \(position), continue"
+        }
+        var text = window.circleSubtitle.map { "\(window.circleTitle), \($0)" }
+            ?? "\(window.circleTitle), \(window.format.displayName)"
+        if isLocked { text += ", Premium" }
+        return text
     }
 
     private func row(_ windows: [TimeWindow]) -> some View {

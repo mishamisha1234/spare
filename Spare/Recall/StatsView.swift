@@ -134,7 +134,7 @@ struct StatsView: View {
                 .font(Theme.Font.headline.font)
                 .foregroundStyle(palette.text)
                 .frame(maxWidth: .infinity)
-                .frame(height: Theme.ControlSize.button)
+                .frame(minHeight: Theme.ControlSize.button)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
                         .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
@@ -195,7 +195,15 @@ private struct ShareCardPreview: View {
 
     @MainActor
     private func render() {
-        let renderer = ImageRenderer(content: ShareCardView(data: data))
+        // Pinned to a fixed type size on purpose. The share card is a
+        // fixed 9:16 artifact meant to leave the app, not a screen being
+        // read — letting it inherit an accessibility text size would
+        // overflow the four hero titles out of a bitmap nobody can scroll.
+        // The reader's own text-size preference still governs every actual
+        // screen, including this preview's surrounding chrome.
+        let renderer = ImageRenderer(
+            content: ShareCardView(data: data).environment(\.dynamicTypeSize, .large)
+        )
         renderer.scale = displayScale
         renderedImage = renderer.uiImage
     }

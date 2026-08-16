@@ -147,7 +147,7 @@ struct PostLessonTestView: View {
                 .font(Theme.Font.headline.font)
                 .foregroundStyle(palette.text)
                 .frame(maxWidth: .infinity)
-                .frame(height: Theme.ControlSize.button)
+                .frame(minHeight: Theme.ControlSize.button)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
                         .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
