@@ -36,6 +36,10 @@ struct RootView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityIdentifier("home.settingsButton")
+                                // Without this VoiceOver reads the SF Symbol
+                                // name — confirmed in a CI tree dump, which
+                                // showed label: 'gearshape'.
+                                .accessibilityLabel("Settings")
                             }
                             ToolbarItem(placement: .topBarTrailing) {
                                 Button {
@@ -45,6 +49,7 @@ struct RootView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityIdentifier("home.libraryButton")
+                                .accessibilityLabel("Library")
                             }
                         }
                         .navigationDestination(for: AppRoute.self) { route in

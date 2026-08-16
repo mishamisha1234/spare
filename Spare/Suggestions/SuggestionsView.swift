@@ -58,6 +58,7 @@ struct SuggestionsView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(palette.text)
                 .accessibilityIdentifier("suggestions.shuffle")
+                .accessibilityLabel("Shuffle suggestions")
             }
         }
         .task { await viewModel.loadCacheThenRefresh() }

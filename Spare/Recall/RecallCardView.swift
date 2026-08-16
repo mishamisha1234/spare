@@ -100,6 +100,7 @@ struct RecallCardView: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("recall.dismiss")
+            .accessibilityLabel("Dismiss question")
         }
     }
 

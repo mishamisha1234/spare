@@ -52,12 +52,23 @@ enum Theme {
         var textOnAccent: Color
     }
 
+    // Contrast, measured rather than eyeballed. Every pair below that carries
+    // text at body size clears WCAG AA (4.5:1); see `ThemeContrastTests`,
+    // which recomputes the ratios so a future palette tweak can't quietly
+    // drop one below the line.
+    //
+    // The light accent was 0xC87F2E and the light secondary 0x8A837A. Both
+    // measured ~3.0-3.5:1 against the background — fine for a large numeral,
+    // not fine for the 13pt subtitle on the course circle or a 15pt "View the
+    // lesson" link, which is exactly where they were being used. Darkened
+    // along the same hue until they clear 4.5. Dark mode already passed
+    // everywhere and is unchanged.
     private static let light = Palette(
         background: Color(hex: 0xFAF8F5),
         text: Color(hex: 0x1A1A1A),
-        secondaryText: Color(hex: 0x8A837A),
+        secondaryText: Color(hex: 0x78716A),
         border: Color(hex: 0xD8D2C8),
-        accent: Color(hex: 0xC87F2E),
+        accent: Color(hex: 0xA06525),
         textOnAccent: Color(hex: 0xFAF8F5)
     )
 
@@ -69,6 +80,22 @@ enum Theme {
         accent: Color(hex: 0xD9924A),
         textOnAccent: Color(hex: 0x17150F)
     )
+
+    /// The raw palette values, for the contrast test. Exposed as plain
+    /// integers because `Color` gives no portable way back to components.
+    enum Hex {
+        static let lightBackground: UInt32 = 0xFAF8F5
+        static let lightText: UInt32 = 0x1A1A1A
+        static let lightSecondaryText: UInt32 = 0x78716A
+        static let lightAccent: UInt32 = 0xA06525
+        static let lightTextOnAccent: UInt32 = 0xFAF8F5
+
+        static let darkBackground: UInt32 = 0x111110
+        static let darkText: UInt32 = 0xE8E6E1
+        static let darkSecondaryText: UInt32 = 0x8F8A80
+        static let darkAccent: UInt32 = 0xD9924A
+        static let darkTextOnAccent: UInt32 = 0x17150F
+    }
 
     /// Resolve the palette for a concrete `ColorScheme` (from the environment).
     /// The accent color is never shared between modes — read it through here,
