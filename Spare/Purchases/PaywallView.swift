@@ -64,7 +64,11 @@ struct PaywallView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("paywall.headline")
 
-            Text("Premium removes the daily limit, unlocks every length, keeps your whole library, and adds the post-lesson test.")
+            // States the mini-course cap. Selling "unlocks every length"
+            // while Settings shows "11 of 12 mini-courses left this month" is
+            // a limit disclosed only after purchase — an App Review problem
+            // before it is a copy problem.
+            Text("Premium unlocks every length, keeps your whole library, adds the post-lesson test, and gives you \(EntitlementRules.premiumMiniCoursesPerMonth) mini-courses a month. Shorter lessons are unlimited.")
                 .font(Theme.Font.label.font)
                 .foregroundStyle(palette.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -98,7 +102,14 @@ struct PaywallView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityIdentifier("paywall.optionsUnavailable")
         } else {
-            VStack(spacing: Theme.Spacing.xs) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                // What they'd be giving up, visible without leaving the sheet.
+                Text("Free gives you the 3- and 10-minute lengths, one lesson a day, and your last \(EntitlementRules.freeLibraryLimit) library entries.")
+                    .font(Theme.Font.label.font)
+                    .foregroundStyle(palette.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, Theme.Spacing.xxs)
+
                 ForEach(entitlements.products) { product in
                     optionRow(product)
                 }
@@ -135,7 +146,7 @@ struct PaywallView: View {
             .background(
                 RoundedRectangle(cornerRadius: Theme.cornerRadius)
                     .strokeBorder(
-                        isSelected ? palette.accent : palette.border,
+                        isSelected ? palette.accent : palette.borderInteractive,
                         lineWidth: Theme.borderWidth
                     )
             )
@@ -176,6 +187,21 @@ struct PaywallView: View {
         return "\(symbol)\(String(format: "%.2f", number))"
     }
 
+    /// Names the plan and its price rather than saying "Continue" — the
+    /// reader should know what they are about to be charged before the
+    /// system sheet appears, not after.
+    private var purchaseButtonTitle: String {
+        if entitlements.isPurchasing { return "Working…" }
+        guard let product = entitlements.products.first(where: { $0.kind == selected }) else {
+            return "Continue"
+        }
+        switch product.kind {
+        case .monthly: return "Continue — \(product.displayPrice) a month"
+        case .yearly: return "Continue — \(product.displayPrice) a year"
+        case .lifetime: return "Continue — \(product.displayPrice) once"
+        }
+    }
+
     // MARK: - Footer
 
     private var footer: some View {
@@ -183,7 +209,7 @@ struct PaywallView: View {
             Button {
                 Task { await entitlements.purchase(selected) }
             } label: {
-                Text(entitlements.isPurchasing ? "Working…" : "Continue")
+                Text(purchaseButtonTitle)
                     .font(Theme.Font.headline.font)
                     .foregroundStyle(palette.textOnAccent)
                     .frame(maxWidth: .infinity)

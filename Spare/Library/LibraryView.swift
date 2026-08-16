@@ -191,7 +191,7 @@ struct LibraryView: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                        .strokeBorder(isSelected ? Color.clear : palette.border, lineWidth: Theme.borderWidth)
+                        .strokeBorder(isSelected ? Color.clear : palette.borderInteractive, lineWidth: Theme.borderWidth)
                 )
         }
         .buttonStyle(.plain)

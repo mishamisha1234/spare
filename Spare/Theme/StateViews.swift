@@ -81,7 +81,7 @@ struct ErrorStateView: View {
                 .frame(minHeight: Theme.ControlSize.button)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                        .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
+                        .strokeBorder(palette.borderInteractive, lineWidth: Theme.borderWidth)
                 )
                 .contentShape(Rectangle())
         }

@@ -38,7 +38,7 @@ struct ThemedSegmentedControl<Option: Identifiable & Hashable>: View {
         .padding(Theme.borderWidth)
         .background(
             RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
+                .strokeBorder(palette.borderInteractive, lineWidth: Theme.borderWidth)
         )
     }
 }

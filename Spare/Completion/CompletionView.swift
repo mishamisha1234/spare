@@ -53,13 +53,22 @@ struct CompletionView: View {
                         Text(lesson.title)
                             .font(Theme.Font.title.font)
                             .foregroundStyle(palette.text)
+
+                        if isMarkedComplete {
+                            Text("Saved to your library")
+                                .font(Theme.Font.label.font)
+                                .foregroundStyle(palette.secondaryText)
+                                .accessibilityIdentifier("completion.saved")
+                        }
                     }
 
                     VStack(spacing: Theme.Spacing.s) {
-                        primaryButton(
-                            title: isMarkedComplete ? "Marked complete" : "Mark complete",
-                            isDisabled: isMarkedComplete
-                        ) {
+                        // Once complete, the button goes entirely rather than
+                        // sitting there disabled. A dead grey box was the
+                        // heaviest element on the screen and nothing on it
+                        // was the primary action.
+                        if !isMarkedComplete {
+                            primaryButton(title: "Mark complete", isDisabled: false) {
                             let alreadyCompleted = lesson.completedAt != nil
                             viewModel.markComplete(lesson)
                             isMarkedComplete = true
@@ -69,8 +78,9 @@ struct CompletionView: View {
                             if !alreadyCompleted {
                                 awardCompletionPoints(for: lesson)
                             }
+                            }
+                            .accessibilityIdentifier("completion.markComplete")
                         }
-                        .accessibilityIdentifier("completion.markComplete")
 
                         // Both premium actions stay visible when locked, with
                         // the lock shown rather than the row hidden: a
@@ -91,6 +101,11 @@ struct CompletionView: View {
                             action: onTakeTest
                         )
 
+                        if isMarkedComplete {
+                            primaryButton(title: "Return home", isDisabled: false, action: onReturnHome)
+                                .accessibilityIdentifier("completion.returnHome")
+                        }
+
                         if isChoosingAngle {
                             VStack(spacing: Theme.Spacing.xs) {
                                 ForEach(lesson.angles) { angle in
@@ -105,7 +120,7 @@ struct CompletionView: View {
                                             .frame(minHeight: Theme.ControlSize.optionRow)
                                             .background(
                                                 RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                                                    .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
+                                                    .strokeBorder(palette.borderInteractive, lineWidth: Theme.borderWidth)
                                             )
                                             // A stroke only draws pixels along the border, so
                                             // without this the row's interior — everything past
@@ -120,8 +135,13 @@ struct CompletionView: View {
                             }
                         }
 
-                        secondaryButton(title: "Return home", action: onReturnHome)
-                            .accessibilityIdentifier("completion.returnHome")
+                        // Secondary only while the lesson is unfinished; once
+                        // marked complete it is promoted to the accent-filled
+                        // primary above.
+                        if !isMarkedComplete {
+                            secondaryButton(title: "Return home", action: onReturnHome)
+                                .accessibilityIdentifier("completion.returnHome")
+                        }
                     }
                 } else {
                     ProgressView().tint(palette.accent)
@@ -178,11 +198,14 @@ struct CompletionView: View {
             }
         } label: {
             HStack(spacing: Theme.Spacing.xs) {
+                // Full text colour even when locked: at secondary these read
+                // as broken rather than gated, and two of four rows were
+                // near-invisible.
                 Text(title)
                     .font(Theme.Font.headline.font)
-                    .foregroundStyle(isLocked ? palette.secondaryText : palette.text)
+                    .foregroundStyle(palette.text)
                 if isLocked {
-                    Image(systemName: "lock")
+                    Image(systemName: "lock.fill")
                         .font(Theme.Font.caption.font)
                         .foregroundStyle(palette.secondaryText)
                 }
@@ -191,7 +214,7 @@ struct CompletionView: View {
             .frame(minHeight: Theme.ControlSize.button)
             .background(
                 RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                    .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
+                    .strokeBorder(palette.borderInteractive, lineWidth: Theme.borderWidth)
             )
             .contentShape(Rectangle())
         }
@@ -218,7 +241,7 @@ struct CompletionView: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
                         .strokeBorder(
-                            isDisabled ? palette.border : Color.clear,
+                            isDisabled ? palette.borderInteractive : Color.clear,
                             lineWidth: Theme.borderWidth
                         )
                 )
@@ -236,7 +259,7 @@ struct CompletionView: View {
                 .frame(minHeight: Theme.ControlSize.button)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                        .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
+                        .strokeBorder(palette.borderInteractive, lineWidth: Theme.borderWidth)
                 )
         }
         .buttonStyle(.plain)

@@ -40,8 +40,9 @@ struct StatsView: View {
     }
 
     private var totalPoints: Int { PointsSummary.total(events) }
-    private var level: Int { Level.level(forPoints: totalPoints) }
-    private var progress: Double { Level.progressToNextLevel(forPoints: totalPoints) }
+    private var minutesRead: Int {
+        completedLessons.reduce(0) { $0 + $1.window.minutes }
+    }
 
     private var librarySnapshot: LibrarySnapshot {
         LibrarySnapshot(
@@ -57,7 +58,7 @@ struct StatsView: View {
 
     private var shareData: ShareCardData {
         ShareCardData(
-            lessons: completedLessons.map { ($0.title, $0.topicTag, $0.generatedAt) },
+            lessons: completedLessons.map { ($0.title, $0.topicTag, $0.window.minutes, $0.generatedAt) },
             events: events
         )
     }
@@ -65,7 +66,7 @@ struct StatsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-                pointsSection
+                statsSection
                 if !achievements.isEmpty {
                     achievementsSection
                 }
@@ -83,28 +84,35 @@ struct StatsView: View {
         // No container-level accessibilityIdentifier: see OnboardingView.
     }
 
-    private var pointsSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            Text("Level \(level)")
-                .font(Theme.Font.largeTitle.font)
-                .foregroundStyle(palette.text)
-                .accessibilityIdentifier("stats.level")
+    /// Four plain lines. No level badge, no filling bar.
+    ///
+    /// Those were the "cartoons as reward" the brief rules out, and they
+    /// shouldn't have been built — the underlying figures are fine, and are
+    /// the same four the share card already computes.
+    private var statsSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+            statLine(value: "\(shareData.totalThings)", label: "things known", id: "stats.thingsKnown")
+            statLine(value: "\(shareData.fieldsCovered)", label: "fields explored", id: "stats.fields")
+            statLine(value: "\(minutesRead)", label: "minutes read", id: "stats.minutes")
+            statLine(
+                value: shareData.recallPercent.map { "\($0)%" } ?? "—",
+                label: "recall",
+                id: "stats.recall"
+            )
+        }
+    }
 
-            Text("\(totalPoints) points")
+    private func statLine(value: String, label: String, id: String) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
+            Text(value)
+                .font(Theme.Font.statValue.font)
+                .foregroundStyle(palette.text)
+            Text(label)
                 .font(Theme.Font.label.font)
                 .foregroundStyle(palette.secondaryText)
-                .accessibilityIdentifier("stats.points")
-
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(palette.border)
-                    Capsule()
-                        .fill(palette.accent)
-                        .frame(width: geometry.size.width * progress)
-                }
-            }
-            .frame(height: Theme.ControlSize.progressBar)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(id)
     }
 
     private var achievementsSection: some View {
@@ -132,12 +140,12 @@ struct StatsView: View {
         } label: {
             Text("Share")
                 .font(Theme.Font.headline.font)
-                .foregroundStyle(palette.text)
+                .foregroundStyle(palette.textOnAccent)
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: Theme.ControlSize.button)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                        .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
+                        .fill(palette.accent)
                 )
         }
         .buttonStyle(.plain)

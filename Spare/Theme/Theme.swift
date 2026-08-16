@@ -47,11 +47,29 @@ enum Theme {
         var background: Color
         var text: Color
         var secondaryText: Color
+        /// Decorative separators only: hairlines between rows, the share
+        /// card's rule. Below the 3:1 needed for a control edge.
         var border: Color
+        /// The edge of anything tappable — circle strokes, option cards,
+        /// outline buttons, chips, text fields. Clears 3:1 against the
+        /// background, which `border` does not.
+        var borderInteractive: Color
         var accent: Color
         var textOnAccent: Color
     }
 
+    // The review proposed flipping `light.textOnAccent` to #1A1A1A, citing
+    // 3.08:1 for near-white on the accent. That was measured against the
+    // pre-Phase-6 accent (#C87F2E); the accent has since been darkened to
+    // #A06525 and near-white on it is 4.52:1, which already passes.
+    //
+    // Applying the flip on top of the current accent would give 3.63:1 —
+    // worse than what is there now. And the two requirements cannot both be
+    // met by one accent: dark ink on accent needs luminance >= 0.223, accent
+    // as text on the background needs <= 0.172. One colour cannot do both,
+    // so the choice is which side to satisfy, and the current palette
+    // satisfies both at 4.52 by keeping the ink light and the accent dark.
+    //
     // Contrast, measured rather than eyeballed. Every pair below that carries
     // text at body size clears WCAG AA (4.5:1); see `ThemeContrastTests`,
     // which recomputes the ratios so a future palette tweak can't quietly
@@ -66,9 +84,11 @@ enum Theme {
     private static let light = Palette(
         background: Color(hex: 0xFAF8F5),
         text: Color(hex: 0x1A1A1A),
-        secondaryText: Color(hex: 0x78716A),
+        secondaryText: Color(hex: 0x767065),
         border: Color(hex: 0xD8D2C8),
+        borderInteractive: Color(hex: 0x988F84),
         accent: Color(hex: 0xA06525),
+        // Stays near-white, against the review's advice — see below.
         textOnAccent: Color(hex: 0xFAF8F5)
     )
 
@@ -77,6 +97,7 @@ enum Theme {
         text: Color(hex: 0xE8E6E1),
         secondaryText: Color(hex: 0x8F8A80),
         border: Color(hex: 0x3A3833),
+        borderInteractive: Color(hex: 0x656055),
         accent: Color(hex: 0xD9924A),
         textOnAccent: Color(hex: 0x17150F)
     )
@@ -86,13 +107,17 @@ enum Theme {
     enum Hex {
         static let lightBackground: UInt32 = 0xFAF8F5
         static let lightText: UInt32 = 0x1A1A1A
-        static let lightSecondaryText: UInt32 = 0x78716A
+        static let lightSecondaryText: UInt32 = 0x767065
+        static let lightBorder: UInt32 = 0xD8D2C8
+        static let lightBorderInteractive: UInt32 = 0x988F84
         static let lightAccent: UInt32 = 0xA06525
         static let lightTextOnAccent: UInt32 = 0xFAF8F5
 
         static let darkBackground: UInt32 = 0x111110
         static let darkText: UInt32 = 0xE8E6E1
         static let darkSecondaryText: UInt32 = 0x8F8A80
+        static let darkBorder: UInt32 = 0x3A3833
+        static let darkBorderInteractive: UInt32 = 0x656055
         static let darkAccent: UInt32 = 0xD9924A
         static let darkTextOnAccent: UInt32 = 0x17150F
     }
@@ -128,6 +153,9 @@ enum Theme {
         /// A small label sitting above a title — e.g. a suggestion's domain
         /// tag. Meant to outrank the title it sits over, not recede.
         case eyebrow
+        /// A figure on the Stats screen: large enough to be the thing you
+        /// read first, without a badge around it.
+        case statValue
         /// The share card's hero lesson titles: the serif at display size,
         /// since the titles are the entire point of that graphic.
         case shareHero
@@ -153,6 +181,8 @@ enum Theme {
                 return .system(size: 13, weight: .medium, design: .default)
             case .eyebrow:
                 return .system(size: 11, weight: .semibold, design: .default)
+            case .statValue:
+                return .system(size: 28, weight: .regular, design: .default)
             case .shareHero:
                 return .system(size: 30, weight: .semibold, design: .serif)
             case .shareWordmark:
@@ -195,11 +225,13 @@ enum Theme {
             Theme.bodyLineSpacing * multiplier
         }
 
-        /// The Home circle label scales with its diameter — size still
-        /// carries the meaning, so the label must never overpower the shape.
-        static func circleLabel(diameter: CGFloat) -> SwiftUI.Font {
-            .system(size: max(12, diameter * 0.22), weight: .semibold, design: .default)
-        }
+        /// One size for every circle label.
+        ///
+        /// It used to scale with diameter, which made the 3-minute label tiny
+        /// and the course label large — a second, redundant encoding of the
+        /// same information the diameter already carries, and the reason the
+        /// two-line course label needed its own shrink factor.
+        static let circleLabel: SwiftUI.Font = .system(size: 22, weight: .medium, design: .default)
     }
 
     // MARK: - Spacing
@@ -210,6 +242,9 @@ enum Theme {
         static let xs: CGFloat = 8
         static let s: CGFloat = 16
         static let m: CGFloat = 24
+        /// Added step. 24 was too tight and 40 too loose for the circle-grid
+        /// row gutter, Settings group gaps, and the share-card stat block.
+        static let ml: CGFloat = 32
         static let l: CGFloat = 40
         static let xl: CGFloat = 64
     }
@@ -220,6 +255,10 @@ enum Theme {
     /// from spacing and hairline borders only.
     static let cornerRadius: CGFloat = 14
     static let borderWidth: CGFloat = 1
+
+    /// One shape for every chip. Onboarding topic chips and Library filter
+    /// chips were rendering as two different roundnesses.
+    static let pillRadius: CGFloat = .infinity
 
     /// Additive line spacing for body prose, in points.
     ///
@@ -325,19 +364,16 @@ enum Theme {
     /// Diameters for the four time windows, in ascending order. Size is the
     /// only thing that communicates duration on Home — nothing else may.
     enum CircleSize {
-        static let three: CGFloat = 80
-        static let ten: CGFloat = 110
+        // 15 -> 30 was a 1.21x step for a 2x duration difference, so size
+        // had stopped carrying the meaning at the top of the range and the
+        // accent fill was doing it instead.
+        static let three: CGFloat = 76
+        static let ten: CGFloat = 112
         static let fifteen: CGFloat = 132
-        static let thirty: CGFloat = 160
+        static let thirty: CGFloat = 172
 
         /// Minimum interactive area regardless of visual diameter.
         static let minimumTapTarget: CGFloat = 44
-
-        /// A course circle stacks a title over a subtitle, so its title is
-        /// sized against a notionally smaller circle to leave room for the
-        /// second line. Expressed as a factor of the diameter rather than a
-        /// fixed point size, so it keeps tracking the size scale.
-        static let stackedLabelScale: CGFloat = 0.62
 
         /// The visual diameter for a given window. The only place this
         /// mapping is allowed to exist.

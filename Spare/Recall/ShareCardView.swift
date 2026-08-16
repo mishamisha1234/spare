@@ -11,13 +11,30 @@ struct ShareCardData {
     var totalThings: Int
     var fieldsCovered: Int
     var recallPercent: Int?
+    var minutesRead: Int
+    var recallAnswerCount: Int
     var domainBars: [(domain: String, count: Int)]
 
-    init(lessons: [(title: String, domain: String, generatedAt: Date)], events: [PointEvent]) {
+    /// Recall is the claim this app is actually making, so the card keeps it
+    /// — but not at a sample size where one wrong answer reads as a verdict.
+    /// Below this it shows minutes read instead.
+    static let recallDisclosureFloor = 10
+
+    /// What the third stat should say right now.
+    var thirdStat: (value: String, label: String) {
+        guard recallAnswerCount >= Self.recallDisclosureFloor, let percent = recallPercent else {
+            return ("\(minutesRead)", "minutes read")
+        }
+        return ("\(percent)%", "recall")
+    }
+
+    init(lessons: [(title: String, domain: String, minutes: Int, generatedAt: Date)], events: [PointEvent]) {
         let sorted = lessons.sorted { $0.generatedAt > $1.generatedAt }
         heroTitles = Array(sorted.prefix(4).map(\.title))
         remainingCount = max(0, sorted.count - heroTitles.count)
         totalThings = lessons.count
+        minutesRead = lessons.reduce(0) { $0 + $1.minutes }
+        recallAnswerCount = PointsSummary.recallAttempts(events).count
 
         var counts: [String: Int] = [:]
         var order: [String] = []
@@ -73,8 +90,8 @@ struct ShareCardView: View {
                 stat(value: "\(data.totalThings)", label: "things known", color: palette.accent)
                 stat(value: "\(data.fieldsCovered)", label: "fields", color: palette.text)
                 stat(
-                    value: data.recallPercent.map { "\($0)%" } ?? "—",
-                    label: "recall",
+                    value: data.thirdStat.value,
+                    label: data.thirdStat.label,
                     color: palette.text
                 )
             }

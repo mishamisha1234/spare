@@ -75,7 +75,7 @@ struct RecallCardView: View {
         .padding(Theme.Spacing.m)
         .background(
             RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
+                .strokeBorder(palette.borderInteractive, lineWidth: Theme.borderWidth)
         )
         // No container-level accessibilityIdentifier: see OnboardingView —
         // confirmed to clobber every descendant's own identifier. This is
@@ -136,8 +136,8 @@ struct RecallCardView: View {
     }
 
     private func rowBorderColor(isCorrectOption: Bool) -> Color {
-        guard isRevealed else { return palette.border }
-        return isCorrectOption ? palette.accent : palette.border
+        guard isRevealed else { return palette.borderInteractive }
+        return isCorrectOption ? palette.accent : palette.borderInteractive
     }
 
     private func rowTextColor(isCorrectOption: Bool) -> Color {

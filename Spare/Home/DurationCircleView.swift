@@ -1,9 +1,12 @@
 import SwiftUI
 import SpareCore
 
-/// One tappable circle on Home. Diameter is the only thing that communicates
-/// duration — the course circle is additionally filled with the accent as
-/// the visual anchor for the whole screen.
+/// One tappable circle on Home.
+///
+/// Diameter carries the duration. The accent fill is reserved for a course
+/// actually in progress — it used to sit permanently on the 30-minute
+/// circle, which meant that for a free reader the loudest element on Home
+/// was a locked upsell wearing the primary-action colour.
 struct DurationCircleView: View {
     var window: TimeWindow
     /// Whether this *length* is behind Premium. Deliberately not "can't start
@@ -21,9 +24,11 @@ struct DurationCircleView: View {
     @Environment(\.colorScheme) private var colorScheme
     private var palette: Theme.Palette { Theme.palette(for: colorScheme) }
     private var diameter: CGFloat { Theme.CircleSize.diameter(for: window) }
-    private var isAnchor: Bool { window == .thirty }
-
     private var isResuming: Bool { resumeChapterIndex != nil }
+
+    /// Accent fill means "there is something here to come back to", not
+    /// "this is the longest option".
+    private var isFilled: Bool { isResuming }
 
     /// Courses get a second line ("30 min · 4 chapters"), or the resume
     /// position once one is underway. The single-sitting windows have
@@ -40,70 +45,58 @@ struct DurationCircleView: View {
         isResuming ? "Continue" : window.circleSubtitle
     }
 
-    /// The two-line course label needs to be smaller than a bare "3 min", or
-    /// it collides with the circle's edge. Derived from the same diameter
-    /// scale so it still tracks size rather than inventing a constant.
-    private var titleFont: SwiftUI.Font {
-        subtitle == nil
-            ? Theme.Font.circleLabel(diameter: diameter)
-            : Theme.Font.circleLabel(diameter: diameter * Theme.CircleSize.stackedLabelScale)
-    }
-
     /// The dashed ring has to sit on whatever is behind it. On the
     /// accent-filled anchor that means the on-accent colour; everywhere else
     /// the usual hairline.
-    private var lockedStrokeColor: Color {
-        isAnchor
-            ? palette.textOnAccent.opacity(lockedOpacity)
-            : palette.border
-    }
-
-    /// Text on the accent fill needs a gentler reduction than text on the
-    /// page background to read as equally recessive.
-    private var lockedOpacity: Double {
-        isAnchor
-            ? Theme.Interaction.lockedContentOpacityOnAccent
-            : Theme.Interaction.lockedContentOpacity
+    private var contentColor: Color {
+        isFilled ? palette.textOnAccent : palette.text
     }
 
     var body: some View {
         Button(action: action) {
-            ZStack {
-                // Fill is untouched by locking: the anchor stays the anchor.
-                Circle()
-                    .fill(isAnchor ? palette.accent : Color.clear)
-
-                if isLocked {
+            VStack(spacing: Theme.Spacing.xs) {
+                ZStack {
+                    Circle()
+                        .fill(isFilled ? palette.accent : Color.clear)
+                    // One stroke treatment for every state. Locked circles
+                    // used a dash, which read as a second kind of control
+                    // rather than as the same control unavailable.
                     Circle()
                         .strokeBorder(
-                            lockedStrokeColor,
-                            style: StrokeStyle(lineWidth: Theme.borderWidth, dash: Theme.lockedDash)
+                            isFilled ? Color.clear : palette.borderInteractive,
+                            lineWidth: Theme.borderWidth
                         )
-                } else {
-                    Circle()
-                        .strokeBorder(isAnchor ? Color.clear : palette.border, lineWidth: Theme.borderWidth)
-                }
 
-                VStack(spacing: Theme.Spacing.xxs) {
-                    Text(title)
-                        .font(titleFont)
-                        .foregroundStyle(isAnchor ? palette.textOnAccent : palette.text)
-                        .minimumScaleFactor(Theme.Interaction.circleLabelMinimumScale)
-                        .lineLimit(1)
-
-                    if let subtitle {
-                        Text(subtitle)
-                            .font(Theme.Font.caption.font)
-                            .foregroundStyle(isAnchor ? palette.textOnAccent : palette.secondaryText)
+                    VStack(spacing: Theme.Spacing.xxs) {
+                        Text(title)
+                            .font(Theme.Font.circleLabel)
+                            .foregroundStyle(contentColor)
                             .minimumScaleFactor(Theme.Interaction.circleLabelMinimumScale)
-                            .lineLimit(1)
+                            .lineLimit(2)
+
+                        if let subtitle {
+                            Text(subtitle)
+                                .font(Theme.Font.caption.font)
+                                .foregroundStyle(isFilled ? palette.textOnAccent : palette.secondaryText)
+                                .minimumScaleFactor(Theme.Interaction.circleLabelMinimumScale)
+                                .lineLimit(1)
+                        }
                     }
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, Theme.Spacing.xs)
                 }
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, Theme.Spacing.xs)
-                .opacity(isLocked ? lockedOpacity : 1)
+                .frame(width: diameter, height: diameter)
+
+                // The lock sits under the circle rather than inside it, so
+                // it never competes with the label for the circle's area and
+                // the state is legible before the tap.
+                if isLocked {
+                    Image(systemName: "lock.fill")
+                        .font(Theme.Font.caption.font)
+                        .foregroundStyle(palette.secondaryText)
+                        .accessibilityHidden(true)
+                }
             }
-            .frame(width: diameter, height: diameter)
             // Tap target never shrinks below the accessibility minimum, even
             // for the smallest circle.
             .frame(

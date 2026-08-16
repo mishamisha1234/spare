@@ -125,8 +125,8 @@ struct PostLessonTestView: View {
     }
 
     private func rowBorderColor(isCorrectOption: Bool) -> Color {
-        guard viewModel.isRevealed else { return palette.border }
-        return isCorrectOption ? palette.accent : palette.border
+        guard viewModel.isRevealed else { return palette.borderInteractive }
+        return isCorrectOption ? palette.accent : palette.borderInteractive
     }
 
     private func rowTextColor(isCorrectOption: Bool) -> Color {
@@ -155,7 +155,7 @@ struct PostLessonTestView: View {
                 .frame(minHeight: Theme.ControlSize.button)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                        .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
+                        .strokeBorder(palette.borderInteractive, lineWidth: Theme.borderWidth)
                 )
         }
         .buttonStyle(.plain)

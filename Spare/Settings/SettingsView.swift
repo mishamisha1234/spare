@@ -55,7 +55,12 @@ struct SettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.l) {
                 planSection
+                // Excluded from Release. Asking a consumer to paste a secret
+                // key is a review risk and a support burden; it exists for
+                // development and manual API verification only.
+                #if DEBUG
                 apiKeySection
+                #endif
                 readingSection
                 reminderSection
                 usageSection
@@ -105,13 +110,23 @@ struct SettingsView: View {
         }
     }
 
+    private var apiKeyStatusText: String {
+        if hasStoredKey {
+            return "A key is stored on this device. Lessons are generated live."
+        }
+        return entitlements.isPremium
+            ? "No developer key stored. Premium lessons are generated normally."
+            : "No key stored. The app runs on built-in sample lessons."
+    }
+
     // MARK: - API key
 
     private var apiKeySection: some View {
         section("Anthropic API key") {
-            Text(hasStoredKey
-                 ? "A key is stored on this device. Lessons are generated live."
-                 : "No key stored. The app runs on built-in sample lessons.")
+            // Was shown unconditionally, including to Premium subscribers,
+            // so a paying user was told the app "runs on built-in sample
+            // lessons" — which reads as the thing they paid for not working.
+            Text(apiKeyStatusText)
                 .font(Theme.Font.label.font)
                 .foregroundStyle(palette.secondaryText)
 
@@ -125,7 +140,7 @@ struct SettingsView: View {
                 .frame(minHeight: Theme.ControlSize.textField)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                        .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
+                        .strokeBorder(palette.borderInteractive, lineWidth: Theme.borderWidth)
                 )
                 .accessibilityIdentifier("settings.apiKeyField")
 
@@ -148,7 +163,7 @@ struct SettingsView: View {
                         .overlay(
                             RoundedRectangle(cornerRadius: Theme.cornerRadius)
                                 .strokeBorder(
-                                    keyEntry.isEmpty ? palette.border : Color.clear,
+                                    keyEntry.isEmpty ? palette.borderInteractive : Color.clear,
                                     lineWidth: Theme.borderWidth
                                 )
                         )
@@ -166,7 +181,7 @@ struct SettingsView: View {
                             .frame(minHeight: Theme.ControlSize.button)
                             .background(
                                 RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                                    .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
+                                    .strokeBorder(palette.borderInteractive, lineWidth: Theme.borderWidth)
                             )
                     }
                     .buttonStyle(.plain)

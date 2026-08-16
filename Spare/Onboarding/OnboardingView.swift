@@ -105,7 +105,7 @@ struct OnboardingView: View {
                     .frame(minHeight: Theme.ControlSize.textField)
                     .background(
                         RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                            .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
+                            .strokeBorder(palette.borderInteractive, lineWidth: Theme.borderWidth)
                     )
                     .onSubmit(addCustomInterest)
                     .accessibilityIdentifier("onboarding.customInterest")
@@ -131,7 +131,7 @@ struct OnboardingView: View {
                 .frame(minHeight: Theme.ControlSize.textField)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                        .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
+                        .strokeBorder(palette.borderInteractive, lineWidth: Theme.borderWidth)
                 )
                 .accessibilityIdentifier("onboarding.work")
         }
@@ -153,7 +153,7 @@ struct OnboardingView: View {
                     .frame(minHeight: Theme.ControlSize.textField)
                     .background(
                         RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                            .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
+                            .strokeBorder(palette.borderInteractive, lineWidth: Theme.borderWidth)
                     )
                     .onSubmit(addCuriosityGap)
                     .accessibilityIdentifier("onboarding.curiosityGapEntry")
@@ -185,7 +185,7 @@ struct OnboardingView: View {
                         .frame(minHeight: Theme.ControlSize.chip)
                         .background(
                             RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                                .strokeBorder(palette.border, lineWidth: Theme.borderWidth)
+                                .strokeBorder(palette.borderInteractive, lineWidth: Theme.borderWidth)
                         )
                     }
                 }
@@ -230,7 +230,7 @@ struct OnboardingView: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                        .strokeBorder(isSelected ? Color.clear : palette.border, lineWidth: Theme.borderWidth)
+                        .strokeBorder(isSelected ? Color.clear : palette.borderInteractive, lineWidth: Theme.borderWidth)
                 )
         }
         .buttonStyle(.plain)

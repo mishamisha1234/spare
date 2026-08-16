@@ -78,6 +78,45 @@ final class ThemeContrastTests: XCTestCase {
         assertAA(Theme.Hex.darkSecondaryText, on: Theme.Hex.darkBackground, "dark secondary on background")
     }
 
+    // MARK: - Non-text UI
+
+    /// WCAG's threshold for the boundary of a control, which is lower than
+    /// for text but not absent — a 1.4:1 edge is not a visible affordance.
+    private let uiMinimum = 3.0
+
+    private func assertUI(
+        _ foreground: UInt32,
+        on background: UInt32,
+        _ what: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let ratio = contrast(foreground, background)
+        XCTAssertGreaterThanOrEqual(
+            ratio, uiMinimum,
+            String(format: "%@ is %.2f:1, below the %.1f:1 needed for a control edge", what, ratio, uiMinimum),
+            file: file, line: line
+        )
+    }
+
+    func testInteractiveBordersAreVisibleInBothModes() {
+        assertUI(Theme.Hex.lightBorderInteractive, on: Theme.Hex.lightBackground, "light interactive border")
+        assertUI(Theme.Hex.darkBorderInteractive, on: Theme.Hex.darkBackground, "dark interactive border")
+    }
+
+    /// The decorative `border` is deliberately *not* held to 3:1 — it
+    /// separates rows rather than bounding controls. This asserts the two
+    /// are actually different, so a later edit can't collapse them and
+    /// silently make every control edge invisible again.
+    func testDecorativeAndInteractiveBordersAreDistinct() {
+        XCTAssertNotEqual(Theme.Hex.lightBorder, Theme.Hex.lightBorderInteractive)
+        XCTAssertNotEqual(Theme.Hex.darkBorder, Theme.Hex.darkBorderInteractive)
+        XCTAssertGreaterThan(
+            contrast(Theme.Hex.lightBorderInteractive, Theme.Hex.lightBackground),
+            contrast(Theme.Hex.lightBorder, Theme.Hex.lightBackground)
+        )
+    }
+
     // MARK: - The maths itself
 
     /// Guards the helper, so a broken formula can't quietly pass everything.
