@@ -279,7 +279,13 @@ public struct MockProvider: LessonProvider {
         // means the fill has to stop *before* it would cross the ceiling
         // rather than after. Appending first and checking afterwards is what
         // pushed a 1,600-word chapter to 1,621.
-        let ceiling = maximumWords ?? Int.max
+        // The reflection prompt is appended after the fill loop, so its
+        // words have to be reserved before it — otherwise the loop fills to
+        // the ceiling and the reflection then pushes the chapter past it,
+        // which is how 1,600 became 1,602.
+        let reflection = "*Where in \(topic.title.lowercased()) have you already seen this and not noticed?*"
+        let reservedForReflection = trailingReflection ? reflection.lessonWordCount : 0
+        let ceiling = (maximumWords ?? Int.max) - reservedForReflection
         while words < targetWords {
             // A section break every fourth paragraph for sectioned, unchaptered
             // formats.
@@ -298,7 +304,6 @@ public struct MockProvider: LessonProvider {
         }
 
         if trailingReflection {
-            let reflection = "*Where on your own daily route do you cross something engineered to move?*"
             parts.append(reflection)
         }
 
