@@ -237,7 +237,7 @@ public enum Prompts {
         """
 
     // ─────────────────────────────────────────────────────────────────────────
-    // MARK: - COURSE OUTLINE SYSTEM PROMPT  (stable · cached · 45-minute only)
+    // MARK: - COURSE OUTLINE SYSTEM PROMPT  (stable · cached · chaptered only)
     // ─────────────────────────────────────────────────────────────────────────
 
     public static let outlineSystemPrompt: String = """

@@ -23,14 +23,14 @@ final class PointsLedgerTests: XCTestCase {
         XCTAssertEqual(Points.forCompleting(.three), 10)
         XCTAssertEqual(Points.forCompleting(.ten), 20)
         XCTAssertEqual(Points.forCompleting(.fifteen), 30)
-        XCTAssertEqual(Points.forCompleting(.fortyFive), 60)
+        XCTAssertEqual(Points.forCompleting(.thirty), 60)
     }
 
     func testCorrectRecallIsFlatRegardlessOfSourceLength() {
         // The whole design point: retention is worth the same no matter what
         // it's retention *of*.
         XCTAssertEqual(Points.forCorrectRecall, 30)
-        XCTAssertGreaterThanOrEqual(Points.forCorrectRecall, Points.forCompleting(.fortyFive) / 2)
+        XCTAssertGreaterThanOrEqual(Points.forCorrectRecall, Points.forCompleting(.thirty) / 2)
     }
 
     func testIncorrectRecallEarnsNothing() {

@@ -142,12 +142,12 @@ enum HTTPFixtures {
         """
     }
 
-    static func outlineJSON(chapterCount: Int = 6) -> String {
+    static func outlineJSON(chapterCount: Int = TimeWindow.thirty.format.chapterCount) -> String {
         let headings = (1...chapterCount)
             .map { jsonEncoded("Chapter theme \($0)") }
             .joined(separator: ",")
         return """
-        {"title":"How planes got safe","subtitle":"A 45-minute mini-course","domainTag":"Engineering","surprisingClaim":"Every rule was written after a crash.","deeperAngles":["Context","Mechanism","Counterargument"],"chapterHeadings":[\(headings)]}
+        {"title":"How planes got safe","subtitle":"A 30-minute course","domainTag":"Engineering","surprisingClaim":"Every rule was written after a crash.","deeperAngles":["Context","Mechanism","Counterargument"],"chapterHeadings":[\(headings)]}
         """
     }
 

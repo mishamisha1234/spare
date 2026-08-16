@@ -5,7 +5,7 @@ import Foundation
 /// The rule that overrides everything else here: points reward *retention*,
 /// not consumption. A finished lesson earns a flat amount by length; a
 /// correctly answered recall question is worth as much as finishing a full
-/// 45-minute mini-course, because remembering something is the actual
+/// 30-minute course, because remembering something is the actual
 /// product this app sells, and speed-scrolling for length is not a behavior
 /// worth rewarding.
 public enum Points {
@@ -17,7 +17,7 @@ public enum Points {
         case .three: return 10
         case .ten: return 20
         case .fifteen: return 30
-        case .fortyFive: return 60
+        case .thirty: return 60
         }
     }
 

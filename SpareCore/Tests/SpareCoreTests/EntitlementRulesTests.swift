@@ -58,8 +58,8 @@ final class EntitlementRulesTests: XCTestCase {
             .denied(.lockedWindow(.fifteen))
         )
         XCTAssertEqual(
-            EntitlementRules.canStartLesson(fresh, window: .fortyFive, now: now, calendar: calendar),
-            .denied(.lockedWindow(.fortyFive))
+            EntitlementRules.canStartLesson(fresh, window: .thirty, now: now, calendar: calendar),
+            .denied(.lockedWindow(.thirty))
         )
     }
 
@@ -67,8 +67,8 @@ final class EntitlementRulesTests: XCTestCase {
         // Both reasons apply; the window lock is the more explicable one.
         let used = EntitlementSnapshot(tier: .free, freeLessonsUsedToday: 1, lastFreeLessonDate: now)
         XCTAssertEqual(
-            EntitlementRules.canStartLesson(used, window: .fortyFive, now: now, calendar: calendar),
-            .denied(.lockedWindow(.fortyFive))
+            EntitlementRules.canStartLesson(used, window: .thirty, now: now, calendar: calendar),
+            .denied(.lockedWindow(.thirty))
         )
     }
 
@@ -83,11 +83,11 @@ final class EntitlementRulesTests: XCTestCase {
             .allowed
         )
         XCTAssertEqual(
-            EntitlementRules.canBrowseSuggestions(.free, window: .fortyFive),
-            .denied(.lockedWindow(.fortyFive))
+            EntitlementRules.canBrowseSuggestions(.free, window: .thirty),
+            .denied(.lockedWindow(.thirty))
         )
         XCTAssertEqual(
-            EntitlementRules.canBrowseSuggestions(.premium, window: .fortyFive),
+            EntitlementRules.canBrowseSuggestions(.premium, window: .thirty),
             .allowed
         )
     }
@@ -144,7 +144,7 @@ final class EntitlementRulesTests: XCTestCase {
 
         XCTAssertEqual(
             EntitlementRules.canStartLesson(
-                premium, window: .fortyFive, miniCourseStartDates: atCap,
+                premium, window: .thirty, miniCourseStartDates: atCap,
                 now: now, calendar: calendar
             ),
             .capped(.miniCoursesThisMonth(used: 8, cap: 8))
@@ -156,7 +156,7 @@ final class EntitlementRulesTests: XCTestCase {
     func testHittingTheCapIsNotAPaywallTrigger() {
         let atCap = miniCourseDates(EntitlementRules.premiumMiniCoursesPerMonth, from: now)
         let decision = EntitlementRules.canStartLesson(
-            .premium, window: .fortyFive, miniCourseStartDates: atCap,
+            .premium, window: .thirty, miniCourseStartDates: atCap,
             now: now, calendar: calendar
         )
         XCTAssertFalse(decision.isAllowed)
@@ -182,7 +182,7 @@ final class EntitlementRulesTests: XCTestCase {
         let underCap = miniCourseDates(EntitlementRules.premiumMiniCoursesPerMonth - 1, from: now)
         XCTAssertEqual(
             EntitlementRules.canStartLesson(
-                .premium, window: .fortyFive, miniCourseStartDates: underCap,
+                .premium, window: .thirty, miniCourseStartDates: underCap,
                 now: now, calendar: calendar
             ),
             .allowed
@@ -203,7 +203,7 @@ final class EntitlementRulesTests: XCTestCase {
         )
         XCTAssertEqual(
             EntitlementRules.canStartLesson(
-                .premium, window: .fortyFive, miniCourseStartDates: spentLastMonth,
+                .premium, window: .thirty, miniCourseStartDates: spentLastMonth,
                 now: now, calendar: calendar
             ),
             .allowed,
@@ -226,10 +226,10 @@ final class EntitlementRulesTests: XCTestCase {
         let atCap = miniCourseDates(EntitlementRules.premiumMiniCoursesPerMonth, from: now)
         XCTAssertEqual(
             EntitlementRules.canStartLesson(
-                .free, window: .fortyFive, miniCourseStartDates: atCap,
+                .free, window: .thirty, miniCourseStartDates: atCap,
                 now: now, calendar: calendar
             ),
-            .denied(.lockedWindow(.fortyFive))
+            .denied(.lockedWindow(.thirty))
         )
     }
 

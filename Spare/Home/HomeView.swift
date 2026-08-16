@@ -12,6 +12,7 @@ struct HomeView: View {
     var onViewRecallLesson: (UUID) -> Void
 
     @Query private var recallItems: [StoredRecallItem]
+    @EnvironmentObject private var entitlements: EntitlementService
     @Environment(\.colorScheme) private var colorScheme
 
     /// Pinned once per session the first time Home appears, then held
@@ -27,7 +28,7 @@ struct HomeView: View {
     /// Two rows, each pairing a smaller and larger circle rather than a rigid
     /// size-ordered grid — the pairing itself is the "not a grid" cue.
     private static let topRow: [TimeWindow] = [.three, .ten]
-    private static let bottomRow: [TimeWindow] = [.fifteen, .fortyFive]
+    private static let bottomRow: [TimeWindow] = [.fifteen, .thirty]
 
     var body: some View {
         // GeometryReader + a `minHeight` on the content is the standard way
@@ -113,20 +114,29 @@ struct HomeView: View {
     private func row(_ windows: [TimeWindow]) -> some View {
         HStack(spacing: Theme.Spacing.m) {
             ForEach(windows) { window in
-                DurationCircleView(window: window) { onSelect(window) }
+                DurationCircleView(
+                    window: window,
+                    isLocked: entitlements.isWindowLocked(window)
+                ) {
+                    onSelect(window)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .center)
     }
 }
 
-#Preview {
-    HomeView(onSelect: { _ in }, onViewRecallLesson: { _ in })
-        .modelContainer(PersistenceStack.makeContainer(inMemory: true))
+#Preview("Free tier") {
+    let container = PersistenceStack.makeContainer(inMemory: true)
+    return HomeView(onSelect: { _ in }, onViewRecallLesson: { _ in })
+        .modelContainer(container)
+        .entitlementService(EntitlementService(store: StubPurchaseStore(), container: container))
 }
 
-#Preview("Dark") {
-    HomeView(onSelect: { _ in }, onViewRecallLesson: { _ in })
-        .modelContainer(PersistenceStack.makeContainer(inMemory: true))
+#Preview("Free tier, dark") {
+    let container = PersistenceStack.makeContainer(inMemory: true)
+    return HomeView(onSelect: { _ in }, onViewRecallLesson: { _ in })
+        .modelContainer(container)
+        .entitlementService(EntitlementService(store: StubPurchaseStore(), container: container))
         .preferredColorScheme(.dark)
 }

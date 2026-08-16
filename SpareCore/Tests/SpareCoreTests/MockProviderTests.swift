@@ -69,7 +69,7 @@ final class MockProviderTests: XCTestCase {
 
     func testMiniCourseHasSixNumberedChapters() async throws {
         let lesson = try await provider.generateLesson(
-            topic: topic(for: .fortyFive), window: .fortyFive, profile: profile
+            topic: topic(for: .thirty), window: .thirty, profile: profile
         )
         for chapter in 1...6 {
             XCTAssertTrue(
@@ -80,19 +80,19 @@ final class MockProviderTests: XCTestCase {
     }
 
     func testMiniCourseChaptersEachEndWithAReflectionPrompt() {
-        let bodies = MockProvider.fixtureChapterBodies(topic: topic(for: .fortyFive), window: .fortyFive)
-        XCTAssertEqual(bodies.count, 6)
+        let bodies = MockProvider.fixtureChapterBodies(topic: topic(for: .thirty), window: .thirty)
+        XCTAssertEqual(bodies.count, TimeWindow.thirty.format.chapterCount)
         for body in bodies {
             XCTAssertTrue(body.hasSuffix("*"), "chapter should close with an italic reflection prompt")
         }
     }
 
     func testEachMiniCourseChapterRespectsItsChapterBudget() {
-        let bodies = MockProvider.fixtureChapterBodies(topic: topic(for: .fortyFive), window: .fortyFive)
+        let bodies = MockProvider.fixtureChapterBodies(topic: topic(for: .thirty), window: .thirty)
         for (index, body) in bodies.enumerated() {
             XCTAssertTrue(
-                TimeWindow.fortyFive.chapterWordBudget.contains(body.lessonWordCount),
-                "chapter \(index + 1): \(body.lessonWordCount) words outside \(TimeWindow.fortyFive.chapterWordBudget)"
+                TimeWindow.thirty.chapterWordBudget.contains(body.lessonWordCount),
+                "chapter \(index + 1): \(body.lessonWordCount) words outside \(TimeWindow.thirty.chapterWordBudget)"
             )
         }
     }
@@ -130,7 +130,7 @@ final class MockProviderTests: XCTestCase {
         var finished: Lesson?
 
         for try await event in provider.streamLesson(
-            topic: topic(for: .fortyFive), window: .fortyFive, profile: profile
+            topic: topic(for: .thirty), window: .thirty, profile: profile
         ) {
             switch event {
             case .metadata:
@@ -199,13 +199,13 @@ final class MockProviderTests: XCTestCase {
         // Everything the Task closure touches is hoisted into a Sendable local:
         // XCTestCase is not Sendable, so capturing `self` is a Swift 6 error.
         let streamProvider = MockProvider(simulateLatency: true, chunkDelayMilliseconds: 30)
-        let source = MockProvider.fixtureSuggestions(for: .fortyFive)[0]
+        let source = MockProvider.fixtureSuggestions(for: .thirty)[0]
         let snapshot = ProfileSnapshot.empty
 
         let task = Task { () -> Int in
             var count = 0
             for try await _ in streamProvider.streamLesson(
-                topic: source, window: .fortyFive, profile: snapshot
+                topic: source, window: .thirty, profile: snapshot
             ) {
                 count += 1
                 if count == 3 { break }

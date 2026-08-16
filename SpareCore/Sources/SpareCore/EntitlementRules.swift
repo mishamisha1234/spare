@@ -68,11 +68,16 @@ public enum EntitlementRules {
 
     public static let freeLessonsPerDay = 1
     public static let freeLibraryLimit = 10
-    /// Fair-use ceiling on the most expensive thing to generate. A 45-minute
-    /// mini-course is 13 API calls; "unlimited" on that line would mean an
-    /// unbounded per-user cost. Surfaced honestly in Settings rather than
-    /// discovered at the moment it bites.
-    public static let premiumMiniCoursesPerMonth = 8
+    /// Fair-use ceiling on the most expensive thing to generate. A course is
+    /// an outline call plus two calls per chapter; "unlimited" on that line
+    /// would mean an unbounded per-user cost. Surfaced honestly in Settings
+    /// rather than discovered at the moment it bites.
+    ///
+    /// Raised from 8 to 12 when courses went from 45 minutes to 30: at 4
+    /// chapters and ~5,500 words instead of 6 and ~8,000, a course costs
+    /// roughly a third less to generate, so 12 of the new ones is cheaper
+    /// than 8 of the old.
+    public static let premiumMiniCoursesPerMonth = 12
 
     /// Daily count, corrected for day rollover. A count recorded yesterday is
     /// not spent today.
@@ -112,7 +117,7 @@ public enum EntitlementRules {
     ///
     /// `miniCourseStartDates` defaults to empty, which reads as "no
     /// mini-courses started" — correct for every caller that isn't asking
-    /// about the 45-minute window.
+    /// about the chaptered window.
     public static func canStartLesson(
         _ snapshot: EntitlementSnapshot,
         window: TimeWindow,

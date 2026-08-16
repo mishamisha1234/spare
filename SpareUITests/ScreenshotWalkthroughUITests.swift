@@ -107,6 +107,15 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             try tap(app, "recall.option.Wind alone", scheme: colorScheme, step: "06-home-recall")
             try waitAndCapture(app, "06a-recall-revealed", scheme: colorScheme, identifier: "recall.viewLesson")
             try tap(app, "recall.dismiss", scheme: colorScheme, step: "06a-recall-revealed")
+
+            // MARK: A locked duration still opens the paywall. 06b is also
+            // the screenshot that shows the dashed lock marking on the 15-
+            // and 30-minute circles, with 3 and 10 left plain.
+            try waitAndCapture(app, "06b-home-locked-durations", scheme: colorScheme, identifier: "home.circle.thirty")
+            try tap(app, "home.circle.thirty", scheme: colorScheme, step: "06b-home-locked-durations")
+            try waitAndCapture(app, "06c-paywall-from-duration", scheme: colorScheme, identifier: "paywall.buy")
+            try tap(app, "paywall.close", scheme: colorScheme, step: "06c-paywall-from-duration")
+
             try tap(app, "home.circle.ten", scheme: colorScheme, step: "06-home")
 
             // MARK: Suggestions
@@ -175,8 +184,8 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             try tap(app, "completion.returnHome", scheme: colorScheme, step: "09h-completion-after-test")
 
             // MARK: Library (reached from Home)
-            try waitAndCapture(app, "06b-home-again", scheme: colorScheme, identifier: "home.libraryButton")
-            try tap(app, "home.libraryButton", scheme: colorScheme, step: "06b-home-again")
+            try waitAndCapture(app, "09i-home-again", scheme: colorScheme, identifier: "home.libraryButton")
+            try tap(app, "home.libraryButton", scheme: colorScheme, step: "09i-home-again")
             // Wait for the lesson we just read to actually appear in the
             // library, not just for the screen to exist -- a stronger check,
             // and it avoids depending on any container-level identifier.

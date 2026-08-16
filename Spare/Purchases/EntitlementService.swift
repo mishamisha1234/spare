@@ -159,6 +159,15 @@ final class EntitlementService: ObservableObject {
         EntitlementRules.availableWindows(snapshot)
     }
 
+    /// Whether this *length* is behind Premium — a property of the plan, not
+    /// of right now. Distinct from `canStartLesson`, which also fails on the
+    /// free daily limit: a reader who has used today's lesson still owns the
+    /// 3- and 10-minute lengths, so marking every circle locked would
+    /// misdescribe what they bought.
+    func isWindowLocked(_ window: TimeWindow) -> Bool {
+        !availableWindows.contains(window)
+    }
+
     var isPremium: Bool { snapshot.tier.isPremium }
 
     /// Records that a lesson actually started. Spends the free daily

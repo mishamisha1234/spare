@@ -17,7 +17,7 @@ public enum AnthropicAPI {
         case .three: return 8_000
         case .ten: return 16_000
         case .fifteen: return 24_000
-        case .fortyFive: return 16_000 // per chapter, generated one at a time
+        case .thirty: return 16_000 // per chapter, generated one at a time
         }
     }
 

@@ -172,13 +172,13 @@ final class RevisionGateTests: XCTestCase {
     // MARK: - Invariant 3: chapter pipeline
 
     func testFirstChapterIsRequestedImmediately() {
-        let gate = RevisionGate(window: .fortyFive)
-        XCTAssertEqual(gate.chapterCount, 6)
+        let gate = RevisionGate(window: .thirty)
+        XCTAssertEqual(gate.chapterCount, TimeWindow.thirty.format.chapterCount)
         XCTAssertEqual(gate.nextChapterToGenerate, 0)
     }
 
     func testNextChapterIsPrefetchedWhileReaderIsInCurrentChapter() {
-        var gate = RevisionGate(window: .fortyFive)
+        var gate = RevisionGate(window: .thirty)
         gate.apply(.revisedDelta(chapter: 0, text: words(300)))
         gate.apply(.revisedChapterFinished(chapter: 0))
         // Reader is still in chapter 0; chapter 1 should be starting.
@@ -187,7 +187,7 @@ final class RevisionGateTests: XCTestCase {
     }
 
     func testPrefetchStopsOnceNextChapterIsUnderway() {
-        var gate = RevisionGate(window: .fortyFive)
+        var gate = RevisionGate(window: .thirty)
         gate.apply(.revisedDelta(chapter: 0, text: words(300)))
         gate.apply(.revisedChapterFinished(chapter: 0))
         gate.apply(.draftDelta(chapter: 1, text: words(10)))
@@ -195,7 +195,7 @@ final class RevisionGateTests: XCTestCase {
     }
 
     func testChapterTheReaderHasEnteredTakesPriorityOverPrefetch() {
-        var gate = RevisionGate(window: .fortyFive)
+        var gate = RevisionGate(window: .thirty)
         gate.apply(.revisedDelta(chapter: 0, text: words(300)))
         gate.apply(.revisedChapterFinished(chapter: 0))
         gate.apply(.draftDelta(chapter: 1, text: words(300)))
@@ -208,7 +208,7 @@ final class RevisionGateTests: XCTestCase {
     }
 
     func testReaderChapterIndexTracksRevisedChapterLengths() {
-        var gate = RevisionGate(window: .fortyFive)
+        var gate = RevisionGate(window: .thirty)
         for chapter in 0..<3 {
             gate.apply(.revisedDelta(chapter: chapter, text: words(100)))
             gate.apply(.revisedChapterFinished(chapter: chapter))
@@ -222,7 +222,7 @@ final class RevisionGateTests: XCTestCase {
     }
 
     func testUnrevisedLaterChapterIsNotDisplayedEvenWhenRevisedOutOfOrder() {
-        var gate = RevisionGate(window: .fortyFive)
+        var gate = RevisionGate(window: .thirty)
         // Chapter 1 arrives revised before chapter 0 finishes.
         gate.apply(.revisedDelta(chapter: 0, text: words(300, tag: "first")))
         gate.apply(.revisedDelta(chapter: 1, text: words(300, tag: "second")))
@@ -239,8 +239,8 @@ final class RevisionGateTests: XCTestCase {
     }
 
     func testNoChapterToGenerateOnceEverythingIsRevised() {
-        var gate = RevisionGate(window: .fortyFive)
-        for chapter in 0..<6 {
+        var gate = RevisionGate(window: .thirty)
+        for chapter in 0..<TimeWindow.thirty.format.chapterCount {
             gate.apply(.revisedDelta(chapter: chapter, text: words(100)))
             gate.apply(.revisedChapterFinished(chapter: chapter))
         }
@@ -276,12 +276,12 @@ final class RevisionGateTests: XCTestCase {
 
     func testFullMockStreamNeverShowsUnrevisedTextAndNeverRewrites() async throws {
         let provider = MockProvider(simulateLatency: false)
-        let topic = MockProvider.fixtureSuggestions(for: .fortyFive)[0]
-        var gate = RevisionGate(window: .fortyFive)
+        let topic = MockProvider.fixtureSuggestions(for: .thirty)[0]
+        var gate = RevisionGate(window: .thirty)
         var previous = ""
         var revealedBeforeThreshold = false
 
-        for try await event in provider.streamLesson(topic: topic, window: .fortyFive, profile: .empty) {
+        for try await event in provider.streamLesson(topic: topic, window: .thirty, profile: .empty) {
             let wasHolding = gate.phase == .holding
             gate.apply(event)
 
@@ -300,8 +300,8 @@ final class RevisionGateTests: XCTestCase {
         let lesson = try XCTUnwrap(gate.finalLesson)
         XCTAssertEqual(gate.displayText, lesson.bodyMarkdown)
         XCTAssertTrue(
-            TimeWindow.fortyFive.wordBudget.contains(gate.displayWordCount),
-            "\(gate.displayWordCount) words outside \(TimeWindow.fortyFive.wordBudget)"
+            TimeWindow.thirty.wordBudget.contains(gate.displayWordCount),
+            "\(gate.displayWordCount) words outside \(TimeWindow.thirty.wordBudget)"
         )
     }
 

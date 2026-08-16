@@ -205,8 +205,8 @@ final class PersistenceConversionTests: XCTestCase {
             .allowed
         )
         XCTAssertEqual(
-            EntitlementRules.canStartLesson(stored.snapshot, window: .fortyFive, now: now, calendar: calendar),
-            .denied(.lockedWindow(.fortyFive))
+            EntitlementRules.canStartLesson(stored.snapshot, window: .thirty, now: now, calendar: calendar),
+            .denied(.lockedWindow(.thirty))
         )
     }
 

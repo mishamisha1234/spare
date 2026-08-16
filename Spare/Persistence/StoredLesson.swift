@@ -74,8 +74,11 @@ final class StoredLesson {
         )
     }
 
+    /// `TimeWindow.stored` rather than `init(rawValue:)`: it also understands
+    /// the pre-30-minute `"fortyFive"` value, which would otherwise fall
+    /// through to `.three` and turn an old course into a One Thing.
     var window: TimeWindow {
-        get { TimeWindow(rawValue: windowRaw) ?? .three }
+        get { TimeWindow.stored(rawValue: windowRaw) ?? .three }
         set { windowRaw = newValue.rawValue }
     }
 

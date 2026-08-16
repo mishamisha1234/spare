@@ -89,7 +89,7 @@ public protocol LessonProvider: Sendable {
 extension LessonProvider {
     /// Generates everything up front, with no reader back-pressure.
     ///
-    /// Fine for single-unit formats and for tests. For a 45-minute
+    /// Fine for single-unit formats and for tests. For a 30-minute
     /// mini-course this means paying for all six chapters whether or not
     /// they're read — the Reader always passes a real `ChapterDemand`.
     public func streamLesson(

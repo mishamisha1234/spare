@@ -56,7 +56,7 @@ public struct MockProvider: LessonProvider {
                 TopicSuggestion(title: "How whales rebuilt after whaling", hook: "Population genetics shows recovery routes nobody predicted.", domainTag: "Biology"),
                 TopicSuggestion(title: "The grammar of film cuts", hook: "Your brain accepts jumps in space it never sees.", domainTag: "Film", isWildcard: true),
             ]
-        case .fortyFive:
+        case .thirty:
             return [
                 TopicSuggestion(title: "How the metric system won", hook: "A revolution, a meridian survey, two centuries of persuasion.", domainTag: "History"),
                 TopicSuggestion(title: "Reading a balance sheet properly", hook: "Three statements, one story, and where companies hide trouble.", domainTag: "Finance"),

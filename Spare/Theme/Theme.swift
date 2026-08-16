@@ -186,6 +186,11 @@ enum Theme {
     static let cornerRadius: CGFloat = 14
     static let borderWidth: CGFloat = 1
 
+    /// The dash pattern that marks a locked control. The *only* way locking
+    /// is shown on Home: no padlock glyph, no badge, no fill change, so the
+    /// circles' size keeps carrying duration and nothing else competes.
+    static let lockedDash: [CGFloat] = [5, 4]
+
     // MARK: - Control sizes
 
     /// Fixed heights for interactive controls. Not on the 4/8/16/24/40/64
@@ -216,6 +221,10 @@ enum Theme {
     /// constant can come from.
     enum Interaction {
         static let pressedOpacity: Double = 0.75
+        /// Opacity for the label of a control that is locked behind Premium.
+        /// Recedes without becoming unreadable — a lock the reader can't read
+        /// is not an argument for anything.
+        static let lockedContentOpacity: Double = 0.45
         // No `disabledOpacity`, deliberately. Dimming an accent fill to show
         // a disabled state turns muddy in dark mode, where the accent is
         // already close to the background in luminance. Disabled controls
@@ -261,7 +270,7 @@ enum Theme {
         static let three: CGFloat = 80
         static let ten: CGFloat = 110
         static let fifteen: CGFloat = 132
-        static let fortyFive: CGFloat = 160
+        static let thirty: CGFloat = 160
 
         /// Minimum interactive area regardless of visual diameter.
         static let minimumTapTarget: CGFloat = 44
@@ -273,7 +282,7 @@ enum Theme {
             case .three: three
             case .ten: ten
             case .fifteen: fifteen
-            case .fortyFive: fortyFive
+            case .thirty: thirty
             }
         }
     }

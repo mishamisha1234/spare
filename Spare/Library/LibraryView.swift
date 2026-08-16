@@ -23,7 +23,7 @@ struct LibraryView: View {
         let completed = lessons.filter { $0.completedAt != nil }
         let library = LibrarySnapshot(
             completedLessonCount: completed.count,
-            completedMiniCourseCount: completed.filter { $0.window == .fortyFive }.count,
+            completedMiniCourseCount: completed.filter { $0.window == .thirty }.count,
             completedDomains: completed.map(\.topicTag)
         )
         return Achievements.unlocked(events: pointEvents.map(\.event), library: library).count

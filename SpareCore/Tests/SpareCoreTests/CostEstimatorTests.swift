@@ -77,13 +77,13 @@ final class CostEstimatorTests: XCTestCase {
     }
 
     func testEstimatesLandInAPlausibleRangeForRealUse() {
-        // Sanity bounds: a 3-minute lesson should cost cents, a 45-minute
+        // Sanity bounds: a 3-minute lesson should cost cents, a 30-minute
         // mini-course should not cost dollars-plural.
         let short = CostEstimator.estimatedLessonCost(window: .three)
         XCTAssertGreaterThan(short, 0.001)
         XCTAssertLessThan(short, 0.20)
 
-        let long = CostEstimator.estimatedLessonCost(window: .fortyFive)
+        let long = CostEstimator.estimatedLessonCost(window: .thirty)
         XCTAssertGreaterThan(long, 0.10)
         XCTAssertLessThan(long, 2.00)
     }

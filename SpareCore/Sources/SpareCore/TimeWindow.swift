@@ -26,7 +26,7 @@ public enum LessonFormat: String, Codable, Sendable, CaseIterable {
         case .lesson:
             return "Four to five sections, including one worked example or case walked through in detail."
         case .miniCourse:
-            return "Five to six chapters, each building on the last, each ending with a single reflection prompt."
+            return "Three to four chapters, each building on the last, each ending with a single reflection prompt."
         }
     }
 
@@ -35,7 +35,7 @@ public enum LessonFormat: String, Codable, Sendable, CaseIterable {
     public var chapterCount: Int {
         switch self {
         case .oneThing, .explainer, .lesson: return 1
-        case .miniCourse: return 6
+        case .miniCourse: return 4
         }
     }
 
@@ -47,7 +47,7 @@ public enum TimeWindow: String, Codable, CaseIterable, Sendable, Identifiable, H
     case three
     case ten
     case fifteen
-    case fortyFive
+    case thirty
 
     public var id: String { rawValue }
 
@@ -56,7 +56,7 @@ public enum TimeWindow: String, Codable, CaseIterable, Sendable, Identifiable, H
         case .three: return 3
         case .ten: return 10
         case .fifteen: return 15
-        case .fortyFive: return 45
+        case .thirty: return 30
         }
     }
 
@@ -66,7 +66,7 @@ public enum TimeWindow: String, Codable, CaseIterable, Sendable, Identifiable, H
         case .three: return 500...650
         case .ten: return 1600...2000
         case .fifteen: return 2400...3000
-        case .fortyFive: return 7000...9000
+        case .thirty: return 5000...6000
         }
     }
 
@@ -75,17 +75,47 @@ public enum TimeWindow: String, Codable, CaseIterable, Sendable, Identifiable, H
         case .three: return .oneThing
         case .ten: return .explainer
         case .fifteen: return .lesson
-        case .fortyFive: return .miniCourse
+        case .thirty: return .miniCourse
         }
     }
 
+    /// The duration, for navigation titles, paywall copy, and anywhere a
+    /// window needs naming in prose. Home's fourth circle does *not* use
+    /// this — see `circleTitle`.
     public var label: String { "\(minutes) min" }
+
+    /// Home's primary circle label. A course is named for what it is rather
+    /// than how long it takes, because it isn't one sitting: the duration
+    /// moves to `circleSubtitle` underneath.
+    public var circleTitle: String {
+        format.isChaptered ? "Course" : label
+    }
+
+    /// The second line under a course circle. `nil` for the single-sitting
+    /// windows, whose duration is already the title.
+    public var circleSubtitle: String? {
+        guard format.isChaptered else { return nil }
+        return "\(label) · \(format.chapterCount) chapters"
+    }
+
+    /// Decodes a persisted raw value, tolerating ones this app no longer
+    /// writes.
+    ///
+    /// `"fortyFive"` predates courses moving from 45 minutes to 30. A plain
+    /// `init(rawValue:)` returns nil for it, and the call site's `?? .three`
+    /// would silently turn somebody's course into a 3-minute One Thing —
+    /// so it maps to the window that actually replaced it instead.
+    public static func stored(rawValue: String) -> TimeWindow? {
+        if let window = TimeWindow(rawValue: rawValue) { return window }
+        if rawValue == "fortyFive" { return .thirty }
+        return nil
+    }
 
     /// Free tier covers only the two shortest windows.
     public var isFreeTierEligible: Bool {
         switch self {
         case .three, .ten: return true
-        case .fifteen, .fortyFive: return false
+        case .fifteen, .thirty: return false
         }
     }
 

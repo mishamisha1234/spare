@@ -219,20 +219,20 @@ final class PromptsTests: XCTestCase {
 
     func testChapterTaskPromptUsesPerChapterBudgetNotTheWholeCourse() {
         let prompt = Prompts.chapterTaskPrompt(
-            topic: topic, window: .fortyFive, profile: profile,
+            topic: topic, window: .thirty, profile: profile,
             chapterNumber: 1, heading: "The day it happened", previousHeadings: []
         )
-        let chapterBudget = TimeWindow.fortyFive.chapterWordBudget
+        let chapterBudget = TimeWindow.thirty.chapterWordBudget
         XCTAssertTrue(prompt.contains("\(chapterBudget.lowerBound)"))
         XCTAssertTrue(prompt.contains("\(chapterBudget.upperBound)"))
-        XCTAssertFalse(prompt.contains("7000–9000"), "a chapter must not get the whole-course budget")
-        XCTAssertTrue(prompt.contains("chapter 1 of 6"))
+        XCTAssertFalse(prompt.contains("5000–6000"), "a chapter must not get the whole-course budget")
+        XCTAssertTrue(prompt.contains("chapter 1 of 4"))
         XCTAssertTrue(prompt.contains("reflection prompt"))
     }
 
     func testFirstChapterHasNoPriorContext() {
         let prompt = Prompts.chapterTaskPrompt(
-            topic: topic, window: .fortyFive, profile: profile,
+            topic: topic, window: .thirty, profile: profile,
             chapterNumber: 1, heading: "H", previousHeadings: []
         )
         XCTAssertTrue(prompt.contains(Prompts.firstChapterContext))
@@ -240,7 +240,7 @@ final class PromptsTests: XCTestCase {
 
     func testLaterChapterCarriesEarlierHeadings() {
         let prompt = Prompts.chapterTaskPrompt(
-            topic: topic, window: .fortyFive, profile: profile,
+            topic: topic, window: .thirty, profile: profile,
             chapterNumber: 3, heading: "Third", previousHeadings: ["Comet crashes", "Metal fatigue"]
         )
         XCTAssertTrue(prompt.contains("Chapter 1: Comet crashes"))
@@ -312,13 +312,13 @@ final class PromptsTests: XCTestCase {
                 window: .three, profile: .empty
             ),
             "revision": Prompts.revisionTaskPrompt(window: .ten, draftJSON: "{}"),
-            "outline": Prompts.outlineTaskPrompt(topic: topic, window: .fortyFive, profile: profile),
+            "outline": Prompts.outlineTaskPrompt(topic: topic, window: .thirty, profile: profile),
             "chapterFirst": Prompts.chapterTaskPrompt(
-                topic: topic, window: .fortyFive, profile: profile,
+                topic: topic, window: .thirty, profile: profile,
                 chapterNumber: 1, heading: "H", previousHeadings: []
             ),
             "chapterLater": Prompts.chapterTaskPrompt(
-                topic: topic, window: .fortyFive, profile: profile,
+                topic: topic, window: .thirty, profile: profile,
                 chapterNumber: 4, heading: "H", previousHeadings: ["a", "b", "c"]
             ),
             "suggestion": Prompts.suggestionTaskPrompt(

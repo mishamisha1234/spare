@@ -2,7 +2,7 @@ import Foundation
 
 /// Back-pressure from the reader to the generator.
 ///
-/// A 45-minute mini-course is 6 chapters and 12 API calls. A reader who stops
+/// A 30-minute course is 4 chapters and 8 API calls. A reader who stops
 /// after chapter 2 must not be billed for chapters 3–6, so the generator does
 /// not run ahead on its own: it blocks on this until the reader's position
 /// says the next chapter is actually wanted.

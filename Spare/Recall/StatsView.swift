@@ -46,7 +46,7 @@ struct StatsView: View {
     private var librarySnapshot: LibrarySnapshot {
         LibrarySnapshot(
             completedLessonCount: completedLessons.count,
-            completedMiniCourseCount: completedLessons.filter { $0.window == .fortyFive }.count,
+            completedMiniCourseCount: completedLessons.filter { $0.window == .thirty }.count,
             completedDomains: completedLessons.map(\.topicTag)
         )
     }

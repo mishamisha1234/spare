@@ -1,8 +1,8 @@
 import XCTest
 @testable import SpareCore
 
-/// A 45-minute mini-course is an outline call plus two calls per chapter —
-/// 13 API calls if every chapter is generated. A reader who stops at chapter 2
+/// A 30-minute course is an outline call plus two calls per chapter —
+/// 9 API calls if every chapter is generated. A reader who stops at chapter 2
 /// must not pay for chapters 3–6, so these tests count requests rather than
 /// just checking that output looks right.
 /// Counts events from inside a detached `Task`. An actor rather than a
@@ -26,7 +26,9 @@ final class LazyChapterGenerationTests: XCTestCase {
 
     /// Outline + enough chapter draft/revision pairs to satisfy any test that
     /// runs to completion.
-    private func fullCourseSteps(chapters: Int = 6) -> [FixtureTransport.Step] {
+    private func fullCourseSteps(
+        chapters: Int = TimeWindow.thirty.format.chapterCount
+    ) -> [FixtureTransport.Step] {
         // The outline is a plain (non-streaming) call — it's small and nothing
         // renders from it — so it needs a `.body` fixture, not `.sse`.
         var steps: [FixtureTransport.Step] = [
@@ -70,7 +72,7 @@ final class LazyChapterGenerationTests: XCTestCase {
         let demand = ChapterDemand()
 
         let stream = provider.streamLesson(
-            topic: topic, window: .fortyFive, profile: profile, demand: demand
+            topic: topic, window: .thirty, profile: profile, demand: demand
         )
 
         let counter = ChapterCounter()
@@ -89,7 +91,7 @@ final class LazyChapterGenerationTests: XCTestCase {
         XCTAssertEqual(revisedChapters, 2, "chapters 0 and 1 only — the prefetch window")
         XCTAssertEqual(
             transport.requestCount, 5,
-            "1 outline + 2 chapters x 2 passes; chapters 3-6 were never requested"
+            "1 outline + 2 chapters x 2 passes; chapters 3-4 were never requested"
         )
     }
 
@@ -99,7 +101,7 @@ final class LazyChapterGenerationTests: XCTestCase {
         let demand = ChapterDemand()
 
         let stream = provider.streamLesson(
-            topic: topic, window: .fortyFive, profile: profile, demand: demand
+            topic: topic, window: .thirty, profile: profile, demand: demand
         )
         let task = Task {
             for try await _ in stream {}
@@ -122,12 +124,12 @@ final class LazyChapterGenerationTests: XCTestCase {
 
         var events: [LessonStreamEvent] = []
         for try await event in provider.streamLesson(
-            topic: topic, window: .fortyFive, profile: profile, demand: .eager()
+            topic: topic, window: .thirty, profile: profile, demand: .eager()
         ) {
             events.append(event)
         }
 
-        XCTAssertEqual(transport.requestCount, 13, "1 outline + 6 chapters x 2 passes")
+        XCTAssertEqual(transport.requestCount, 9, "1 outline + 4 chapters x 2 passes")
         guard case .finished(let lesson)? = events.last else {
             return XCTFail("expected .finished")
         }
@@ -145,7 +147,7 @@ final class LazyChapterGenerationTests: XCTestCase {
         // properties, so referencing them inside would capture the
         // non-Sendable XCTestCase.
         let stream = provider.streamLesson(
-            topic: topic, window: .fortyFive, profile: profile, demand: demand
+            topic: topic, window: .thirty, profile: profile, demand: demand
         )
         let task = Task {
             for try await _ in stream {}
@@ -162,12 +164,12 @@ final class LazyChapterGenerationTests: XCTestCase {
     // MARK: - Assembled output
 
     func testChapterTextCarriesItsHeadingBeforeItsBody() async throws {
-        let transport = FixtureTransport(fullCourseSteps(chapters: 6))
+        let transport = FixtureTransport(fullCourseSteps(chapters: 4))
         let provider = makeProvider(transport)
 
         var revised = ""
         for try await event in provider.streamLesson(
-            topic: topic, window: .fortyFive, profile: profile, demand: .eager()
+            topic: topic, window: .thirty, profile: profile, demand: .eager()
         ) {
             if case .revisedDelta(_, let text) = event { revised += text }
         }
@@ -188,9 +190,9 @@ final class LazyChapterGenerationTests: XCTestCase {
         let transport = FixtureTransport(fullCourseSteps())
         let provider = makeProvider(transport)
 
-        var gate = RevisionGate(window: .fortyFive)
+        var gate = RevisionGate(window: .thirty)
         for try await event in provider.streamLesson(
-            topic: topic, window: .fortyFive, profile: profile, demand: .eager()
+            topic: topic, window: .thirty, profile: profile, demand: .eager()
         ) {
             gate.apply(event)
         }
@@ -202,17 +204,17 @@ final class LazyChapterGenerationTests: XCTestCase {
 
     func testOutlineIsLedgeredSeparatelyFromChapters() async throws {
         let ledger = InMemoryUsageLedger()
-        let transport = FixtureTransport(fullCourseSteps(chapters: 6))
+        let transport = FixtureTransport(fullCourseSteps(chapters: 4))
         let provider = makeProvider(transport, ledger: ledger)
 
         for try await _ in provider.streamLesson(
-            topic: topic, window: .fortyFive, profile: profile, demand: .eager()
+            topic: topic, window: .thirty, profile: profile, demand: .eager()
         ) {}
 
         let kinds = await ledger.events.map(\.kind)
         XCTAssertEqual(kinds.first, .courseOutline)
-        XCTAssertEqual(kinds.filter { $0 == .chapterDraft }.count, 6)
-        XCTAssertEqual(kinds.filter { $0 == .chapterRevision }.count, 6)
+        XCTAssertEqual(kinds.filter { $0 == .chapterDraft }.count, 4)
+        XCTAssertEqual(kinds.filter { $0 == .chapterRevision }.count, 4)
     }
 
     // MARK: - MockProvider honours the same contract
@@ -223,7 +225,7 @@ final class LazyChapterGenerationTests: XCTestCase {
         let counter = ChapterCounter()
 
         let stream = provider.streamLesson(
-            topic: topic, window: .fortyFive, profile: profile, demand: demand
+            topic: topic, window: .thirty, profile: profile, demand: demand
         )
         let task = Task {
             for try await event in stream {
