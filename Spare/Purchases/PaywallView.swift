@@ -16,6 +16,7 @@ struct PaywallView: View {
 
     @EnvironmentObject private var entitlements: EntitlementService
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
 
     /// Yearly at every entry point. It was defaulting to whichever plan the
@@ -125,24 +126,47 @@ struct PaywallView: View {
         return Button {
             selected = product.kind
         } label: {
-            HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.s) {
-                VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
-                    Text(product.displayName)
-                        .font(Theme.Font.headline.font)
-                        .foregroundStyle(palette.text)
+            // Title-leading / price-trailing collides once the title wraps,
+            // so past AX1 the row stacks instead.
+            Group {
+                if dynamicTypeSize >= .accessibility1 {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
+                        Text(product.displayName)
+                            .font(Theme.Font.headline.font)
+                            .foregroundStyle(palette.text)
+                        Text(product.displayPrice)
+                            .font(Theme.Font.headline.font)
+                            .foregroundStyle(palette.text)
+                        if let detail = detail(for: product) {
+                            Text(detail)
+                                .font(Theme.Font.caption.font)
+                                .foregroundStyle(palette.secondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.s) {
+                        VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
+                            Text(product.displayName)
+                                .font(Theme.Font.headline.font)
+                                .foregroundStyle(palette.text)
 
-                    if let detail = detail(for: product) {
-                        Text(detail)
-                            .font(Theme.Font.caption.font)
-                            .foregroundStyle(palette.secondaryText)
+                            if let detail = detail(for: product) {
+                                Text(detail)
+                                    .font(Theme.Font.caption.font)
+                                    .foregroundStyle(palette.secondaryText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+
+                        Spacer(minLength: Theme.Spacing.xs)
+
+                        Text(product.displayPrice)
+                            .font(Theme.Font.headline.font)
+                            .foregroundStyle(palette.text)
                     }
                 }
-
-                Spacer(minLength: Theme.Spacing.xs)
-
-                Text(product.displayPrice)
-                    .font(Theme.Font.headline.font)
-                    .foregroundStyle(palette.text)
             }
             .padding(Theme.Spacing.s)
             .frame(minHeight: Theme.ControlSize.optionRow)

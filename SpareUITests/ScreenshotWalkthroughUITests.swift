@@ -40,13 +40,13 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = [
             "-UITEST_RESET_STATE",
-            // Drives Dynamic Type without going through Settings. The value
-            // is a `UICTContentSizeCategory*` constant and the abbreviated
-            // spelling is the real one — "AccessibilityExtraExtraExtraLarge"
-            // is silently ignored and the app just launches at the default
-            // size, which is exactly what the first run of this test did.
+            // AX3: the size the circle grid switches to a single column,
+            // the Settings segments become rows, and the paywall plan rows
+            // stack. The value is a `UICTContentSizeCategory*` constant —
+            // an unrecognised one is silently ignored and the app launches
+            // at the default size, which is what the first version did.
             "-UIPreferredContentSizeCategoryName",
-            "UICTContentSizeCategoryAccessibilityXXXL",
+            "UICTContentSizeCategoryAccessibilityExtraLarge",
         ]
         app.launchEnvironment["UITEST_COLOR_SCHEME"] = "light"
 
@@ -67,7 +67,7 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
 
         app.launch()
 
-        let scheme = "ax5"
+        let scheme = "ax3"
         do {
             try waitAndCapture(app, "ax-01-onboarding-pitch", scheme: scheme, identifier: "onboarding.primary")
             try tap(app, "onboarding.primary", scheme: scheme, step: "ax-01-onboarding-pitch")
@@ -99,6 +99,46 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             try waitAndCapture(app, "ax-08-home-settings", scheme: scheme, identifier: "home.settingsButton")
             try tap(app, "home.settingsButton", scheme: scheme, step: "ax-08-home-settings")
             try waitAndCapture(app, "ax-09-settings", scheme: scheme, identifier: "settings.apiKeyField")
+        } catch {
+            attachFailureDiagnostics(app, scheme: scheme)
+            throw error
+        }
+    }
+
+    /// The states the flow can reach that the happy path never shows.
+    ///
+    /// Driven by launch arguments rather than by forcing failures through the
+    /// UI: an empty library and a provider that fails are both states, not
+    /// journeys, and reaching them by navigation would make the test about
+    /// the navigation instead.
+    func testEmptyAndErrorStates() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-UITEST_RESET_STATE",
+            // No seeded lesson, recall item, or course.
+            "-UITEST_EMPTY_STATE",
+            // Every provider call fails, so Suggestions and the Reader show
+            // their real error copy rather than a contrived string.
+            "-UITEST_FAILING_PROVIDER",
+        ]
+        app.launchEnvironment["UITEST_COLOR_SCHEME"] = "light"
+        app.launch()
+
+        let scheme = "states"
+        do {
+            // Onboarding is skipped by -UITEST_EMPTY_STATE, so this is Home
+            // with nothing behind it: no recall card at all, which is the
+            // fix for the card that used to appear on a fresh install.
+            try waitAndCapture(app, "st-01-home-empty", scheme: scheme, identifier: "home.circle.three")
+
+            try tap(app, "home.circle.three", scheme: scheme, step: "st-01-home-empty")
+            try waitAndCapture(app, "st-02-suggestions-error", scheme: scheme, identifier: "suggestions.error")
+
+            let back = app.navigationBars.buttons.firstMatch
+            if back.waitForExistence(timeout: defaultTimeout) { back.tap() }
+
+            try tap(app, "home.libraryButton", scheme: scheme, step: "st-03-library-empty")
+            try waitAndCapture(app, "st-03-library-empty", scheme: scheme, identifier: "library.empty")
         } catch {
             attachFailureDiagnostics(app, scheme: scheme)
             throw error

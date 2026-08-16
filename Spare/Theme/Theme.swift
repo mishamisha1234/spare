@@ -267,6 +267,16 @@ enum Theme {
     /// chips were rendering as two different roundnesses.
     static let pillRadius: CGFloat = .infinity
 
+    /// Horizontal margin for the reading column, narrowing as text grows so
+    /// the measure stays readable rather than dropping to a few words a line.
+    static func readingMargin(for step: TextSizeStep) -> CGFloat {
+        switch step {
+        case .small, .standard: Spacing.m
+        case .large: 20
+        case .extraLarge: Spacing.s
+        }
+    }
+
     /// Additive line spacing for body prose, in points.
     ///
     /// A point value, never a multiplier: `.lineSpacing()` adds to the font's

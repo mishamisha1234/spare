@@ -16,6 +16,17 @@ struct SpareApp: App {
         ProcessInfo.processInfo.arguments.contains("-UITEST_RESET_STATE")
     }
 
+    /// Seeds nothing, so the empty states are reachable for screenshots.
+    private static var isUITestEmptyState: Bool {
+        ProcessInfo.processInfo.arguments.contains("-UITEST_EMPTY_STATE")
+    }
+
+    /// Every provider call fails, so the error states render their real copy
+    /// rather than something written for the screenshot.
+    private static var isUITestFailingProvider: Bool {
+        ProcessInfo.processInfo.arguments.contains("-UITEST_FAILING_PROVIDER")
+    }
+
     private let container: ModelContainer
     private let provider: any LessonProvider
     private let pointsLedger: any PointsLedger
@@ -36,7 +47,16 @@ struct SpareApp: App {
             defaults.removeObject(forKey: AppSettingsKey.appearanceMode)
             defaults.removeObject(forKey: AppSettingsKey.textSizeStep)
             defaults.removeObject(forKey: AppSettingsKey.recallNotificationTimeMinutes)
-            Self.seedUITestState(container)
+            defaults.removeObject(forKey: AppSettingsKey.wantsRecallReminders)
+            defaults.removeObject(forKey: AppSettingsKey.hasRequestedNotificationPermission)
+            if Self.isUITestEmptyState {
+                // Straight past onboarding into an empty Home: the state a
+                // fresh install actually reaches, and where the recall card
+                // used to appear with a question for a lesson nobody read.
+                defaults.set(true, forKey: AppSettingsKey.hasCompletedOnboarding)
+            } else {
+                Self.seedUITestState(container)
+            }
         }
 
         // UI tests must never reach the network or spend anything, whatever
@@ -48,7 +68,9 @@ struct SpareApp: App {
             container: container
         )
 
-        if Self.isUITestReset {
+        if Self.isUITestFailingProvider {
+            self.provider = FailingProvider()
+        } else if Self.isUITestReset {
             self.provider = MockProvider()
         } else {
             let keyStore = KeychainAPIKeyStore()

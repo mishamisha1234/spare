@@ -60,6 +60,9 @@ struct ReaderView: View {
                     Text("\(viewModel.minutesRemaining) min left")
                         .font(Theme.Font.caption.font)
                         .foregroundStyle(palette.secondaryText)
+                        // Between two 44pt buttons, this truncates at AX2.
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
             }
             ToolbarItem(placement: .primaryAction) {
@@ -127,7 +130,9 @@ struct ReaderView: View {
                 }
             }
         }
-        .padding(.horizontal, Theme.Spacing.m)
+        // Margins give way to the column as text grows: at Extra Large a
+        // fixed 24pt gutter drops the line below ~30 characters.
+        .padding(.horizontal, Theme.readingMargin(for: textSizeStep))
         .padding(.vertical, Theme.Spacing.m)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
