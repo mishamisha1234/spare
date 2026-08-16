@@ -132,6 +132,15 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
                 app, "08-reader", scheme: colorScheme,
                 element: continueButton, step: "08-reader", timeout: 60
             )
+            // The button exists as soon as the lesson finishes, but it sits at
+            // the foot of a ~10,000pt scroll view, so it isn't hittable until
+            // the reader gets there. Confirmed from the CI accessibility tree:
+            // a bare `.tap()` left the app sitting on the Reader with content
+            // still at y = -9804. Scrolling is also what a real reader does.
+            XCTAssertTrue(
+                scrollUntilHittable(app, continueButton),
+                "08-reader: never scrolled far enough to reach Continue"
+            )
             continueButton.tap()
 
             // MARK: Completion — still on the free tier here, so both premium
@@ -312,6 +321,26 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
         XCTAssertTrue(ready, "\(step): \"\(identifier)\" never became hittable within \(defaultTimeout)s")
 
         target.tap()
+    }
+
+    /// Scrolls until a known-existing element is actually reachable.
+    ///
+    /// `.tap()` does some scrolling of its own, but not dependably inside a
+    /// long SwiftUI `ScrollView` — which is how the Reader's Continue button
+    /// ended up being "tapped" while remaining ten thousand points below the
+    /// fold. Stops as soon as the element is hittable, so the common case
+    /// costs nothing.
+    private func scrollUntilHittable(
+        _ app: XCUIApplication,
+        _ element: XCUIElement,
+        maxSwipes: Int = 40
+    ) -> Bool {
+        var swipes = 0
+        while !element.isHittable, swipes < maxSwipes {
+            app.swipeUp()
+            swipes += 1
+        }
+        return element.isHittable
     }
 
     private func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
