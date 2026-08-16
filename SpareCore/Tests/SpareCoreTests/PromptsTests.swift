@@ -271,7 +271,10 @@ final class PromptsTests: XCTestCase {
         let prompt = Prompts.recallTaskPrompt(lesson: lesson)
         XCTAssertTrue(prompt.contains(lesson.title))
         XCTAssertTrue(prompt.contains(lesson.surprisingClaim))
-        XCTAssertTrue(prompt.contains("Millennium Bridge"))
+        // Asserted via the lesson's own text rather than a fixture phrase:
+        // the fixture is topic-derived now, so hardcoding a sentence from it
+        // just re-couples the test to sample prose.
+        XCTAssertTrue(prompt.contains(lesson.bodyMarkdown.prefix(40)))
     }
 
     func testPostLessonTestTaskPromptCarriesTitleClaimAndBody() {
@@ -279,7 +282,10 @@ final class PromptsTests: XCTestCase {
         let prompt = Prompts.postLessonTestTaskPrompt(lesson: lesson)
         XCTAssertTrue(prompt.contains(lesson.title))
         XCTAssertTrue(prompt.contains(lesson.surprisingClaim))
-        XCTAssertTrue(prompt.contains("Millennium Bridge"))
+        // Asserted via the lesson's own text rather than a fixture phrase:
+        // the fixture is topic-derived now, so hardcoding a sentence from it
+        // just re-couples the test to sample prose.
+        XCTAssertTrue(prompt.contains(lesson.bodyMarkdown.prefix(40)))
     }
 
     func testGoDeeperTaskPromptNamesParentAndForbidsRepetition() {

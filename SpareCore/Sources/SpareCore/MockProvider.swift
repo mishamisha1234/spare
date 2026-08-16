@@ -170,8 +170,12 @@ public struct MockProvider: LessonProvider {
                 explanation: "The piece is tagged \(lesson.domainTag)."
             ),
             RecallQuestion(
-                question: "Which of these best matches the piece's subtitle framing?",
-                answer: lesson.subtitle,
+                // Was answered by `lesson.subtitle`, which is built from the
+                // window ("A 10-minute explainer") and therefore identical
+                // for every lesson of that length -- the same
+                // cross-contamination as the claim, one question along.
+                question: "Which field does \u{201C}\(lesson.title)\u{201D} draw its example from?",
+                answer: "\(lesson.domainTag), in the case of \(lesson.title.lowercased())",
                 distractors: [
                     "A framing that inverts the actual claim",
                     "A generic framing that could fit almost any topic",
@@ -239,6 +243,7 @@ public struct MockProvider: LessonProvider {
             body(
                 topic: topic,
                 targetWords: perChapterTarget,
+                maximumWords: window.chapterWordBudget.upperBound,
                 sectioned: window.format != .oneThing,
                 chapterNumber: chapterCount > 1 ? index + 1 : nil,
                 paragraphOffset: index * 3,
@@ -252,6 +257,7 @@ public struct MockProvider: LessonProvider {
     static func body(
         topic: TopicSuggestion,
         targetWords: Int,
+        maximumWords: Int? = nil,
         sectioned: Bool,
         chapterNumber: Int?,
         paragraphOffset: Int,
@@ -269,6 +275,11 @@ public struct MockProvider: LessonProvider {
             words += heading.lessonWordCount
         }
 
+        // Whole paragraphs only, so prose never ends mid-sentence -- which
+        // means the fill has to stop *before* it would cross the ceiling
+        // rather than after. Appending first and checking afterwards is what
+        // pushed a 1,600-word chapter to 1,621.
+        let ceiling = maximumWords ?? Int.max
         while words < targetWords {
             // A section break every fourth paragraph for sectioned, unchaptered
             // formats.
@@ -279,8 +290,10 @@ public struct MockProvider: LessonProvider {
                 sectionIndex += 1
             }
             let paragraph = fixtureParagraphs[paragraphIndex % fixtureParagraphs.count]
+            let paragraphWords = paragraph.lessonWordCount
+            if words + paragraphWords > ceiling { break }
             parts.append(paragraph)
-            words += paragraph.lessonWordCount
+            words += paragraphWords
             paragraphIndex += 1
         }
 
