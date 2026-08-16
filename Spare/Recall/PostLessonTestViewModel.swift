@@ -15,6 +15,9 @@ final class PostLessonTestViewModel: ObservableObject {
     @Published private(set) var isLoading = true
     @Published private(set) var failure: ErrorPresentation?
     @Published private(set) var isFinished = false
+    /// What the reader picked for each question, so the result screen can
+    /// show which ones they missed rather than only a score.
+    @Published private(set) var answers: [String: String] = [:]
 
     private let lessonID: UUID
     private let provider: LessonProvider
@@ -57,6 +60,7 @@ final class PostLessonTestViewModel: ObservableObject {
             isRevealed = false
             correctCount = 0
             isFinished = false
+            answers = [:]
         }
         isLoading = true
         // Cleared up front so a retry doesn't show the previous failure
@@ -86,6 +90,9 @@ final class PostLessonTestViewModel: ObservableObject {
     }
 
     func select(_ option: String) {
+        if let question = currentQuestion {
+            answers[question.question] = option
+        }
         guard !isRevealed, let question = currentQuestion else { return }
         selectedOption = option
         isRevealed = true

@@ -137,12 +137,10 @@ public struct MockProvider: LessonProvider {
         return RecallQuestion(
             question: "What actually drove the effect described in \u{201C}\(lesson.title)\u{201D}?",
             answer: lesson.surprisingClaim,
-            distractors: [
-                "A difference of scale rather than of mechanism",
-                "An artifact of how the measurement was taken",
-                "The intuitive cause most people would name first",
-            ],
-            explanation: "The central claim of the piece: \(lesson.surprisingClaim)"
+            distractors: Self.distractors(for: TopicSuggestion(
+                title: lesson.title, hook: "", domainTag: lesson.domainTag
+            )),
+            explanation: "Each correction fed the thing it was correcting."
         )
     }
 
@@ -152,12 +150,10 @@ public struct MockProvider: LessonProvider {
             RecallQuestion(
                 question: "What actually drove the effect described in \u{201C}\(lesson.title)\u{201D}?",
                 answer: lesson.surprisingClaim,
-                distractors: [
-                    "A difference of scale rather than of mechanism",
-                    "An artifact of how the measurement was taken",
-                    "The intuitive cause most people would name first",
-                ],
-                explanation: "The central claim of the piece: \(lesson.surprisingClaim)"
+                distractors: Self.distractors(for: TopicSuggestion(
+                    title: lesson.title, hook: "", domainTag: lesson.domainTag
+                )),
+                explanation: "Each correction fed the thing it was correcting."
             ),
             RecallQuestion(
                 question: "Which domain does \u{201C}\(lesson.title)\u{201D} sit in?",
@@ -230,7 +226,18 @@ public struct MockProvider: LessonProvider {
     /// A per-topic stand-in for the load-bearing claim. Deterministic, so the
     /// same topic always produces the same answer and a test can rely on it.
     static func surprisingClaim(for topic: TopicSuggestion) -> String {
-        "The counterintuitive part of \(topic.title.lowercased()): the correction turns out to be the cause, not the cure."
+        "In \(topic.title.lowercased()), the correction is the cause"
+    }
+
+    /// Distractors sized to match the claim, so the answer isn't identifiable
+    /// from its shape alone. `RecallQuestion.hasBalancedOptions` is the check.
+    static func distractors(for topic: TopicSuggestion) -> [String] {
+        let subject = topic.title.lowercased()
+        return [
+            "In \(subject), the scale is what changed",
+            "In \(subject), the measurement was at fault",
+            "In \(subject), the obvious cause was right",
+        ]
     }
 
     /// One body per chapter. Single-chapter formats return one element.

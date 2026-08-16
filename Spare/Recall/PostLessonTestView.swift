@@ -76,16 +76,22 @@ struct PostLessonTestView: View {
                 .font(Theme.Font.headline.font)
                 .foregroundStyle(palette.text)
 
-            VStack(spacing: Theme.Spacing.xs) {
+            VStack(spacing: Theme.Spacing.s) {
                 ForEach(viewModel.currentOptions, id: \.self) { option in
                     optionRow(option, question: question)
                 }
             }
 
             if viewModel.isRevealed {
-                Text(question.explanation)
-                    .font(Theme.Font.label.font)
-                    .foregroundStyle(palette.secondaryText)
+                // Trimmed: the fixture prefixed this with "The central claim
+                // of the piece: " and then repeated the chosen option, so the
+                // reader read the same sentence twice.
+                if !question.trimmedExplanation.isEmpty {
+                    Text(question.trimmedExplanation)
+                        .font(Theme.Font.label.font)
+                        .foregroundStyle(palette.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 secondaryButton(
                     title: viewModel.currentIndex + 1 < viewModel.questions.count ? "Next" : "See results",
@@ -134,16 +140,61 @@ struct PostLessonTestView: View {
         return isCorrectOption ? palette.text : palette.secondaryText
     }
 
+    /// The score, then every question with what they chose.
+    ///
+    /// A bare "1 of 3 correct" plus a Done button used about a tenth of the
+    /// screen and gave the reader no way to see which two they missed —
+    /// which is the only part of a recall test worth reading.
     private var summary: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
             Text("\(viewModel.correctCount) of \(viewModel.questions.count) correct")
                 .font(Theme.Font.title.font)
                 .foregroundStyle(palette.text)
                 .accessibilityIdentifier("postLessonTest.summary")
 
-            secondaryButton(title: "Done", action: onFinished)
+            VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+                ForEach(viewModel.questions, id: \.question) { question in
+                    resultRow(question)
+                }
+            }
+
+            primaryButton(title: "Done", action: onFinished)
                 .accessibilityIdentifier("postLessonTest.done")
         }
+    }
+
+    private func resultRow(_ question: RecallQuestion) -> some View {
+        let chosen = viewModel.answers[question.question]
+        let wasCorrect = chosen == question.answer
+        return VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
+            Text(question.question)
+                .font(Theme.Font.label.font)
+                .foregroundStyle(palette.text)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(wasCorrect ? "Correct" : "You chose: \(chosen ?? "nothing")")
+                .font(Theme.Font.caption.font)
+                .foregroundStyle(palette.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// Accent-filled: on the result screen this is the only action.
+    private func primaryButton(title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(Theme.Font.headline.font)
+                .foregroundStyle(palette.textOnAccent)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: Theme.ControlSize.button)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.cornerRadius)
+                        .fill(palette.accent)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func secondaryButton(title: String, action: @escaping () -> Void) -> some View {

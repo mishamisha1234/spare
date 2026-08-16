@@ -159,6 +159,47 @@ public struct RecallQuestion: Codable, Sendable, Equatable {
         self.explanation = explanation
     }
 
+    /// Longest an option may be before it stops being scannable.
+    public static let maximumOptionLength = 90
+
+    /// How far an option may sit from the mean length of its set.
+    ///
+    /// The correct answer was four lines of specific prose next to three
+    /// two-line abstractions, so it was identifiable from the silhouette
+    /// without reading a word. Parity is not decoration — it is what makes
+    /// the question a test of memory rather than of shape.
+    public static let optionLengthTolerance = 0.25
+
+    /// Options whose lengths are close enough that none stands out.
+    public var hasBalancedOptions: Bool {
+        let all = [answer] + distractors
+        let lengths = all.map { Double($0.count) }
+        guard let longest = lengths.max(), longest <= Double(Self.maximumOptionLength) else {
+            return false
+        }
+        let mean = lengths.reduce(0, +) / Double(lengths.count)
+        guard mean > 0 else { return false }
+        return lengths.allSatisfy { abs($0 - mean) / mean <= Self.optionLengthTolerance }
+    }
+
+    /// The explanation with any restatement of the answer removed.
+    ///
+    /// The fixture prefixed it with "The central claim of the piece: " and
+    /// then repeated the chosen option verbatim, so the reader read the same
+    /// sentence twice in a row.
+    public var trimmedExplanation: String {
+        var text = explanation
+        for prefix in ["The central claim of the piece: ", "The central claim of the piece:"] {
+            if text.hasPrefix(prefix) {
+                text = String(text.dropFirst(prefix.count))
+            }
+        }
+        if text.trimmingCharacters(in: .whitespaces) == answer.trimmingCharacters(in: .whitespaces) {
+            return ""
+        }
+        return text.trimmingCharacters(in: .whitespaces)
+    }
+
     /// A seed derived from the question text itself.
     ///
     /// The option order has to be identical every time the same question is
