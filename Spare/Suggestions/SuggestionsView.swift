@@ -76,7 +76,7 @@ struct SuggestionsView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(palette.text)
                 .accessibilityIdentifier("suggestions.shuffle")
-                .accessibilityLabel("Shuffle suggestions")
+                .accessibilityLabel("Shuffle these suggestions")
             }
         }
         .task { await viewModel.loadCacheThenRefresh() }
@@ -98,9 +98,11 @@ struct SuggestionsView: View {
             Text(suggestion.hook)
                 .font(Theme.Font.label.font)
                 .foregroundStyle(palette.secondaryText)
+                // Capped so five rows stay on one screen at Large text.
+                .lineLimit(2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, Theme.Spacing.s)
+        .padding(.vertical, Theme.Spacing.rowVertical)
         .contentShape(Rectangle())
         .accessibilityIdentifier("suggestions.row.\(suggestion.id)")
     }

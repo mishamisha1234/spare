@@ -130,7 +130,7 @@ struct LibraryView: View {
                         Image(systemName: "square.and.arrow.up")
                     }
                     .foregroundStyle(palette.text)
-                    .accessibilityLabel("Export library as Markdown")
+                    .accessibilityLabel("Share your library as Markdown")
                     .accessibilityIdentifier("library.export")
                 }
             }
@@ -199,13 +199,16 @@ struct LibraryView: View {
     }
 
     private func row(_ lesson: StoredLesson) -> some View {
+        // Same component as a Suggestions row, so the same scan order:
+        // tag, then title. These were reading in opposite directions.
         VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
+            Text(lesson.topicTag.uppercased())
+                .font(Theme.Font.eyebrow.font)
+                .tracking(Theme.Font.eyebrow.tracking)
+                .foregroundStyle(palette.secondaryText)
             Text(lesson.title)
                 .font(Theme.Font.headline.font)
                 .foregroundStyle(palette.text)
-            Text(lesson.topicTag.uppercased())
-                .font(Theme.Font.caption.font)
-                .foregroundStyle(palette.secondaryText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Theme.Spacing.m)

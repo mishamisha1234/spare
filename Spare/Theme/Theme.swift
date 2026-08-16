@@ -153,6 +153,9 @@ enum Theme {
         /// A small label sitting above a title — e.g. a suggestion's domain
         /// tag. Meant to outrank the title it sits over, not recede.
         case eyebrow
+        /// A section heading inside the reading column. Serif, so it belongs
+        /// to the prose rather than to the app chrome around it.
+        case readerHeading
         /// A figure on the Stats screen: large enough to be the thing you
         /// read first, without a badge around it.
         case statValue
@@ -181,6 +184,8 @@ enum Theme {
                 return .system(size: 13, weight: .medium, design: .default)
             case .eyebrow:
                 return .system(size: 11, weight: .semibold, design: .default)
+            case .readerHeading:
+                return .system(size: 21, weight: .semibold, design: .serif)
             case .statValue:
                 return .system(size: 28, weight: .regular, design: .default)
             case .shareHero:
@@ -245,6 +250,8 @@ enum Theme {
         /// Added step. 24 was too tight and 40 too loose for the circle-grid
         /// row gutter, Settings group gaps, and the share-card stat block.
         static let ml: CGFloat = 32
+        /// Vertical padding inside a list row.
+        static let rowVertical: CGFloat = 20
         static let l: CGFloat = 40
         static let xl: CGFloat = 64
     }

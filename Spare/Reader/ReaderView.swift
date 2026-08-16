@@ -169,10 +169,13 @@ struct ReaderView: View {
     private func blockView(_ block: LessonBlock) -> some View {
         switch block.kind {
         case .heading:
+            // Serif, matching the body. A sans heading inside a serif
+            // reading column breaks the page.
             Text(block.text)
-                .font(Theme.Font.title.font)
+                .font(Theme.Font.readerHeading.font)
                 .foregroundStyle(palette.text)
-                .padding(.top, Theme.Spacing.s)
+                .padding(.top, Theme.Spacing.ml)
+                .padding(.bottom, Theme.Spacing.xs)
         case .reflection:
             Text(block.text)
                 .font(Theme.Font.scaledBody(multiplier: textSizeStep.multiplier))
