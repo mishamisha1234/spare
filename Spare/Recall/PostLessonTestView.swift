@@ -37,10 +37,15 @@ struct PostLessonTestView: View {
             VStack(alignment: .leading, spacing: Theme.Spacing.l) {
                 if viewModel.isLoading {
                     ProgressView().tint(palette.accent)
-                } else if let message = viewModel.errorMessage {
-                    Text(message)
-                        .font(Theme.Font.label.font)
-                        .foregroundStyle(palette.secondaryText)
+                } else if let failure = viewModel.failure {
+                    ErrorStateView(
+                        presentation: failure,
+                        onRetry: {
+                            guard let lesson = modelContext.storedLesson(id: lessonID)?.lesson else { return }
+                            Task { await viewModel.start(lesson: lesson) }
+                        },
+                        identifier: "postLessonTest.error"
+                    )
                 } else if viewModel.isFinished {
                     summary
                 } else if let question = viewModel.currentQuestion {

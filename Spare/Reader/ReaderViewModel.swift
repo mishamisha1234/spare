@@ -14,7 +14,7 @@ final class ReaderViewModel: ObservableObject {
     @Published private(set) var isFinished = false
     @Published private(set) var persistedLessonID: UUID?
     @Published private(set) var scrollProgress: Double = 0
-    @Published private(set) var errorMessage: String?
+    @Published private(set) var failure: ErrorPresentation?
 
     let window: TimeWindow
     private let source: ReaderSource
@@ -108,15 +108,19 @@ final class ReaderViewModel: ObservableObject {
                 }
             }
         } catch let error as LessonProviderError {
-            errorMessage = Self.message(for: error)
+            failure = ProviderErrorCopy.presentation(for: error)
         } catch {
-            errorMessage = "The lesson stopped generating. Please go back and try again."
+            failure = ProviderErrorCopy.unexpected
         }
     }
 
     private func generateDeeperLesson(parentLessonID: UUID, angle: DeeperAngle, window: TimeWindow) async {
         guard let parent = modelContext.storedLesson(id: parentLessonID) else {
-            errorMessage = "Couldn't find the lesson this was going deeper on."
+            failure = ErrorPresentation(
+                title: "Lesson missing",
+                message: "The lesson this was going deeper on is no longer in your library.",
+                isRetryable: false
+            )
             return
         }
         let profile = modelContext.currentProfileSnapshot()
@@ -132,9 +136,9 @@ final class ReaderViewModel: ObservableObject {
             syncFromGate()
             persistCanonical(lesson, parentLessonID: parentLessonID)
         } catch let error as LessonProviderError {
-            errorMessage = Self.message(for: error)
+            failure = ProviderErrorCopy.presentation(for: error)
         } catch {
-            errorMessage = "Couldn't generate that lesson. Please go back and try again."
+            failure = ProviderErrorCopy.unexpected
         }
     }
 
@@ -180,18 +184,9 @@ final class ReaderViewModel: ObservableObject {
         isFinished = true
     }
 
-    private static func message(for error: LessonProviderError) -> String {
-        switch error {
-        case .missingAPIKey:
-            return "Add an API key in Settings to generate live lessons."
-        case .refused:
-            return "The model declined to write about this topic. Try another one."
-        case .cancelled:
-            return "Generation stopped."
-        case .httpStatus(let code, _) where code == 429:
-            return "Rate limited. Give it a minute and try again."
-        default:
-            return "The lesson stopped generating. Please go back and try again."
-        }
-    }
+    // The local `message(for:)` that used to live here is gone: it was one of
+    // three separate places that each turned the same errors into their own
+    // wording, which is how "rate limited" and "offline" ended up
+    // indistinguishable on two of them. `ProviderErrorCopy` is now the single
+    // source, and it carries retryability too, which a bare string could not.
 }

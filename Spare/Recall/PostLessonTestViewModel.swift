@@ -13,7 +13,7 @@ final class PostLessonTestViewModel: ObservableObject {
     @Published private(set) var isRevealed = false
     @Published private(set) var correctCount = 0
     @Published private(set) var isLoading = true
-    @Published private(set) var errorMessage: String?
+    @Published private(set) var failure: ErrorPresentation?
     @Published private(set) var isFinished = false
 
     private let lessonID: UUID
@@ -41,15 +41,25 @@ final class PostLessonTestViewModel: ObservableObject {
     func start(lesson: Lesson) async {
         guard questions.isEmpty else { return }
         isLoading = true
+        // Cleared up front so a retry doesn't show the previous failure
+        // underneath the new attempt.
+        failure = nil
         defer { isLoading = false }
         do {
             questions = try await provider.generatePostLessonTest(for: lesson)
             optionSeeds = questions.map { _ in UInt64.random(in: 1...UInt64.max) }
             if questions.isEmpty {
-                errorMessage = "Couldn't generate a test for this lesson. Please try again later."
+                // Succeeded but returned nothing. Not an error condition —
+                // there is no thrown error to describe — so it gets its own
+                // honest wording rather than being dressed up as a failure.
+                failure = ErrorPresentation(
+                    title: "No questions",
+                    message: "The model didn't produce a test for this lesson. Trying again usually works.",
+                    isRetryable: true
+                )
             }
         } catch {
-            errorMessage = "Couldn't generate a test for this lesson. Please try again later."
+            failure = (error as? LessonProviderError).map(ProviderErrorCopy.presentation) ?? ProviderErrorCopy.unexpected
         }
     }
 

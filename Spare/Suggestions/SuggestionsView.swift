@@ -5,6 +5,9 @@ import SpareCore
 struct SuggestionsView: View {
     @StateObject private var viewModel: SuggestionsViewModel
     var onSelect: (TopicSuggestion) -> Void
+    /// Offered only when a failure's fix genuinely lives in Settings — a
+    /// missing or rejected API key.
+    var onOpenSettings: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
     private var palette: Theme.Palette { Theme.palette(for: colorScheme) }
@@ -13,12 +16,14 @@ struct SuggestionsView: View {
         window: TimeWindow,
         provider: LessonProvider,
         modelContext: ModelContext,
-        onSelect: @escaping (TopicSuggestion) -> Void
+        onSelect: @escaping (TopicSuggestion) -> Void,
+        onOpenSettings: @escaping () -> Void
     ) {
         _viewModel = StateObject(wrappedValue: SuggestionsViewModel(
             window: window, provider: provider, modelContext: modelContext
         ))
         self.onSelect = onSelect
+        self.onOpenSettings = onOpenSettings
     }
 
     var body: some View {
@@ -37,11 +42,24 @@ struct SuggestionsView: View {
                         .tint(palette.accent)
                         .padding(.top, Theme.Spacing.l)
                 }
-                if let message = viewModel.errorMessage {
-                    Text(message)
-                        .font(Theme.Font.label.font)
-                        .foregroundStyle(palette.secondaryText)
-                        .padding(.top, Theme.Spacing.l)
+
+                if let failure = viewModel.failure {
+                    ErrorStateView(
+                        presentation: failure,
+                        onRetry: { Task { await viewModel.shuffle() } },
+                        onOpenSettings: onOpenSettings,
+                        identifier: "suggestions.error"
+                    )
+                    .padding(.top, Theme.Spacing.l)
+                } else if viewModel.suggestions.isEmpty, !viewModel.isRefreshing {
+                    // Distinct from a failure: nothing came back, but nothing
+                    // broke either. Shuffling is the honest next move.
+                    EmptyStateView(
+                        title: "No suggestions",
+                        message: "Nothing came back for this length. Shuffle to ask again.",
+                        identifier: "suggestions.empty"
+                    )
+                    .padding(.top, Theme.Spacing.l)
                 }
             }
             .padding(.horizontal, Theme.Spacing.m)

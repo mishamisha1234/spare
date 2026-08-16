@@ -9,7 +9,10 @@ import SpareCore
 final class SuggestionsViewModel: ObservableObject {
     @Published private(set) var suggestions: [TopicSuggestion] = []
     @Published private(set) var isRefreshing = false
-    @Published private(set) var errorMessage: String?
+    /// The specific failure, not a string: the view needs to know whether a
+    /// retry could help and whether the fix is in Settings, and a message
+    /// alone can't say either.
+    @Published private(set) var failure: ErrorPresentation?
 
     let window: TimeWindow
     private let provider: LessonProvider
@@ -38,7 +41,7 @@ final class SuggestionsViewModel: ObservableObject {
 
     private func refresh(shuffled: Bool) async {
         isRefreshing = true
-        errorMessage = nil
+        failure = nil
         defer { isRefreshing = false }
 
         do {
@@ -59,8 +62,11 @@ final class SuggestionsViewModel: ObservableObject {
             suggestions = fresh
             persistCache(fresh)
         } catch {
+            // Only surfaced when there is nothing cached to show: a failed
+            // refresh over a usable cache is not worth an error screen.
             if suggestions.isEmpty {
-                errorMessage = "Couldn't load suggestions."
+                failure = (error as? LessonProviderError).map(ProviderErrorCopy.presentation)
+                    ?? ProviderErrorCopy.unexpected
             }
         }
     }

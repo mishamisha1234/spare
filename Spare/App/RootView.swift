@@ -149,6 +149,8 @@ struct RootView: View {
                 // allowance — browsing suggestions doesn't.
                 entitlements.recordLessonStarted(window: window)
                 path.append(.reader(.newTopic(suggestion, window: window)))
+            } onOpenSettings: {
+                path.append(.settings)
             }
 
         case .reader(let source):

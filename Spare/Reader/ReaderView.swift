@@ -100,10 +100,8 @@ struct ReaderView: View {
     @ViewBuilder
     private var content: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.m) {
-            if let errorMessage = viewModel.errorMessage {
-                Text(errorMessage)
-                    .font(Theme.Font.label.font)
-                    .foregroundStyle(palette.secondaryText)
+            if let failure = viewModel.failure {
+                ErrorStateView(presentation: failure, identifier: "reader.error")
                     .padding(.top, Theme.Spacing.xl)
             } else if !viewModel.isRevealed {
                 holdingState
