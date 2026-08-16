@@ -10,6 +10,12 @@ enum AppSettingsKey {
     /// Minutes since midnight, local time. Default is 9:00 AM (540); see
     /// `NotificationScheduler.defaultMinutesSinceMidnight`.
     static let recallNotificationTimeMinutes = "recallNotificationTimeMinutes"
+    /// Whether the reader opted in during onboarding. Intent is stored there;
+    /// the system prompt is deferred until a question is genuinely due.
+    static let wantsRecallReminders = "wantsRecallReminders"
+    /// Set once the system prompt has actually been shown, so a decline
+    /// isn't re-asked on every subsequent due question.
+    static let hasRequestedNotificationPermission = "hasRequestedNotificationPermission"
 }
 
 /// Reader text size: a small fixed set of steps, like Kindle's "Aa" control.

@@ -54,6 +54,13 @@ struct HomeView: View {
         .background(palette.background)
         .themedAppear()
         .onAppear {
+            // Two guards, both necessary. A recall card is a question about
+            // something you read; showing one to somebody who has finished
+            // nothing is incoherent, and on a fresh install it appeared with
+            // an already-answered question for a lesson they had never
+            // opened. `nextDueItem` alone doesn't catch that, because seeded
+            // or orphaned rows are still "due".
+            guard hasFinishedSomething else { return }
             if pinnedRecallItem == nil {
                 pinnedRecallItem = RecallScheduler.nextDueItem(from: recallItems, now: .now) { $0.dueAt }
             }
@@ -127,8 +134,14 @@ struct HomeView: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// True once at least one lesson has actually been completed.
+    private var hasFinishedSomething: Bool {
+        lessons.contains { $0.completedAt != nil }
+    }
+
     private var visibleRecallItem: StoredRecallItem? {
-        isRecallDismissed ? nil : pinnedRecallItem
+        guard !isRecallDismissed, hasFinishedSomething else { return nil }
+        return pinnedRecallItem
     }
 
     /// The most recent course the reader started and hasn't finished. Only

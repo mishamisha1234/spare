@@ -159,6 +159,30 @@ public struct RecallQuestion: Codable, Sendable, Equatable {
         self.explanation = explanation
     }
 
+    /// A seed derived from the question text itself.
+    ///
+    /// The option order has to be identical every time the same question is
+    /// rendered. Seeding from anything incidental — a random value, a row
+    /// index, the current time — reshuffles the answers between renders,
+    /// which is both disorienting and a subtle way to make a remembered
+    /// answer wrong. FNV-1a: small, stable across launches and platforms,
+    /// and deterministic for a given string, which `UUID()` and `hashValue`
+    /// are not.
+    public static func stableSeed(for text: String) -> UInt64 {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in text.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01B3
+        }
+        // The shuffle treats 0 as "unseeded"; never hand it one.
+        return hash == 0 ? 0x9E37_79B9_7F4A_7C15 : hash
+    }
+
+    /// The stable order for this question, with no seed to supply.
+    public var stableOptions: [String] {
+        options(seed: Self.stableSeed(for: question))
+    }
+
     /// Answer plus distractors in a stable shuffled order derived from `seed`,
     /// so option order survives view reloads without being stored.
     public func options(seed: UInt64) -> [String] {

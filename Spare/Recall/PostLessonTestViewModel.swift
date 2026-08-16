@@ -22,6 +22,14 @@ final class PostLessonTestViewModel: ObservableObject {
     /// One stable option order per question, fixed at load time so the
     /// order doesn't reshuffle mid-question on a view refresh.
     private var optionSeeds: [UInt64] = []
+    /// Which lesson the loaded questions actually belong to.
+    ///
+    /// `questions.isEmpty` alone was the guard, which caches by "have I
+    /// loaded anything" rather than "have I loaded *this*". If SwiftUI reuses
+    /// this view model across a different lessonID, that serves the previous
+    /// lesson's questions under the new lesson's title — silently, and
+    /// looking entirely normal.
+    private var loadedLessonID: UUID?
 
     init(lessonID: UUID, provider: LessonProvider, pointsLedger: any PointsLedger) {
         self.lessonID = lessonID
@@ -39,7 +47,17 @@ final class PostLessonTestViewModel: ObservableObject {
     }
 
     func start(lesson: Lesson) async {
-        guard questions.isEmpty else { return }
+        // Keyed to the lesson, not merely to "something is loaded".
+        guard loadedLessonID != lessonID || questions.isEmpty else { return }
+        if loadedLessonID != lessonID {
+            questions = []
+            optionSeeds = []
+            currentIndex = 0
+            selectedOption = nil
+            isRevealed = false
+            correctCount = 0
+            isFinished = false
+        }
         isLoading = true
         // Cleared up front so a retry doesn't show the previous failure
         // underneath the new attempt.
@@ -47,7 +65,11 @@ final class PostLessonTestViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             questions = try await provider.generatePostLessonTest(for: lesson)
-            optionSeeds = questions.map { _ in UInt64.random(in: 1...UInt64.max) }
+            loadedLessonID = lessonID
+            // Seeded from the question text, not randomly: a random seed
+            // reshuffles the options on every view refresh of the same
+            // question, which is the recall-card bug in another place.
+            optionSeeds = questions.map { RecallQuestion.stableSeed(for: $0.question) }
             if questions.isEmpty {
                 // Succeeded but returned nothing. Not an error condition —
                 // there is no thrown error to describe — so it gets its own

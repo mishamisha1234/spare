@@ -319,10 +319,16 @@ struct OnboardingView: View {
         step = next
     }
 
+    /// Records the intent only.
+    ///
+    /// Requesting here fired the system prompt asynchronously, so it landed
+    /// on Home a moment after onboarding finished — asking for a permission
+    /// whose payoff ("one question a day about what you read") the reader
+    /// cannot experience for at least a day, at the exact moment they are
+    /// trying to start their first lesson. The prompt now waits until a
+    /// recall question is genuinely due, when the ask makes sense on its own.
     private func requestNotificationPermission() {
-        #if canImport(UserNotifications)
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
-        #endif
+        UserDefaults.standard.set(true, forKey: AppSettingsKey.wantsRecallReminders)
     }
 
     private func finish() {

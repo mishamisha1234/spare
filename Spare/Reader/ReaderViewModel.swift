@@ -47,7 +47,13 @@ final class ReaderViewModel: ObservableObject {
     /// upper-bound estimate while still streaming.
     var minutesRemaining: Int {
         let total = gate.finalLesson?.wordCount ?? window.wordBudget.upperBound
-        return ReadingTime.minutesRemaining(totalWordCount: total, progress: scrollProgress)
+        let estimate = ReadingTime.minutesRemaining(totalWordCount: total, progress: scrollProgress)
+        // Clamped to the duration the reader actually chose. Generated bodies
+        // routinely land a little over the word budget, so the raw estimate
+        // read "11 min left" on a lesson picked from the 10-minute circle —
+        // the one number on the screen that has to agree with the button they
+        // pressed.
+        return min(estimate, window.minutes)
     }
 
     func start() {

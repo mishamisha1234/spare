@@ -99,7 +99,7 @@ struct ReaderView: View {
 
     @ViewBuilder
     private var content: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+        VStack(alignment: .leading, spacing: Theme.bodyParagraphSpacing) {
             if let failure = viewModel.failure {
                 ErrorStateView(presentation: failure, identifier: "reader.error")
                     .padding(.top, Theme.Spacing.xl)

@@ -25,7 +25,7 @@ struct LessonDetailView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+                VStack(alignment: .leading, spacing: Theme.bodyParagraphSpacing) {
                     Text(lesson.title)
                         .font(Theme.Font.largeTitle.font)
                         .foregroundStyle(palette.text)

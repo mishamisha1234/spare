@@ -111,8 +111,9 @@ enum Theme {
     // MARK: - Typography
 
     enum Font {
-        /// Body copy: New York (serif), 19pt, 1.55 line spacing. Reader
-        /// screen only — this is the one place prose is read at length.
+        /// Body copy: New York (serif), 19pt. Reader screen only — this is
+        /// the one place prose is read at length. Leading is an additive
+        /// point value; see `bodyLineSpacing`.
         case body
         /// Screen titles ("How long do you have?").
         case largeTitle
@@ -159,11 +160,16 @@ enum Theme {
             }
         }
 
-        /// Line spacing to apply via `.lineSpacing(_:)`. Only `.body` carries
-        /// the 1.55 multiple; UI text uses tight, default spacing.
+        /// Points added *between* lines, not a multiplier.
+        ///
+        /// SwiftUI's `.lineSpacing()` adds to the font's own line height
+        /// rather than scaling it. Passing `19 * 0.55` (10.45pt) on top of
+        /// New York 19pt's ~22.6pt default produced a ~33pt pitch — a 1.71x
+        /// leading where 1.55x was intended. 5pt gives ~27.6pt, which is the
+        /// 1.45x that actually reads as the intended density.
         var lineSpacing: CGFloat {
             switch self {
-            case .body: 19 * 0.55
+            case .body: Theme.bodyLineSpacing
             default: 0
             }
         }
@@ -183,8 +189,10 @@ enum Theme {
             .system(size: 19 * multiplier, weight: .regular, design: .serif)
         }
 
+        /// Scales with the reader's text size, but stays an additive point
+        /// value — see `lineSpacing` for why this is not a multiple.
         static func scaledBodyLineSpacing(multiplier: Double) -> CGFloat {
-            19 * multiplier * 0.55
+            Theme.bodyLineSpacing * multiplier
         }
 
         /// The Home circle label scales with its diameter — size still
@@ -212,6 +220,17 @@ enum Theme {
     /// from spacing and hairline borders only.
     static let cornerRadius: CGFloat = 14
     static let borderWidth: CGFloat = 1
+
+    /// Additive line spacing for body prose, in points.
+    ///
+    /// A point value, never a multiplier: `.lineSpacing()` adds to the font's
+    /// line height instead of scaling it, so a "1.55" here silently rendered
+    /// as 1.71x. `ThemeTypographyTests` asserts it stays in point range.
+    static let bodyLineSpacing: CGFloat = 5
+
+    /// Paragraph spacing for body prose. Previously indistinguishable from a
+    /// loose line gap.
+    static let bodyParagraphSpacing: CGFloat = 16
 
     /// The dash pattern that marks a locked control. The *only* way locking
     /// is shown on Home: no padlock glyph, no badge, no fill change, so the
@@ -289,7 +308,12 @@ enum Theme {
     /// visible frame.
     enum ShareCard {
         static let width: CGFloat = 405
+        /// The full 9:16 height, used when there are four titles to show.
         static let height: CGFloat = 720
+        /// Floor for a card with fewer than four titles. The card shrinks to
+        /// its content rather than padding out to 9:16 with dead space —
+        /// a mostly-empty card reads as a bug, not as restraint.
+        static let minHeight: CGFloat = 480
         /// Height of the tallest domain bar in the fingerprint row; other
         /// bars scale relative to it.
         static let maxBarHeight: CGFloat = 64

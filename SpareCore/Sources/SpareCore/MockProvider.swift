@@ -205,13 +205,28 @@ public struct MockProvider: LessonProvider {
             subtitle: "A \(window.minutes)-minute \(window.format.displayName.lowercased())",
             domainTag: topic.domainTag,
             bodyMarkdown: fixtureChapterBodies(topic: topic, window: window).joined(separator: "\n\n"),
-            surprisingClaim: "The Millennium Bridge closed two days after opening because pedestrians synchronised their steps to its sway, so each correction fed the wobble it was correcting.",
+            // Derived from the topic, not a fixed sentence.
+            //
+            // This was hardcoded to a Millennium Bridge claim regardless of
+            // the topic, and it is the value the recall question and the
+            // post-lesson test both use as the correct answer — so a lesson
+            // titled "How GPS corrects for relativity" was quizzed on
+            // pedestrians on a footbridge. Sample content is allowed to be
+            // obviously sample; it is not allowed to be about a different
+            // subject than the lesson it belongs to.
+            surprisingClaim: surprisingClaim(for: topic),
             deeperAngles: [
-                "The broader physics of resonance in built structures",
-                "How a tuned mass damper actually works",
-                "The case against over-damping: when flexibility is safer",
+                "The wider context around \(topic.title.lowercased())",
+                "The specific mechanism behind \(topic.title.lowercased())",
+                "The strongest case against the usual account of \(topic.title.lowercased())",
             ]
         )
+    }
+
+    /// A per-topic stand-in for the load-bearing claim. Deterministic, so the
+    /// same topic always produces the same answer and a test can rely on it.
+    static func surprisingClaim(for topic: TopicSuggestion) -> String {
+        "The counterintuitive part of \(topic.title.lowercased()): the correction turns out to be the cause, not the cure."
     }
 
     /// One body per chapter. Single-chapter formats return one element.
@@ -222,6 +237,7 @@ public struct MockProvider: LessonProvider {
 
         return (0..<chapterCount).map { index in
             body(
+                topic: topic,
                 targetWords: perChapterTarget,
                 sectioned: window.format != .oneThing,
                 chapterNumber: chapterCount > 1 ? index + 1 : nil,
@@ -234,12 +250,14 @@ public struct MockProvider: LessonProvider {
     /// Builds prose of roughly `targetWords` words by cycling fixture
     /// paragraphs, adding section or chapter headings as the format requires.
     static func body(
+        topic: TopicSuggestion,
         targetWords: Int,
         sectioned: Bool,
         chapterNumber: Int?,
         paragraphOffset: Int,
         trailingReflection: Bool
     ) -> String {
+        let fixtureParagraphs = Self.fixtureParagraphs(topic: topic)
         var parts: [String] = []
         var words = 0
         var paragraphIndex = paragraphOffset
@@ -284,24 +302,41 @@ public struct MockProvider: LessonProvider {
     }
 
     static let sectionTitles = [
-        "The day it happened",
-        "What the wind is doing",
-        "Why the fix is counterintuitive",
-        "The engineers' bargain",
+        "The day someone measured it",
+        "What is actually moving",
+        "Why the fix runs backwards",
+        "The bargain underneath",
         "What it changed",
         "Seeing it everywhere",
     ]
 
-    static let fixtureParagraphs: [String] = [
-        "On June 10, 2000, the Millennium Bridge opened across the Thames. Within hours it was swaying hard enough that people grabbed the rails. Two days later it closed, and stayed closed for almost two years. The engineers had run every simulation. What they had not simulated was people.",
-        "Here is the mechanism. When a walkway moves sideways, even slightly, you widen your stance and time your steps to the motion. So does everyone near you. A crowd that arrived walking at random leaves walking in step, and a thousand synchronised footfalls push the deck at exactly its natural frequency. The correction is the cause.",
-        "Steel sings for a related reason. Wind sheds alternating vortices off a cable or a deck edge, and each vortex gives a small tug. When the tug rate matches a frequency the structure already prefers, the tugs add instead of cancelling. Engineers call it lock-in. Residents near a humming bridge call the council.",
-        "The counterintuitive part is the fix. You might expect stiffer, heavier, stronger. Often the answer is the opposite: add something floppy. A tuned mass damper is a weight on a spring, set to the structure's own frequency, that swallows energy by swinging out of phase. The building sways, the weight sways against it, and the sum is stillness.",
-        "So the repair was not new towers or thicker cables. It was thirty-seven fluid dampers and twenty-six tuned mass dampers bolted quietly under the deck, a few percent of the bridge's cost, invisible to everyone walking over them.",
-        "There is a bargain hidden here. A structure rigid enough never to oscillate would be monstrously expensive and, in an earthquake, brittle. Engineers accept motion and then manage it. Every tall building you have been in moves constantly; it is simply kept below the threshold where your inner ear files a complaint.",
-        "Once you know the pattern you find it everywhere. The wine glass that rings at one pitch. The shopping trolley that wobbles at exactly one speed. The shudder in a car at 110 and not at 100. Each is a system with a preferred frequency meeting a push that happens to match it.",
-        "Next time a footbridge feels alive under you, it is. Not failing. Negotiating. Somewhere under the deck a mass you will never see is swinging in precise opposition to your steps, spending your energy so the steel does not have to.",
-    ]
+    /// Sample prose, parameterised by topic.
+    ///
+    /// These used to be eight fixed paragraphs about the Millennium Bridge,
+    /// rendered under whatever title the reader had picked — so a lesson
+    /// called "How GPS corrects for relativity" was several hundred words
+    /// about pedestrians on a footbridge. Filler is fine; filler about a
+    /// different subject is what made the offline build look broken.
+    ///
+    /// Deliberately preserved from the originals: a digit in the opening
+    /// sentence (so the definition-opener check doesn't fire), hard variation
+    /// in sentence length, no banned vocabulary, and a closing paragraph that
+    /// shares little wording with the opening. `LessonQualityCheck` asserts
+    /// all four against every fixture.
+    static func fixtureParagraphs(topic: TopicSuggestion) -> [String] {
+        let subject = topic.title.lowercased()
+        let field = topic.domainTag.lowercased()
+        return [
+            "In 1954 someone finally measured it, and the number came back wrong twice before anyone believed it. \(subject.prefix(1).uppercased() + subject.dropFirst()) had three competing explanations at the time. Two were tidy. The tidy ones were the ones that failed.",
+            "Here is the mechanism. A small change feeds back into the thing that produced it, and the loop closes. Each correction makes the next correction larger. Run that for long enough and the behaviour everyone was trying to damp is the behaviour they were accidentally driving. This is the part of \(subject) that gets left out of the summary.",
+            "The same shape turns up elsewhere in \(field). A system has some state it prefers. A push arrives at the rate that state already likes. The pushes stop cancelling and start adding, and a quantity nobody was watching climbs until somebody notices.",
+            "The fix is where intuition breaks. You would expect the answer to be more: more rigidity, more control, more correction. Often it is less. Give the system somewhere to put the energy and it stops accumulating it. The counterweight moves so the structure does not have to.",
+            "So the repair was not the expensive one. It was a handful of components, a small fraction of the total cost, doing their work invisibly to everyone who benefits from them.",
+            "There is a bargain hidden in that. Something rigid enough never to move at all would be ruinously expensive and, under a real shock, brittle. The working answer is to accept motion and manage it, keeping it under the threshold where anyone files a complaint.",
+            "Once you know the pattern you find it everywhere. The glass that rings at one pitch. The trolley that wobbles at exactly one speed. The shudder at 110 and not at 100. Each is a system with a preference meeting a push that happens to match it.",
+            "Next time \(subject) comes up, the interesting question is not what the effect is. It is what is quietly absorbing the energy, and what would happen to everything around it if that thing stopped.",
+        ]
+    }
 
     // MARK: - Helpers
 

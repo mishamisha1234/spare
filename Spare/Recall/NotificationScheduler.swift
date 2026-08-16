@@ -33,6 +33,11 @@ enum NotificationScheduler {
 
         guard let item = modelContext.nextRecallItem() else { return }
 
+        // The deferred permission ask. There is now a real question waiting,
+        // so the prompt can explain itself; before this it fired during
+        // onboarding for a payoff a day away.
+        requestPermissionIfNeeded()
+
         let minutes = UserDefaults.standard.object(forKey: AppSettingsKey.recallNotificationTimeMinutes) as? Int
             ?? defaultMinutesSinceMidnight
         let hour = minutes / 60
@@ -64,6 +69,19 @@ enum NotificationScheduler {
         // `add` no-ops safely (via its completion handler) when notification
         // permission was never granted — nothing further to check here.
         center.add(request)
+        #endif
+    }
+
+    /// Fires the system prompt at most once, and only for a reader who asked
+    /// for reminders during onboarding.
+    private static func requestPermissionIfNeeded() {
+        #if canImport(UserNotifications)
+        let defaults = UserDefaults.standard
+        guard defaults.bool(forKey: AppSettingsKey.wantsRecallReminders),
+              !defaults.bool(forKey: AppSettingsKey.hasRequestedNotificationPermission)
+        else { return }
+        defaults.set(true, forKey: AppSettingsKey.hasRequestedNotificationPermission)
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         #endif
     }
 }

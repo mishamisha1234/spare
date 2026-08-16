@@ -77,7 +77,15 @@ final class StoredRecallItem {
 
     /// The four options in a stable order.
     var options: [String] {
-        recallQuestion.options(seed: UInt64(bitPattern: optionSeed))
+        // Derived from the question text, not from `optionSeed`.
+        //
+        // `optionSeed` defaulted to a fresh random value per item, so the
+        // answer order was reproducible only within one install of one
+        // build. Deriving it from the question makes the order the same
+        // everywhere and forever, which is what "the same question" should
+        // mean. The stored property is left in place rather than removed to
+        // avoid a schema migration for a value nothing reads any more.
+        recallQuestion.stableOptions
     }
 
     func isDue(at date: Date = .now) -> Bool { dueAt <= date }

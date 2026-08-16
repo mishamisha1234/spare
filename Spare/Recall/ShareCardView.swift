@@ -83,14 +83,25 @@ struct ShareCardView: View {
                 fingerprint
             }
 
-            Spacer(minLength: 0)
 
             Text("spare")
                 .font(Theme.Font.shareWordmark.font)
                 .foregroundStyle(palette.secondaryText)
         }
         .padding(Theme.Spacing.l)
-        .frame(width: Theme.ShareCard.width, height: Theme.ShareCard.height, alignment: .topLeading)
+        // Content-sized between a floor and the full 9:16 height. Previously
+        // pinned to `height` with a greedy Spacer, so a library with two
+        // finished lessons rendered two titles above a third of a card of
+        // empty background.
+        .frame(
+            width: Theme.ShareCard.width,
+            alignment: .topLeading
+        )
+        .frame(
+            minHeight: Theme.ShareCard.minHeight,
+            maxHeight: Theme.ShareCard.height,
+            alignment: .topLeading
+        )
         .background(palette.background)
     }
 
