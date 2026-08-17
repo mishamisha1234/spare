@@ -74,7 +74,13 @@ describe("streaming passes through intact", () => {
   });
 
   it("keeps the event order", async () => {
-    const sse = sseLesson("Ordered.");
+    // Long enough to split: `sseLesson` cuts text into 20-character deltas, and
+    // the assertion below counts on there being more than one of them. The first
+    // version passed "Ordered." — eight characters, one delta — so the last
+    // assertion could never hold no matter how correct the server was.
+    const sse = sseLesson(
+      "Order matters here, because RevisionGate reads the sequence and not the bytes."
+    );
     const fetcher = fixtureFetch([anthropicStreaming(sse)]);
     const body = await (await call({ fetcher })).text();
 
