@@ -365,11 +365,16 @@ final class ProxyProviderTests: XCTestCase {
     func testSpendCeilingIsRetryable() async throws {
         // A ceiling clears when the month does, or when it is raised. Unlike a
         // tier boundary, trying later genuinely can work.
-        let transport = FixtureTransport([
-            .body(status: 429, text: """
-            {"error":{"code":"spendCeilingReached","message":"Spare is at its monthly limit. Try again later."}}
-            """),
-        ])
+        // Three identical steps, because retryable means the pipeline will
+        // actually retry: `RetryPolicy.standard` makes three attempts. One step
+        // would have the fixture run dry and report a transport error instead,
+        // which is what the first version of this test was really asserting.
+        let ceilingBody = """
+        {"error":{"code":"spendCeilingReached","message":"Spare is at its monthly limit. Try again later."}}
+        """
+        let transport = FixtureTransport(
+            Array(repeating: .body(status: 429, text: ceilingBody), count: 3)
+        )
         do {
             _ = try await makeProvider(transport)
                 .suggestTopics(window: .three, profile: profile, history: [])
@@ -387,11 +392,12 @@ final class ProxyProviderTests: XCTestCase {
     func testVerificationOutageDoesNotReadAsARejectedKey() async throws {
         // A 503 from the proxy means it couldn't reach Apple. Worth retrying,
         // and emphatically not the reader's key — they don't have one.
-        let transport = FixtureTransport([
-            .body(status: 503, text: """
-            {"error":{"code":"verificationUnavailable","message":"Couldn't confirm your subscription. Try again shortly."}}
-            """),
-        ])
+        let outageBody = """
+        {"error":{"code":"verificationUnavailable","message":"Couldn't confirm your subscription. Try again shortly."}}
+        """
+        let transport = FixtureTransport(
+            Array(repeating: .body(status: 503, text: outageBody), count: 3)
+        )
         do {
             _ = try await makeProvider(transport, receipt: "jws")
                 .suggestTopics(window: .three, profile: profile, history: [])
