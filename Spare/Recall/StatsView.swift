@@ -167,41 +167,67 @@ private struct ShareCardPreview: View {
     let data: ShareCardData
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.displayScale) private var displayScale
+    @Environment(\.colorScheme) private var colorScheme
     @State private var renderedImage: UIImage?
 
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: Theme.Spacing.m) {
-                if let renderedImage {
-                    Image(uiImage: renderedImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: 320)
-                        .accessibilityIdentifier("shareCard.image")
+    private var palette: Theme.Palette { Theme.palette(for: colorScheme) }
 
-                    ShareLink(
-                        item: ShareableImage(image: renderedImage),
-                        preview: SharePreview("Spare", image: Image(uiImage: renderedImage))
-                    ) {
-                        Text("Share")
-                            .font(Theme.Font.headline.font)
-                    }
-                    .accessibilityIdentifier("shareCard.shareLink")
-                } else {
-                    ProgressView()
-                }
+    var body: some View {
+        // No NavigationStack, and no ToolbarItem for Close.
+        //
+        // A sheet's dismiss control is not navigation: there is no back
+        // gesture and no stack semantics behind it, so putting it in a
+        // toolbar bought nothing and cost full control of its appearance —
+        // iOS 26 renders toolbar items with glass chrome and a shadow. As
+        // ordinary content it is styled from Theme like every other button.
+        VStack(alignment: .leading, spacing: Theme.Spacing.m) {
+            HStack {
+                Text("Share card")
+                    .font(Theme.Font.headline.font)
+                    .foregroundStyle(palette.text)
+                Spacer()
+                Button("Close") { dismiss() }
+                    .font(Theme.Font.label.font)
+                    .foregroundStyle(palette.secondaryText)
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("shareCard.close")
             }
-            .padding(Theme.Spacing.m)
-            .navigationTitle("Share card")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
-                        .accessibilityIdentifier("shareCard.close")
+
+            if let renderedImage {
+                Image(uiImage: renderedImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("shareCard.image")
+
+                ShareLink(
+                    item: ShareableImage(image: renderedImage),
+                    preview: SharePreview("Spare", image: Image(uiImage: renderedImage))
+                ) {
+                    // Accent, not the system blue this rendered in before —
+                    // that was the only second colour anywhere in the app.
+                    Text("Share")
+                        .font(Theme.Font.headline.font)
+                        .foregroundStyle(palette.textOnAccent)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: Theme.ControlSize.button)
+                        .background(
+                            RoundedRectangle(cornerRadius: Theme.cornerRadius)
+                                .fill(palette.accent)
+                        )
                 }
+                .accessibilityIdentifier("shareCard.shareLink")
+            } else {
+                ProgressView()
+                    .tint(palette.accent)
+                    .frame(maxWidth: .infinity)
             }
+
+            Spacer(minLength: 0)
         }
+        .padding(Theme.Spacing.m)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(palette.background)
         .task { render() }
     }
 
@@ -216,7 +242,10 @@ private struct ShareCardPreview: View {
         let renderer = ImageRenderer(
             content: ShareCardView(data: data).environment(\.dynamicTypeSize, .large)
         )
-        renderer.scale = displayScale
+        // scale 1, not the display scale: the card is specified in pixels
+        // (1080 wide), and rendering at 1:1 makes the exported image exactly
+        // those dimensions on every device rather than 2x or 3x of them.
+        renderer.scale = 1
         renderedImage = renderer.uiImage
     }
 }

@@ -27,27 +27,32 @@ struct PaywallView: View {
     private var palette: Theme.Palette { Theme.palette(for: colorScheme) }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-                    header
-                    options
-                    footer
-                }
-                .padding(Theme.Spacing.m)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .background(palette.background)
-            .navigationTitle("Spare Premium")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+        // No NavigationStack, and Close is ordinary content rather than a
+        // ToolbarItem — a sheet's dismiss control carries no navigation
+        // semantics, and in a toolbar it picks up iOS 26's glass chrome and
+        // shadow with no way to opt out.
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Spacing.l) {
+                HStack {
+                    Text("Spare Premium")
+                        .font(Theme.Font.headline.font)
                         .foregroundStyle(palette.text)
+                    Spacer()
+                    Button("Close") { dismiss() }
+                        .font(Theme.Font.label.font)
+                        .foregroundStyle(palette.secondaryText)
+                        .buttonStyle(.plain)
                         .accessibilityIdentifier("paywall.close")
                 }
+
+                header
+                options
+                footer
             }
+            .padding(Theme.Spacing.m)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .background(palette.background)
         .task { await entitlements.loadProducts() }
         // Dismiss as soon as the purchase lands, rather than showing a
         // congratulations screen nobody asked for.

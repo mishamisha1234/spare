@@ -76,7 +76,9 @@ struct PostLessonTestView: View {
                 .font(Theme.Font.headline.font)
                 .foregroundStyle(palette.text)
 
-            VStack(spacing: Theme.Spacing.s) {
+            // 12pt against ~100pt-tall cards; 8pt read as cramped and 16pt
+            // pushed the fourth option off the fold.
+            VStack(spacing: Theme.Spacing.optionRowGap) {
                 ForEach(viewModel.currentOptions, id: \.self) { option in
                     optionRow(option, question: question)
                 }

@@ -33,7 +33,11 @@ struct SuggestionsView: View {
                     row(suggestion)
                         .onTapGesture { onSelect(suggestion) }
                     if index < viewModel.suggestions.count - 1 {
-                        Divider().overlay(palette.border)
+                        // Inset from the leading edge only, so the rows read
+                        // as a list rather than as separate cards.
+                        Divider()
+                            .overlay(palette.border)
+                            .padding(.leading, Theme.Spacing.m)
                     }
                 }
 

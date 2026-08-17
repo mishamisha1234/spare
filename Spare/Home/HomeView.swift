@@ -73,8 +73,11 @@ struct HomeView: View {
 
     private var content: some View {
         VStack(spacing: 0) {
-            Spacer(minLength: Theme.Spacing.s)
-                .frame(maxHeight: Theme.Spacing.m)
+            // The title + grid block is optically centred in the space under
+            // the toolbar, then lifted. Two equal Spacers would centre it
+            // geometrically, which sits too low once the eye accounts for the
+            // toolbar above it.
+            Spacer(minLength: Theme.Spacing.m)
 
             Text("How long do you have?")
                 .font(Theme.Font.largeTitle.font)
@@ -106,7 +109,11 @@ struct HomeView: View {
                 .padding(.top, Theme.Spacing.l)
             }
 
+            // Weighted heavier than the top spacer, which is what produces
+            // the upward offset rather than a hardcoded negative padding
+            // that would fight the ScrollView.
             Spacer(minLength: Theme.Spacing.l)
+                .layoutPriority(Theme.homeBottomSpacerPriority)
         }
         .padding(.horizontal, Theme.Spacing.m)
         .frame(maxWidth: .infinity)

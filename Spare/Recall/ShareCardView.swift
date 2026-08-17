@@ -44,108 +44,163 @@ struct ShareCardData {
         }
         fieldsCovered = order.count
         domainBars = order.map { ($0, counts[$0] ?? 0) }
-
-        if let accuracy = PointsSummary.recallAccuracy(events) {
-            recallPercent = Int((accuracy * 100).rounded())
-        } else {
-            recallPercent = nil
-        }
     }
 }
 
-/// Four real titles at full size — the hero element, never truncated. "and N
-/// more" beneath in secondary color. A hairline, then three stats. A row of
-/// thin bars, one per domain, height proportional to lessons in it: the
-/// user's fingerprint. A small wordmark. Fixed dark background regardless of
-/// the app's own theme setting — this is an artifact meant to travel outside
-/// the app, not a themed screen.
+/// The shareable artifact.
+///
+/// Laid out in points that map 1:1 to pixels — `ShareCardPreview` renders it
+/// at `scale = 1`, so the numbers here are the exported image's pixel
+/// dimensions. That is why this file uses raw sizes rather than `Theme`
+/// spacing: the card is a fixed-size graphic that leaves the app, not a
+/// screen that adapts to a device. Its palette is still the theme's dark one
+/// in both appearances.
 struct ShareCardView: View {
     let data: ShareCardData
 
     private let palette = Theme.palette(for: .dark)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.l) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-                ForEach(data.heroTitles, id: \.self) { title in
-                    Text(title)
-                        .font(Theme.Font.shareHero.font)
-                        .foregroundStyle(palette.text)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .lineLimit(nil)
-                }
-            }
+        VStack(alignment: .leading, spacing: 0) {
+            titles
 
             if data.remainingCount > 0 {
                 Text("and \(data.remainingCount) more")
-                    .font(Theme.Font.label.font)
+                    .font(.system(size: Metrics.moreSize, design: .default))
                     .foregroundStyle(palette.secondaryText)
+                    .padding(.top, Metrics.moreTopGap)
             }
 
             Rectangle()
                 .fill(palette.border)
-                .frame(height: Theme.borderWidth)
+                .frame(height: Metrics.hairline)
+                .padding(.top, Metrics.hairlineGap)
+                .padding(.bottom, Metrics.hairlineGap)
 
-            HStack(spacing: Theme.Spacing.l) {
-                stat(value: "\(data.totalThings)", label: "things known", color: palette.accent)
-                stat(value: "\(data.fieldsCovered)", label: "fields", color: palette.text)
-                stat(
-                    value: data.thirdStat.value,
-                    label: data.thirdStat.label,
-                    color: palette.text
-                )
-            }
+            stats
 
             if !data.domainBars.isEmpty {
                 fingerprint
+                    .padding(.top, Metrics.barsTopGap)
             }
 
+            Spacer(minLength: Metrics.wordmarkMinGap)
 
             Text("spare")
-                .font(Theme.Font.shareWordmark.font)
+                .font(.system(size: Metrics.wordmarkSize, design: .serif))
                 .foregroundStyle(palette.secondaryText)
         }
-        .padding(Theme.Spacing.l)
-        // Content-sized between a floor and the full 9:16 height. Previously
-        // pinned to `height` with a greedy Spacer, so a library with two
-        // finished lessons rendered two titles above a third of a card of
+        .padding(Metrics.padding)
+        .frame(width: Metrics.width, alignment: .topLeading)
+        // Content-sized between a floor and the full height: a library with
+        // two finished lessons rendered two titles above a third of a card of
         // empty background.
-        .frame(
-            width: Theme.ShareCard.width,
-            alignment: .topLeading
-        )
-        .frame(
-            minHeight: Theme.ShareCard.minHeight,
-            maxHeight: Theme.ShareCard.height,
-            alignment: .topLeading
-        )
+        .frame(minHeight: Metrics.minHeight, maxHeight: Metrics.height, alignment: .topLeading)
         .background(palette.background)
     }
 
-    private func stat(value: String, label: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
-            Text(value)
-                .font(Theme.Font.title.font)
-                .foregroundStyle(color)
-            Text(label)
-                .font(Theme.Font.caption.font)
-                .foregroundStyle(palette.secondaryText)
+    private var titles: some View {
+        VStack(alignment: .leading, spacing: Metrics.titleGap) {
+            ForEach(data.heroTitles, id: \.self) { title in
+                Text(title)
+                    .font(.system(size: Metrics.titleSize, weight: .semibold, design: .serif))
+                    .foregroundStyle(palette.text)
+                    .lineSpacing(Metrics.titleLineHeight - Metrics.titleSize)
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
+    private var stats: some View {
+        HStack(alignment: .top, spacing: 0) {
+            stat(value: "\(data.totalThings)", label: "things known", color: palette.accent)
+            stat(value: "\(data.fieldsCovered)", label: "fields", color: palette.text)
+            stat(value: data.thirdStat.value, label: data.thirdStat.label, color: palette.text)
+        }
+    }
+
+    private func stat(value: String, label: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: Metrics.statLabelGap) {
+            Text(value)
+                .font(.system(size: Metrics.statValueSize, design: .serif))
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            Text(label)
+                .font(.system(size: Metrics.statLabelSize, design: .default))
+                .foregroundStyle(palette.secondaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        }
+        // Three equal columns, so the numbers line up regardless of width.
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// One bar per domain, height proportional to lessons in it, with a
+    /// three-letter label under each. Previously two 3px hairlines with no
+    /// labels — unreadable at feed scale and meaningless to a stranger.
     private var fingerprint: some View {
-        let tallest = max(data.domainBars.map(\.count).max() ?? 1, 1)
-        return HStack(alignment: .bottom, spacing: Theme.Spacing.xxs) {
-            ForEach(data.domainBars, id: \.domain) { entry in
-                Capsule()
-                    .fill(palette.secondaryText)
-                    .frame(
-                        width: Theme.ShareCard.barWidth,
-                        height: Theme.ShareCard.maxBarHeight * CGFloat(entry.count) / CGFloat(tallest)
-                    )
+        let maxCount = max(data.domainBars.map(\.count).max() ?? 1, 1)
+        return HStack(alignment: .bottom, spacing: Metrics.barGap) {
+            ForEach(data.domainBars, id: \.domain) { bar in
+                VStack(spacing: Metrics.barLabelGap) {
+                    RoundedRectangle(cornerRadius: Metrics.barWidth / 2)
+                        .fill(palette.secondaryText)
+                        .frame(
+                            width: Metrics.barWidth,
+                            height: Metrics.barBaseHeight
+                                + (CGFloat(bar.count) / CGFloat(maxCount)) * Metrics.barRange
+                        )
+                    Text(Self.abbreviation(for: bar.domain))
+                        .font(.system(size: Metrics.barLabelSize, design: .default))
+                        .foregroundStyle(palette.secondaryText)
+                }
             }
         }
-        .frame(height: Theme.ShareCard.maxBarHeight, alignment: .bottom)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Three letters, uppercased. Enough to recognise a domain you chose
+    /// without turning the row into a legend.
+    static func abbreviation(for domain: String) -> String {
+        let letters = domain.filter { $0.isLetter }
+        return String(letters.prefix(3)).uppercased()
+    }
+
+    /// Pixel geometry, in one place. Points here equal pixels in the export.
+    enum Metrics {
+        static let width: CGFloat = 1080
+        static let height: CGFloat = 1350
+        /// Floor for a card with fewer than four titles.
+        static let minHeight: CGFloat = 900
+        static let padding: CGFloat = 72
+
+        static let titleSize: CGFloat = 68
+        static let titleLineHeight: CGFloat = 78
+        static let titleGap: CGFloat = 28
+
+        static let moreSize: CGFloat = 28
+        static let moreTopGap: CGFloat = 28
+
+        static let hairline: CGFloat = 2
+        static let hairlineGap: CGFloat = 56
+
+        static let statValueSize: CGFloat = 56
+        static let statLabelSize: CGFloat = 24
+        static let statLabelGap: CGFloat = 12
+
+        static let barsTopGap: CGFloat = 56
+        static let barWidth: CGFloat = 28
+        static let barGap: CGFloat = 16
+        static let barBaseHeight: CGFloat = 40
+        static let barRange: CGFloat = 200
+        static let barLabelSize: CGFloat = 20
+        static let barLabelGap: CGFloat = 12
+
+        static let wordmarkSize: CGFloat = 32
+        static let wordmarkMinGap: CGFloat = 56
     }
 }
 

@@ -78,6 +78,43 @@ final class ThemeContrastTests: XCTestCase {
         assertAA(Theme.Hex.darkSecondaryText, on: Theme.Hex.darkBackground, "dark secondary on background")
     }
 
+    /// The tightest pair in the palette, called out on its own.
+    ///
+    /// Near-white on the light accent measures 4.5199:1 against a 4.5
+    /// threshold — it clears AA by 0.02. That is not comfort, it is a
+    /// coincidence, and any future change to the light accent almost
+    /// certainly breaks it. This test is the tripwire.
+    ///
+    /// Worth recording why it is this tight. A design review proposed
+    /// flipping the ink to #1A1A1A, citing 5.39:1 — correct against the
+    /// accent at the time (#C87F2E), which has since been darkened to
+    /// #A06525. Against the current accent that flip gives 3.63:1. The two
+    /// requirements cannot both be met by one accent: dark ink on accent
+    /// needs luminance >= 0.223, accent as text on the background needs
+    /// <= 0.172. Keeping the ink light is the side that satisfies both.
+    func testTightestPairStillClearsAA() {
+        let ratio = contrast(Theme.Hex.lightTextOnAccent, Theme.Hex.lightAccent)
+        XCTAssertGreaterThanOrEqual(
+            ratio, 4.5,
+            String(format: "light text on accent is %.4f:1 — the 17pt button labels need 4.5", ratio)
+        )
+        // Fails loudly if someone "improves" the accent and eats the margin.
+        XCTAssertLessThan(
+            ratio, 6.0,
+            "the margin got much larger — good, but update the README note that calls this 0.02"
+        )
+    }
+
+    /// The alternative the review proposed, asserted as *not* an improvement,
+    /// so nobody re-applies it from the review document later.
+    func testProposedDarkInkOnAccentWouldFailAgainstTheCurrentAccent() {
+        let proposed = contrast(0x1A1A1A, Theme.Hex.lightAccent)
+        XCTAssertLessThan(
+            proposed, 4.5,
+            "dark ink now passes — the accent must have changed, so revisit which ink to use"
+        )
+    }
+
     // MARK: - Non-text UI
 
     /// WCAG's threshold for the boundary of a control, which is lower than

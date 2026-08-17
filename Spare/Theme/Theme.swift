@@ -159,12 +159,6 @@ enum Theme {
         /// A figure on the Stats screen: large enough to be the thing you
         /// read first, without a badge around it.
         case statValue
-        /// The share card's hero lesson titles: the serif at display size,
-        /// since the titles are the entire point of that graphic.
-        case shareHero
-        /// The share card's "spare" wordmark: small, quiet, serif to match
-        /// the reading font the rest of the app is built on.
-        case shareWordmark
 
         var font: SwiftUI.Font {
             switch self {
@@ -188,10 +182,6 @@ enum Theme {
                 return .system(size: 21, weight: .semibold, design: .serif)
             case .statValue:
                 return .system(size: 28, weight: .regular, design: .default)
-            case .shareHero:
-                return .system(size: 30, weight: .semibold, design: .serif)
-            case .shareWordmark:
-                return .system(size: 15, weight: .medium, design: .serif)
             }
         }
 
@@ -252,6 +242,8 @@ enum Theme {
         static let ml: CGFloat = 32
         /// Vertical padding inside a list row.
         static let rowVertical: CGFloat = 20
+        /// Between stacked answer cards.
+        static let optionRowGap: CGFloat = 12
         static let l: CGFloat = 40
         static let xl: CGFloat = 64
     }
@@ -266,6 +258,12 @@ enum Theme {
     /// One shape for every chip. Onboarding topic chips and Library filter
     /// chips were rendering as two different roundnesses.
     static let pillRadius: CGFloat = .infinity
+
+    /// How much more of Home's leftover vertical space goes below the
+    /// circle grid than above it. Greater than 1 lifts the block; the
+    /// review's fixed -24pt offset would have fought the ScrollView Home
+    /// gained this stage.
+    static let homeBottomSpacerPriority: Double = 1.4
 
     /// Horizontal margin for the reading column, narrowing as text grows so
     /// the measure stays readable rather than dropping to a few words a line.
@@ -358,23 +356,6 @@ enum Theme {
 
     // MARK: - Share card
 
-    /// Fixed 9:16 render size for the share card (a story/reel aspect
-    /// ratio), independent of the device's own screen size — the card is
-    /// rendered off-screen via `ImageRenderer`, not laid out to fill a
-    /// visible frame.
-    enum ShareCard {
-        static let width: CGFloat = 405
-        /// The full 9:16 height, used when there are four titles to show.
-        static let height: CGFloat = 720
-        /// Floor for a card with fewer than four titles. The card shrinks to
-        /// its content rather than padding out to 9:16 with dead space —
-        /// a mostly-empty card reads as a bug, not as restraint.
-        static let minHeight: CGFloat = 480
-        /// Height of the tallest domain bar in the fingerprint row; other
-        /// bars scale relative to it.
-        static let maxBarHeight: CGFloat = 64
-        static let barWidth: CGFloat = 4
-    }
 
     // MARK: - Home circle sizing
 
