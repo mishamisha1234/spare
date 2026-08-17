@@ -366,6 +366,84 @@ describe("the lesson cache", () => {
     expect((fetcher as any).calls.length).toBeGreaterThan(callsBefore);
   });
 
+  it("does not serve a device a lesson it has already read", async () => {
+    // Otherwise a reader who asks about bridges twice gets the same words back,
+    // which reads as the app being broken rather than as a cache working.
+    const topic = "Why bridges hum";
+    const body = { window: "three", format: "oneThing", topic, request: modelRequest() };
+    const device = "repeat-reader";
+
+    // Someone else generates it, so the entry exists and this device has not
+    // read it. Their own generation would mark it read for them.
+    const seedFetcher = fixtureFetch([anthropicStreaming(sseLesson("Shared lesson body."))]);
+    await (await call({ fetcher: seedFetcher, device: "repeat-seed", body })).text();
+
+    const first = await call({ fetcher: fixtureFetch([]), device, body });
+    expect(first.headers.get("x-spare-cache")).toBe("hit");
+    await first.text();
+
+    // Second ask, next day so the daily limit is not what refuses it. The cache
+    // declines, so it generates instead — which means an upstream call.
+    const secondFetcher = fixtureFetch([anthropicStreaming(sseLesson("Fresh instead."))]);
+    const second = await call({
+      fetcher: secondFetcher,
+      device,
+      body,
+      now: NOW + 86_400_000,
+    });
+    expect(second.status).toBe(200);
+    expect(second.headers.get("x-spare-cache")).toBeNull();
+    expect((secondFetcher as any).calls.length).toBeGreaterThan(0);
+  });
+
+  it("does not serve a reader their own lesson back the next day", async () => {
+    // Generating populates the cache, so without recording the generator as
+    // having read it, tomorrow's identical request would be a cache hit on
+    // their own words.
+    const topic = "Why bridges hum";
+    const body = { window: "three", format: "oneThing", topic, request: modelRequest() };
+    const device = "own-lesson-reader";
+
+    const first = fixtureFetch([anthropicStreaming(sseLesson("My own lesson."))]);
+    await (await call({ fetcher: first, device, body })).text();
+
+    const next = fixtureFetch([anthropicStreaming(sseLesson("Something new."))]);
+    const tomorrow = await call({ fetcher: next, device, body, now: NOW + 86_400_000 });
+    expect(tomorrow.headers.get("x-spare-cache")).toBeNull();
+    expect((next as any).calls.length).toBeGreaterThan(0);
+  });
+
+  it("refuses a cached lesson older than thirty days", async () => {
+    const topic = "Ageing entry";
+    const body = { window: "three", format: "oneThing", topic, request: modelRequest() };
+
+    const seed = fixtureFetch([anthropicStreaming(sseLesson("Written a while ago."))]);
+    await (await call({ fetcher: seed, device: "age-seed", body })).text();
+
+    // A day inside the window: still served.
+    const inside = fixtureFetch([]);
+    const fresh = await call({
+      fetcher: inside,
+      device: "age-reader-inside",
+      body,
+      now: NOW + 29 * 86_400_000,
+    });
+    expect(fresh.headers.get("x-spare-cache")).toBe("hit");
+    await fresh.text();
+
+    // A day outside it: regenerated rather than served stale.
+    const outside = fixtureFetch([anthropicStreaming(sseLesson("Written again."))]);
+    const stale = await call({
+      fetcher: outside,
+      device: "age-reader-outside",
+      body,
+      now: NOW + 31 * 86_400_000,
+    });
+    expect(stale.status).toBe(200);
+    expect(stale.headers.get("x-spare-cache")).toBeNull();
+    expect((outside as any).calls.length).toBeGreaterThan(0);
+  });
+
   it("does not cache a truncated stream", async () => {
     // Caching a truncation would serve it to everyone who asks next.
     const fetcher = fixtureFetch([anthropicStreaming(sseLesson("Cut off", { complete: false }))]);

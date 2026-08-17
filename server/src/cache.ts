@@ -62,15 +62,32 @@ export interface CachedLesson {
   originalCostUSD: number;
 }
 
-/** Ninety days. Long enough to be worth having, short enough to refresh. */
-export const CACHE_TTL_SECONDS = 60 * 60 * 24 * 90;
+/**
+ * Thirty days.
+ *
+ * Set in two places on purpose. The TTL is what stops entries accumulating in
+ * KV; the age check on read is what actually enforces the policy, because KV
+ * expiry is not instantaneous and an entry can outlive its TTL briefly. Relying
+ * on the TTL alone would make "no lesson older than 30 days" true most of the
+ * time, which is not the same as true.
+ */
+export const MAX_CACHE_AGE_DAYS = 30;
+export const CACHE_TTL_SECONDS = 60 * 60 * 24 * MAX_CACHE_AGE_DAYS;
+export const MAX_CACHE_AGE_MS = CACHE_TTL_SECONDS * 1000;
 
 export async function readCachedLesson(
   kv: KVNamespace,
   key: string,
+  now: number,
 ): Promise<CachedLesson | null> {
   const stored = await kv.get<CachedLesson>(key, "json");
-  return stored ?? null;
+  if (!stored) return null;
+  // A missing or nonsensical timestamp is treated as too old rather than as
+  // fresh: an entry we cannot date is one we cannot promise anything about.
+  if (!Number.isFinite(stored.createdAt) || now - stored.createdAt > MAX_CACHE_AGE_MS) {
+    return null;
+  }
+  return stored;
 }
 
 export async function writeCachedLesson(

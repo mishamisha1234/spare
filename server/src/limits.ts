@@ -35,6 +35,22 @@ export interface UsageState {
   coursesThisMonth: number;
 }
 
+/**
+ * How many cache keys a device remembers having read.
+ *
+ * Bounded because this list never rolls over — it is the whole point that it
+ * persists — and an unbounded array in a single Durable Object value would
+ * eventually hit the per-value size limit and start failing writes. A free user
+ * gets one lesson a day, so 400 is over a year of history, and the oldest entry
+ * falling off means at worst a repeat of something read more than a year ago.
+ */
+export const SEEN_HISTORY_LIMIT = 400;
+
+/** Keeps the most recent `SEEN_HISTORY_LIMIT` entries, dropping the oldest. */
+function trimSeen(keys: string[]): string[] {
+  return keys.length <= SEEN_HISTORY_LIMIT ? keys : keys.slice(-SEEN_HISTORY_LIMIT);
+}
+
 export function dayKey(now: number): string {
   return new Date(now).toISOString().slice(0, 10);
 }
@@ -68,7 +84,40 @@ export class UsageCounter implements DurableObject {
       return Response.json(decision);
     }
 
+    // Atomic check-and-mark, for the same reason `consume` is atomic: split
+    // into a read then a write, two simultaneous requests both see "unseen"
+    // and the device is served the same cached lesson twice.
+    if (url.pathname === "/claimUnseen") {
+      const key = url.searchParams.get("key") ?? "";
+      return Response.json({ unseen: await this.claimUnseen(key) });
+    }
+
+    if (url.pathname === "/markSeen") {
+      await this.markSeen(url.searchParams.get("key") ?? "");
+      return Response.json({ ok: true });
+    }
+
     return new Response("not found", { status: 404 });
+  }
+
+  private async seenKeys(): Promise<string[]> {
+    return (await this.state.storage.get<string[]>("seenLessons")) ?? [];
+  }
+
+  /** True if this device had not read the lesson; records it either way. */
+  private async claimUnseen(key: string): Promise<boolean> {
+    if (!key) return false;
+    const seen = await this.seenKeys();
+    if (seen.includes(key)) return false;
+    await this.state.storage.put("seenLessons", trimSeen([...seen, key]));
+    return true;
+  }
+
+  private async markSeen(key: string): Promise<void> {
+    if (!key) return;
+    const seen = await this.seenKeys();
+    if (seen.includes(key)) return;
+    await this.state.storage.put("seenLessons", trimSeen([...seen, key]));
   }
 
   private async load(now: number): Promise<UsageState> {

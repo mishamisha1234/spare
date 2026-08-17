@@ -92,8 +92,10 @@ documented pattern — without it, every internal build looks unsubscribed.
 
 Moving limits server-side removes *client* enforcement, not *all* spoofing.
 The app has no accounts by design, so identity is a UUID minted on first
-launch and kept in the Keychain. A determined user can clear it and reset
-their daily allowance.
+launch and kept in the App Group's defaults — not the Keychain, which can
+outlive a delete-and-reinstall and would make the free tier feel inescapable to
+somebody switching phones. A determined user can clear it and reset their daily
+allowance.
 
 That is a real hole and it is not closed here. What it changes: abuse goes
 from "edit a boolean in a local database" to "reinstall and lose your
@@ -108,6 +110,31 @@ the signal that something is wrong; it is not meant to be reached.
 
 Per-IP throttling sits in front of everything as a second, cruder backstop.
 
+### Known limitation: a reinstall loses the library permanently
+
+There are no accounts, so there is no copy of anything anywhere but the phone.
+Deleting the app, replacing the phone, or resetting it loses the whole library:
+every lesson read, the recall schedule, the points, the stats. There is no
+restore, and support cannot recover it, because nothing was ever sent to a
+server to recover.
+
+Subscriptions survive — those live with Apple and come back with a restore — so
+somebody who pays does not lose what they paid for. What they lose is everything
+they read.
+
+This is the accepted cost of having no accounts: no sign-up screen, no password,
+no email address collected, nothing about what anyone reads stored off their own
+device. That trade is the right one for this app, and it is not being changed
+now. It is written down here so it is a known limitation rather than something
+discovered by the first person it happens to.
+
+The same fact is what makes the free tier enforceable at all: the device
+identifier is a UUID in the App Group, and clearing it means clearing the
+library with it.
+
+If this is ever revisited, the smallest honest version is an export the reader
+initiates — the Markdown export already exists — not an account.
+
 ## Lesson cache
 
 The single biggest cost lever: a free user who generates every lesson costs
@@ -118,10 +145,36 @@ lowercases, strips punctuation and stopwords, and sorts the remaining
 significant words — so "Why bridges hum" and "why do bridges hum?" collide on
 purpose.
 
-**Free users can be served a cached lesson. Premium always generates fresh.**
-That is a product decision, not only a cost one, and it has a visible
-consequence: two free users asking about the same thing get the same words.
-Stated here so it is a choice rather than a surprise.
+### Free and premium get different content freshness
+
+This is a deliberate product decision, not an implementation detail, and it is
+the one thing in this file most likely to be mistaken for a bug later.
+
+**Premium always generates fresh.** Every request goes to the model. Nobody who
+pays is ever handed a lesson written for somebody else.
+
+**Free may be served from the cache**, subject to three rules:
+
+1. **Nothing older than 30 days.** Enforced twice — as a KV TTL, and as an age
+   check when the entry is read. The TTL alone would make the rule true most of
+   the time, because KV expiry is not instantaneous, and "true most of the time"
+   is not the promise.
+2. **Never the same lesson twice to the same device.** Each device records the
+   cache keys it has been served, including ones it generated itself, and the
+   cache declines a repeat. Without this, asking about bridges twice in a week
+   would return identical words, which reads as the app being broken rather than
+   as a cache working. A device remembers its last 400 lessons, which at one a
+   day is more than a year.
+3. **A generated lesson counts as read by whoever generated it.** Otherwise a
+   free reader's own lesson would come back to them from the cache the next day.
+
+What a free user therefore experiences: their lessons are always new *to them*,
+but on a popular topic the words may have been written for someone else within
+the last month. What they do not get is Premium's guarantee that the model wrote
+this one, now, for them.
+
+Stated plainly because the two tiers differ in something a reader can notice, and
+that should be a choice on the record rather than a surprise.
 
 ## Deploying from Windows
 

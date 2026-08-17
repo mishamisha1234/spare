@@ -199,9 +199,18 @@ async function handleGeneration(
 
   // Free users are served from cache before anything is metered: a cache hit
   // costs nothing, so spending a day's allowance on it would be punitive.
+  //
+  // Two conditions beyond "there is an entry". It must be under 30 days old,
+  // which `readCachedLesson` enforces. And this device must not already have
+  // read it — otherwise a reader who asks about bridges twice gets the same
+  // lesson back, which reads as the app being broken rather than as a cache
+  // working. `claimUnseen` is atomic, so two simultaneous requests cannot both
+  // claim the same entry.
   if (isFree && topic) {
-    const cached = await readCachedLesson(env.LESSONS, cacheKey);
-    if (cached) return replayCachedLesson(cached.sse);
+    const cached = await readCachedLesson(env.LESSONS, cacheKey, now);
+    if (cached && (await claimUnseen(env, deviceId, cacheKey))) {
+      return replayCachedLesson(cached.sse);
+    }
   }
 
   const ceiling = await spendCheck(env, hooks, now);
@@ -242,6 +251,11 @@ async function handleGeneration(
           createdAt: now,
           originalCostUSD: cost,
         });
+        // Recorded against the reader who generated it, so tomorrow they aren't
+        // served their own lesson back from the cache. Marked here rather than
+        // when generation started, so a truncated stream — which is also not
+        // cached — doesn't count as read.
+        await markSeen(env, deviceId, cacheKey);
       }
     },
     (promise) => ctx.waitUntil(promise),
@@ -289,6 +303,28 @@ async function consume(
     `https://usage/consume?tier=${encodeURIComponent(tier)}&window=${encodeURIComponent(window)}&now=${now}`,
   );
   return (await response.json()) as Decision;
+}
+
+/**
+ * Claims a cached lesson for this device, if it hasn't read it before.
+ *
+ * Returns false both when the device has read it and when the claim itself
+ * fails — a Durable Object hiccup means falling through to generation, which
+ * costs money but serves a correct lesson. Serving a possible repeat to avoid
+ * a cost is the wrong way round.
+ */
+async function claimUnseen(env: Env, deviceId: string, cacheKey: string): Promise<boolean> {
+  const stub = env.USAGE.get(env.USAGE.idFromName(deviceId));
+  const response = await stub.fetch(
+    `https://usage/claimUnseen?key=${encodeURIComponent(cacheKey)}`,
+  );
+  const body = (await response.json()) as { unseen?: boolean };
+  return body.unseen === true;
+}
+
+async function markSeen(env: Env, deviceId: string, cacheKey: string): Promise<void> {
+  const stub = env.USAGE.get(env.USAGE.idFromName(deviceId));
+  await stub.fetch(`https://usage/markSeen?key=${encodeURIComponent(cacheKey)}`);
 }
 
 async function spendCheck(
