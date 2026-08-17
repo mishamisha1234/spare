@@ -90,6 +90,78 @@ final class ProviderErrorCopyTests: XCTestCase {
         XCTAssertFalse(copy(.malformedStream("x")).pointsToSettings)
     }
 
+    /// Everything except a genuine key problem must stay off Settings.
+    ///
+    /// Under the proxy there is no key on the device and no key field in a
+    /// shipped build, so any copy that says "check your key in Settings" is
+    /// sending a reader to a screen that cannot help. 401 and 403 are the two
+    /// exceptions, and only reachable on a dev build using its own key.
+    func testOnlyKeyRejectionsPointAtSettings() {
+        let notAboutAKey: [LessonProviderError] = [
+            .network("x"),
+            .httpStatus(code: 400, message: ""),
+            .httpStatus(code: 402, message: ""),
+            .httpStatus(code: 404, message: ""),
+            .httpStatus(code: 429, message: ""),
+            .httpStatus(code: 500, message: ""),
+            .decoding("x"),
+            .malformedStream("x"),
+            .refused(category: nil, explanation: nil),
+            .cancelled,
+        ] + ProxyLimit.allCases.map { .limited($0, message: "m") }
+
+        for error in notAboutAKey {
+            XCTAssertFalse(
+                copy(error).pointsToSettings,
+                "\(error) sends the reader to Settings, where there is nothing to fix"
+            )
+        }
+    }
+
+    // MARK: - Server-imposed limits
+
+    /// The device never names what it failed to reach, because this type does
+    /// not know whether the call went to the proxy or straight to Anthropic.
+    func testConnectionFailureDoesNotNameAnthropic() {
+        XCTAssertFalse(copy(.network("x")).message.contains("Anthropic"))
+    }
+
+    func testTierBoundariesOfferThePaywallAndNothingElseDoes() {
+        let paywalled: [ProxyLimit] = [.dailyLesson, .lockedWindow, .premiumOnly]
+        for limit in paywalled {
+            XCTAssertTrue(
+                copy(.limited(limit, message: "m")).pointsToPaywall,
+                "\(limit) is a tier boundary and should offer the paywall"
+            )
+        }
+
+        // Already paying, or nothing to buy. A paywall here would be asking
+        // somebody to purchase what they already have.
+        for limit in [ProxyLimit.courseCap, .spendCeiling, .verificationUnavailable] {
+            XCTAssertFalse(
+                copy(.limited(limit, message: "m")).pointsToPaywall,
+                "\(limit) should not offer the paywall"
+            )
+        }
+    }
+
+    func testNoFailureOffersTwoDifferentFixes() {
+        for limit in ProxyLimit.allCases {
+            let presentation = copy(.limited(limit, message: "m"))
+            XCTAssertFalse(
+                presentation.pointsToSettings && presentation.pointsToPaywall,
+                "\(limit) offers both Settings and the paywall, so it has guessed"
+            )
+        }
+    }
+
+    /// The server writes the sentence; the app writes the title. Restating the
+    /// limit in the app's own words would give one situation two voices.
+    func testTheServersWordingIsUsedVerbatim() {
+        let sentence = "That's today's free lesson. The next one unlocks tomorrow."
+        XCTAssertEqual(copy(.limited(.dailyLesson, message: sentence)).message, sentence)
+    }
+
     // MARK: - Tone
 
     /// The brief's rule: honest copy, no mascots. Also no apologising and no

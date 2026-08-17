@@ -29,7 +29,7 @@ public enum LessonStreamEvent: Sendable, Equatable {
 /// request was made. Reaching one means the two disagreed — a clock skew, a
 /// lapsed subscription the device hasn't noticed, a tampered build — and the
 /// server is the side that is right.
-public enum ProxyLimit: String, Sendable, Equatable {
+public enum ProxyLimit: String, Sendable, Equatable, CaseIterable {
     /// The free tier's one lesson a day is spent.
     case dailyLesson = "dailyLimitReached"
     /// This length is premium-only.
@@ -84,9 +84,15 @@ public enum LessonProviderError: Error, Equatable, Sendable {
 
 /// Every network call in the app goes through this protocol.
 ///
-/// v1 ships `AnthropicDirectProvider` (device → Anthropic API) and
-/// `MockProvider` (tests, previews, offline). Moving to a server proxy later
-/// must be a single new conformance plus one line changed at the injection site.
+/// Conformances: `ProxyProvider` (device → Spare proxy → Anthropic) is what
+/// ships; `AnthropicDirectProvider` (device → Anthropic, with the user's own
+/// key) is debug-only; `MockProvider` covers tests, previews, and offline.
+///
+/// The first two are the same `GenerationPipeline` with a different
+/// `ProviderRoute`, which is what the note here used to predict would be
+/// possible — it turned out to need a route abstraction rather than a second
+/// conformance, because duplicating the pipeline would have left the shipping
+/// copy as the one CI never runs.
 public protocol LessonProvider: Sendable {
     /// 5 suggestions for the window: at least 3 domains, exactly 1 wildcard,
     /// nothing semantically close to the last 30 completed lessons.
@@ -137,7 +143,7 @@ extension LessonProvider {
     /// Generates everything up front, with no reader back-pressure.
     ///
     /// Fine for single-unit formats and for tests. For a 30-minute
-    /// mini-course this means paying for all six chapters whether or not
+    /// mini-course this means paying for all four chapters whether or not
     /// they're read — the Reader always passes a real `ChapterDemand`.
     public func streamLesson(
         topic: TopicSuggestion,

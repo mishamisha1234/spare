@@ -51,10 +51,15 @@ public enum ProviderErrorCopy {
                 pointsToSettings: true
             )
 
+        // Deliberately does not name what it failed to reach. On a shipped build
+        // that is the proxy, on a dev build with a key it is Anthropic, and this
+        // type does not know which route the call took. "Anthropic" was accurate
+        // in Phase 3 and became wrong the moment the key moved off the device —
+        // a reader with no key has no idea what Anthropic is.
         case .network:
             return ErrorPresentation(
                 title: "No connection",
-                message: "Spare couldn't reach Anthropic. Check your connection and try again.",
+                message: "Spare couldn't connect. Check your connection and try again.",
                 isRetryable: true
             )
 
@@ -80,12 +85,17 @@ public enum ProviderErrorCopy {
                 isRetryable: true
             )
 
+        // No longer points at Settings. The statuses that land here are now
+        // mostly the proxy refusing a request it built wrong — a model it won't
+        // pay for, a body over the size limit — which is a bug in Spare, not
+        // something a reader can fix, and certainly not with a key a shipped
+        // build has no field for. 401 and 403 are handled above and still do
+        // point at Settings, because those genuinely are the key.
         case .httpStatus:
             return ErrorPresentation(
                 title: "Request refused",
-                message: "Anthropic rejected the request. If it keeps happening, check your key in Settings.",
-                isRetryable: false,
-                pointsToSettings: true
+                message: "Spare's request was rejected. That's a fault on Spare's side, not yours.",
+                isRetryable: false
             )
 
         case .refused:
