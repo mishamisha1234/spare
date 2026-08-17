@@ -1,6 +1,6 @@
-import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
+import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import worker, { type Env, type Hooks } from "../src/index";
+import worker from "../src/index";
 import {
   anthropicJSON,
   anthropicStreaming,
@@ -10,48 +10,8 @@ import {
   jsonMessage,
   sseLesson,
   subscriptionStatus,
-  fakeJWS,
-  TEST_P8,
 } from "./fixtures";
-
-const NOW = Date.UTC(2026, 7, 17, 12, 0, 0);
-
-function testEnv(overrides: Partial<Env> = {}): Env {
-  return {
-    ...(env as unknown as Env),
-    ANTHROPIC_API_KEY: "sk-ant-fixture-key",
-    APPSTORE_PRIVATE_KEY: TEST_P8,
-    APPSTORE_KEY_ID: "TESTKEYID",
-    APPSTORE_ISSUER_ID: "issuer-uuid",
-    BUNDLE_ID: "app.spare.ios",
-    MONTHLY_SPEND_CEILING_USD: "50",
-    ...overrides,
-  };
-}
-
-interface CallOptions {
-  path?: string;
-  device?: string;
-  body?: Record<string, unknown>;
-  fetcher: typeof fetch;
-  env?: Env;
-  now?: number;
-}
-
-async function call(options: CallOptions) {
-  const ctx = createExecutionContext();
-  const hooks: Hooks = { fetcher: options.fetcher, now: () => options.now ?? NOW };
-  const request = new Request(`https://proxy.spare.app${options.path ?? "/v1/lesson"}`, {
-    method: "POST",
-    headers: { "x-spare-device": options.device ?? "device-aaaaaaaa", "content-type": "application/json" },
-    body: JSON.stringify(options.body ?? { window: "three", format: "oneThing", topic: "Why bridges hum", request: {} }),
-  });
-  const response = await worker.fetch(request, options.env ?? testEnv(), ctx, hooks);
-  await waitOnExecutionContext(ctx);
-  return response;
-}
-
-const premiumReceipt = fakeJWS({ originalTransactionId: "2000000000000001" });
+import { NOW, call, modelRequest, premiumReceipt, testEnv } from "./harness";
 
 function premiumRoutes(sse: string) {
   return [
@@ -153,7 +113,7 @@ describe("free tier is enforced server-side", () => {
     const second = await call({
       fetcher,
       device,
-      body: { window: "three", format: "oneThing", topic: "Something else entirely", request: {} },
+      body: { window: "three", format: "oneThing", topic: "Something else entirely", request: modelRequest() },
     });
     expect(second.status).toBe(402);
     expect(await second.json()).toMatchObject({ error: { code: "dailyLimitReached" } });
@@ -164,7 +124,7 @@ describe("free tier is enforced server-side", () => {
     const response = await call({
       fetcher,
       device: "free-device-2",
-      body: { window: "thirty", format: "miniCourse", topic: "A course", request: {} },
+      body: { window: "thirty", format: "miniCourse", topic: "A course", request: modelRequest() },
     });
 
     expect(response.status).toBe(402);
@@ -181,7 +141,7 @@ describe("free tier is enforced server-side", () => {
       fetcher,
       device,
       now: NOW + 86_400_000,
-      body: { window: "three", format: "oneThing", topic: "Another topic", request: {} },
+      body: { window: "three", format: "oneThing", topic: "Another topic", request: modelRequest() },
     });
     expect(tomorrow.status).toBe(200);
   });
@@ -199,7 +159,7 @@ describe("free tier is enforced server-side", () => {
         call({
           fetcher,
           device,
-          body: { window: "three", format: "oneThing", topic: `Distinct topic ${n}`, request: {} },
+          body: { window: "three", format: "oneThing", topic: `Distinct topic ${n}`, request: modelRequest() },
         }),
       ),
     );
@@ -219,7 +179,7 @@ describe("premium", () => {
         format: "miniCourse",
         topic: "How planes got safe",
         receipt: premiumReceipt,
-        request: {},
+        request: modelRequest(),
       },
     });
 
@@ -242,7 +202,7 @@ describe("premium", () => {
     const response = await call({
       fetcher,
       device: "premium-device-2",
-      body: { window: "thirty", format: "miniCourse", topic: "A course", receipt: premiumReceipt, request: {} },
+      body: { window: "thirty", format: "miniCourse", topic: "A course", receipt: premiumReceipt, request: modelRequest() },
     });
     expect(response.status).toBe(402);
     expect(await response.json()).toMatchObject({ error: { code: "lockedWindow" } });
@@ -266,7 +226,7 @@ describe("premium", () => {
     const response = await call({
       fetcher,
       device: "premium-device-3",
-      body: { window: "thirty", format: "miniCourse", topic: "Sandbox topic", receipt: premiumReceipt, request: {} },
+      body: { window: "thirty", format: "miniCourse", topic: "Sandbox topic", receipt: premiumReceipt, request: modelRequest() },
     });
     expect(response.status).toBe(200);
   });
@@ -281,7 +241,7 @@ describe("premium", () => {
     const response = await call({
       fetcher,
       device: "premium-device-4",
-      body: { window: "thirty", format: "miniCourse", topic: "Outage", receipt: premiumReceipt, request: {} },
+      body: { window: "thirty", format: "miniCourse", topic: "Outage", receipt: premiumReceipt, request: modelRequest() },
     });
 
     expect(response.status).toBe(503);
@@ -301,7 +261,7 @@ describe("premium", () => {
           format: "miniCourse",
           topic: `Course number ${n}`,
           receipt: premiumReceipt,
-          request: {},
+          request: modelRequest(),
         },
       });
       expect(response.status).toBe(200);
@@ -311,7 +271,7 @@ describe("premium", () => {
     const thirteenth = await call({
       fetcher,
       device,
-      body: { window: "thirty", format: "miniCourse", topic: "One too many", receipt: premiumReceipt, request: {} },
+      body: { window: "thirty", format: "miniCourse", topic: "One too many", receipt: premiumReceipt, request: modelRequest() },
     });
     expect(thirteenth.status).toBe(402);
     expect(await thirteenth.json()).toMatchObject({ error: { code: "courseCapReached" } });
@@ -325,7 +285,7 @@ describe("premium", () => {
       const response = await call({
         fetcher,
         device,
-        body: { window: "ten", format: "explainer", topic: `Topic ${n}`, receipt: premiumReceipt, request: {} },
+        body: { window: "ten", format: "explainer", topic: `Topic ${n}`, receipt: premiumReceipt, request: modelRequest() },
       });
       expect(response.status).toBe(200);
       await response.text();
@@ -351,7 +311,7 @@ describe("the lesson cache", () => {
     const stillAllowed = await call({
       fetcher,
       device: "cache-reader-device",
-      body: { window: "three", format: "oneThing", topic: "A completely different subject", request: {} },
+      body: { window: "three", format: "oneThing", topic: "A completely different subject", request: modelRequest() },
     });
     expect(stillAllowed.status).toBe(200);
   });
@@ -364,7 +324,7 @@ describe("the lesson cache", () => {
     const restated = await call({
       fetcher,
       device: "wording-b",
-      body: { window: "three", format: "oneThing", topic: "How do bridges hum?", request: {} },
+      body: { window: "three", format: "oneThing", topic: "How do bridges hum?", request: modelRequest() },
     });
     expect(restated.headers.get("x-spare-cache")).toBe("hit");
     expect((fetcher as any).calls.length).toBe(callsBefore);
@@ -378,7 +338,7 @@ describe("the lesson cache", () => {
     const premium = await call({
       fetcher,
       device: "cache-premium-reader",
-      body: { window: "three", format: "oneThing", topic: "Why bridges hum", receipt: premiumReceipt, request: {} },
+      body: { window: "three", format: "oneThing", topic: "Why bridges hum", receipt: premiumReceipt, request: modelRequest() },
     });
     expect(premium.headers.get("x-spare-cache")).toBeNull();
     expect((fetcher as any).calls.length).toBeGreaterThan(callsBefore);
@@ -404,7 +364,7 @@ describe("the spend ceiling", () => {
       fetcher,
       env: tinyCeiling,
       device: "ceiling-device",
-      body: { window: "three", format: "oneThing", topic: "Uncached topic", request: {} },
+      body: { window: "three", format: "oneThing", topic: "Uncached topic", request: modelRequest() },
     });
 
     expect(response.status).toBe(429);
@@ -421,7 +381,7 @@ describe("the spend ceiling", () => {
       fetcher,
       env: tinyCeiling,
       device: "ceiling-premium",
-      body: { window: "ten", format: "explainer", topic: "Paid topic", receipt: premiumReceipt, request: {} },
+      body: { window: "ten", format: "explainer", topic: "Paid topic", receipt: premiumReceipt, request: modelRequest() },
     });
     expect(response.status).toBe(200);
   });
@@ -460,7 +420,7 @@ describe("request hygiene", () => {
       fetcher,
       path: "/v1/go-deeper",
       device: "free-deeper",
-      body: { request: {} },
+      body: { request: modelRequest() },
     });
     expect(response.status).toBe(402);
     expect((fetcher as any).calls).toHaveLength(0);
@@ -472,7 +432,7 @@ describe("request hygiene", () => {
     const device = "suggest-device";
 
     for (let n = 0; n < 3; n += 1) {
-      const response = await call({ fetcher, path: "/v1/suggestions", device, body: { request: {} } });
+      const response = await call({ fetcher, path: "/v1/suggestions", device, body: { request: modelRequest() } });
       expect(response.status).toBe(200);
     }
 

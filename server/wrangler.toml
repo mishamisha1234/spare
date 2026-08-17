@@ -1,6 +1,11 @@
 name = "spare-proxy"
 main = "src/index.ts"
 compatibility_date = "2024-09-23"
+# Required by @cloudflare/vitest-pool-workers, which needs Node built-ins to run
+# the test runner inside workerd. The Worker's own code uses only WebCrypto and
+# the fetch API, so this widens what tests can do rather than what production
+# depends on.
+compatibility_flags = ["nodejs_compat"]
 
 # Non-secret only. Keys live in `wrangler secret put` and never in the repo.
 [vars]

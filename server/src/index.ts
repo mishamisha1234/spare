@@ -21,6 +21,7 @@ import {
 } from "./appstore";
 import { lessonCacheKey, readCachedLesson, replayCachedLesson, writeCachedLesson } from "./cache";
 import { SpendLedger, UsageCounter, type Decision } from "./limits";
+import { applyPolicy } from "./policy";
 import {
   callAnthropic,
   estimateCostUSD,
@@ -101,22 +102,32 @@ export default {
       }
     }
 
+    // The client builds the Anthropic request; the proxy decides what it is
+    // allowed to be. Runs before any metering so a request that will be
+    // refused never consumes an allowance. See `policy.ts`.
+    const policy = applyPolicy(body.request, url.pathname);
+    if (!policy.ok) {
+      const status = policy.code === "unknownEndpoint" ? 404 : 400;
+      return errorResponse(status, policy.code, policy.message);
+    }
+    const modelRequest = policy.request;
+
     switch (url.pathname) {
       case "/v1/suggestions":
       case "/v1/recall":
       case "/v1/post-lesson-test":
-        return handleUnmetered(body, env, entitlement, ctx, hooks, now);
+        return handleUnmetered(modelRequest, env, entitlement, ctx, hooks, now);
 
       case "/v1/lesson":
       case "/v1/chapter":
-        return handleGeneration(body, env, entitlement, deviceId, ctx, hooks, now);
+        return handleGeneration(body, modelRequest, env, entitlement, deviceId, ctx, hooks, now);
 
       case "/v1/go-deeper":
         // Premium-only, and cheap enough not to meter separately.
         if (entitlement.tier === "free") {
           return errorResponse(402, "goDeeperLocked", "Going deeper is part of Premium.");
         }
-        return handleUnmetered(body, env, entitlement, ctx, hooks, now);
+        return handleUnmetered(modelRequest, env, entitlement, ctx, hooks, now);
 
       default:
         return errorResponse(404, "unknownEndpoint", "No such endpoint.");
@@ -142,7 +153,7 @@ function appStoreConfig(env: Env): AppStoreConfig {
  * cost.
  */
 async function handleUnmetered(
-  body: Record<string, any>,
+  modelRequest: Record<string, unknown>,
   env: Env,
   entitlement: VerifiedEntitlement,
   ctx: ExecutionContext,
@@ -154,7 +165,7 @@ async function handleUnmetered(
     return errorResponse(429, "spendCeilingReached", "Spare is at its monthly limit. Try later.");
   }
 
-  const upstream = await callAnthropic(body.request, {
+  const upstream = await callAnthropic(modelRequest, {
     apiKey: env.ANTHROPIC_API_KEY,
     fetcher: hooks.fetcher,
   });
@@ -171,6 +182,7 @@ async function handleUnmetered(
  */
 async function handleGeneration(
   body: Record<string, any>,
+  modelRequest: Record<string, unknown>,
   env: Env,
   entitlement: VerifiedEntitlement,
   deviceId: string,
@@ -206,7 +218,7 @@ async function handleGeneration(
     return errorResponse(402, decision.reason, denialMessage(decision.reason));
   }
 
-  const upstream = await callAnthropic(body.request, {
+  const upstream = await callAnthropic(modelRequest, {
     apiKey: env.ANTHROPIC_API_KEY,
     fetcher: hooks.fetcher,
   });
