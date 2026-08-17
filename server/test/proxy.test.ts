@@ -321,8 +321,14 @@ describe("the lesson cache", () => {
   });
 
   it("collides on topics that differ only by wording", async () => {
+    // Both topics are stated explicitly: this test is about the exact pair of
+    // wordings, so inheriting a test-scoped default topic would test nothing.
     const fetcher = fixtureFetch([anthropicStreaming(sseLesson("Shared."))]);
-    await (await call({ fetcher, device: "wording-a" })).text();
+    await (await call({
+      fetcher,
+      device: "wording-a",
+      body: { window: "three", format: "oneThing", topic: "Why bridges hum", request: modelRequest() },
+    })).text();
 
     const callsBefore = (fetcher as any).calls.length;
     const restated = await call({
@@ -336,7 +342,13 @@ describe("the lesson cache", () => {
 
   it("never serves a cached lesson to premium", async () => {
     const fetcher = fixtureFetch(premiumRoutes(sseLesson("Fresh for premium.")));
-    await (await call({ fetcher, device: "cache-premium-seed" })).text();
+    // Seeded under the same explicit topic the premium read asks for, so a
+    // cache hit is available and declining it is the thing being tested.
+    await (await call({
+      fetcher,
+      device: "cache-premium-seed",
+      body: { window: "three", format: "oneThing", topic: "Why bridges hum", request: modelRequest() },
+    })).text();
 
     const callsBefore = (fetcher as any).calls.length;
     const premium = await call({

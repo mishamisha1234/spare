@@ -7,8 +7,32 @@
  */
 
 import { createExecutionContext, env, waitOnExecutionContext } from "cloudflare:test";
+import { expect } from "vitest";
 import worker, { type Env, type Hooks } from "../src/index";
 import { fakeJWS, TEST_P8 } from "./fixtures";
+
+/**
+ * A slug unique to the running test, used to scope the default device and the
+ * default topic.
+ *
+ * Storage is isolated per test file, not per test, so without this every test
+ * in a file shares one free-tier counter and one lesson cache — and they feed
+ * each other. That produced eleven failures whose stated reasons were all
+ * wrong: a streaming test compared against a cached replay left by an earlier
+ * test, a policy test found no upstream call because the day's free lesson had
+ * been spent three tests ago, and "allows the first lesson and refuses the
+ * second" allowed both because its first request was a cache hit and cache hits
+ * are deliberately not metered.
+ *
+ * Scoping the defaults means each test starts from a fresh allowance and an
+ * empty cache without depending on the runner's isolation granularity. Tests
+ * that are *about* sharing — the cache ones — pass explicit devices and topics
+ * and so opt back in.
+ */
+function testScope(): string {
+  const name = expect.getState().currentTestName ?? "unnamed-test";
+  return name.replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 96);
+}
 
 /** Fixed clock, so day and month rollover are decided by the test, not the calendar. */
 export const NOW = Date.UTC(2026, 7, 17, 12, 0, 0);
@@ -60,18 +84,21 @@ export async function callRaw(
   options: CallOptions,
 ): Promise<{ response: Response; ctx: ExecutionContext }> {
   const ctx = createExecutionContext();
+  const scope = testScope();
   const hooks: Hooks = { fetcher: options.fetcher, now: () => options.now ?? NOW };
   const request = new Request(`https://proxy.spare.app${options.path ?? "/v1/lesson"}`, {
     method: "POST",
     headers: {
-      "x-spare-device": options.device ?? "device-aaaaaaaa",
+      // `device-` prefixed so the length always clears the 8-character floor
+      // the router enforces, however short a test's name is.
+      "x-spare-device": options.device ?? `device-${scope}`,
       "content-type": "application/json",
     },
     body: JSON.stringify(
       options.body ?? {
         window: "three",
         format: "oneThing",
-        topic: "Why bridges hum",
+        topic: `Why bridges hum ${scope}`,
         request: modelRequest(),
       },
     ),
