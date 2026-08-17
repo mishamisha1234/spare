@@ -178,6 +178,12 @@ that should be a choice on the record rather than a surprise.
 
 ## Deploying from Windows
 
+**Step-by-step instructions are in [DEPLOY.md](DEPLOY.md)**, written for someone
+who is not a developer: every command, what each one prompts for, and what
+working looks like at each step. The summary below is for someone who has done it
+before.
+
+
 Needs Node 22 or newer — wrangler 4 and miniflare 5 both require it.
 
 ```powershell
