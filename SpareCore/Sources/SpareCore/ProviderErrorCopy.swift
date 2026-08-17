@@ -13,12 +13,23 @@ public struct ErrorPresentation: Sendable, Equatable {
     public var isRetryable: Bool
     /// True when the fix is in Settings, so the screen can offer that instead.
     public var pointsToSettings: Bool
+    /// True when the limit is a tier boundary, so the screen can offer the
+    /// paywall. Never both this and `pointsToSettings`: a screen offering two
+    /// different fixes for one failure is a screen that has guessed.
+    public var pointsToPaywall: Bool
 
-    public init(title: String, message: String, isRetryable: Bool, pointsToSettings: Bool = false) {
+    public init(
+        title: String,
+        message: String,
+        isRetryable: Bool,
+        pointsToSettings: Bool = false,
+        pointsToPaywall: Bool = false
+    ) {
         self.title = title
         self.message = message
         self.isRetryable = isRetryable
         self.pointsToSettings = pointsToSettings
+        self.pointsToPaywall = pointsToPaywall
     }
 }
 
@@ -97,6 +108,56 @@ public enum ProviderErrorCopy {
                 message: "Generation stopped before it finished.",
                 isRetryable: true
             )
+
+        // The server's own wording is used for the message, because it is
+        // written for the reader and stating the limit twice in two voices
+        // would be worse than either. The title and the offered action are
+        // decided here, where the rest of the app's copy lives.
+        case .limited(let limit, let message):
+            switch limit {
+            case .dailyLesson:
+                return ErrorPresentation(
+                    title: "That's today's lesson",
+                    message: message,
+                    isRetryable: false,
+                    pointsToPaywall: true
+                )
+            case .lockedWindow:
+                return ErrorPresentation(
+                    title: "Longer lessons are Premium",
+                    message: message,
+                    isRetryable: false,
+                    pointsToPaywall: true
+                )
+            case .premiumOnly:
+                return ErrorPresentation(
+                    title: "Part of Premium",
+                    message: message,
+                    isRetryable: false,
+                    pointsToPaywall: true
+                )
+            case .courseCap:
+                // Already paying, so the paywall has nothing to offer. Waiting
+                // for the month to turn is the only real answer, and saying so
+                // is better than a button.
+                return ErrorPresentation(
+                    title: "Every course this month",
+                    message: message,
+                    isRetryable: false
+                )
+            case .spendCeiling:
+                return ErrorPresentation(
+                    title: "Spare is at its limit",
+                    message: message,
+                    isRetryable: true
+                )
+            case .verificationUnavailable:
+                return ErrorPresentation(
+                    title: "Couldn't check your subscription",
+                    message: message,
+                    isRetryable: true
+                )
+            }
         }
     }
 

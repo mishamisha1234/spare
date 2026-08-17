@@ -42,6 +42,12 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         ITSAppUsesNonExemptEncryption: false
+        # The proxy that holds the Anthropic key. A plist value rather than a
+        # constant so a redeploy to a different Worker doesn't need a code
+        # change — and so this file records the one piece of the server's
+        # identity the app is allowed to know. The key itself is a Cloudflare
+        # secret and appears nowhere in this repo.
+        SPProxyBaseURL: https://spare-proxy.spare.workers.dev
         # Registers the scheme the widget's links use.
         CFBundleURLTypes:
           - CFBundleURLName: app.spare.ios.deeplink

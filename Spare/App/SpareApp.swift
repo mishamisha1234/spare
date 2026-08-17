@@ -63,27 +63,75 @@ struct SpareApp: App {
         // happens to be in this simulator's Keychain. The stub store also
         // means the paywall screenshots need no StoreKit configuration and
         // can never trigger a real purchase sheet.
-        self.entitlements = EntitlementService(
-            store: Self.isUITestReset ? StubPurchaseStore() : StoreKitPurchaseStore(),
-            container: container
-        )
+        let purchases: any PurchaseStore = Self.isUITestReset
+            ? StubPurchaseStore()
+            : StoreKitPurchaseStore()
+        self.entitlements = EntitlementService(store: purchases, container: container)
 
         if Self.isUITestFailingProvider {
             self.provider = FailingProvider()
         } else if Self.isUITestReset {
             self.provider = MockProvider()
         } else {
-            let keyStore = KeychainAPIKeyStore()
-            self.provider = KeyGatedProvider(
-                live: AnthropicDirectProvider(
-                    transport: FoundationHTTPTransport(),
-                    keyStore: keyStore,
-                    ledger: UsageLedgerActor(modelContainer: container)
-                ),
-                offline: MockProvider(),
-                keyStore: keyStore
-            )
+            self.provider = Self.makeLiveProvider(container: container, purchases: purchases)
         }
+    }
+
+    /// Builds the shipping provider.
+    ///
+    /// `ProxyProvider` is the path a released build takes: the Anthropic key
+    /// lives in the proxy's secrets, and the tier limits are enforced there
+    /// rather than on a device that can be edited.
+    ///
+    /// `AnthropicDirectProvider` survives only in debug builds, behind the same
+    /// condition as the Settings key field, so generation can be worked on
+    /// without deploying the proxy. Keeping both reachable from one build is
+    /// what makes it possible to tell a proxy problem from a generation problem
+    /// — the pipeline either side of the route is the same code.
+    private static func makeLiveProvider(
+        container: ModelContainer,
+        purchases: any PurchaseStore
+    ) -> any LessonProvider {
+        let ledger = UsageLedgerActor(modelContainer: container)
+
+        #if DEBUG
+        let keyStore = KeychainAPIKeyStore()
+        let direct = AnthropicDirectProvider(
+            transport: FoundationHTTPTransport(),
+            keyStore: keyStore,
+            ledger: ledger
+        )
+        #endif
+
+        guard let baseURL = ProxyConfiguration.baseURL() else {
+            // No usable SPProxyBaseURL: a build configuration mistake. Falling
+            // back to samples keeps the app usable and obviously wrong, which
+            // is better than sending every request at a URL that cannot exist
+            // and calling it a network error.
+            #if DEBUG
+            return KeyGatedProvider(
+                keyed: direct, fallback: MockProvider(), keyStore: keyStore
+            )
+            #else
+            return MockProvider()
+            #endif
+        }
+
+        let proxy = ProxyProvider(
+            transport: FoundationHTTPTransport(),
+            baseURL: baseURL,
+            deviceID: DeviceIdentity.current(),
+            // Read per request, not captured: a purchase, a restore, or an
+            // expiry has to take effect without a relaunch.
+            receipt: { await purchases.currentReceipt() },
+            ledger: ledger
+        )
+
+        #if DEBUG
+        return KeyGatedProvider(keyed: direct, fallback: proxy, keyStore: keyStore)
+        #else
+        return proxy
+        #endif
     }
 
     /// Seeds a completed lesson with an already-due recall item, so the

@@ -50,7 +50,15 @@ export interface CallOptions {
   now?: number;
 }
 
-export async function call(options: CallOptions): Promise<Response> {
+/**
+ * Invokes the Worker and hands back the live response plus its context.
+ *
+ * For tests that need the response as a stream. The caller must drain the body
+ * and then `await waitOnExecutionContext(ctx)`, in that order — see `call`.
+ */
+export async function callRaw(
+  options: CallOptions,
+): Promise<{ response: Response; ctx: ExecutionContext }> {
   const ctx = createExecutionContext();
   const hooks: Hooks = { fetcher: options.fetcher, now: () => options.now ?? NOW };
   const request = new Request(`https://proxy.spare.app${options.path ?? "/v1/lesson"}`, {
@@ -69,8 +77,30 @@ export async function call(options: CallOptions): Promise<Response> {
     ),
   });
   const response = await worker.fetch(request, options.env ?? testEnv(), ctx, hooks);
+  return { response, ctx };
+}
+
+/**
+ * Invokes the Worker and returns a fully buffered response.
+ *
+ * The draining is not a convenience. On the streaming path the server tee()s
+ * the upstream body and does its cost accounting and cache write on the second
+ * branch, scheduled with `waitUntil`. A test that asserts only on the status
+ * and walks away leaves the body unread, so that background work never
+ * finishes — and it writes to a Durable Object, which the runner's per-test
+ * storage isolation then fails to tear down. The failure surfaces as an opaque
+ * "expected .sqlite, got .sqlite-shm" from the pool rather than as anything
+ * pointing at the test that caused it.
+ *
+ * Order matters: drain first, then wait. Waiting on a context whose observer
+ * branch is still blocked on an unread body waits for something that cannot
+ * happen yet.
+ */
+export async function call(options: CallOptions): Promise<Response> {
+  const { response, ctx } = await callRaw(options);
+  const body = await response.arrayBuffer();
   await waitOnExecutionContext(ctx);
-  return response;
+  return new Response(body, { status: response.status, headers: response.headers });
 }
 
 export const premiumReceipt = fakeJWS({ originalTransactionId: "2000000000000001" });

@@ -60,6 +60,14 @@ public enum TimeWindow: String, Codable, CaseIterable, Sendable, Identifiable, H
         }
     }
 
+    /// The window whose length is nearest a given reading time.
+    ///
+    /// For recovering the window of an already-written lesson: a `Lesson`
+    /// records its text, not the choice that produced it.
+    public static func closest(toMinutes minutes: Int) -> TimeWindow {
+        allCases.min(by: { abs($0.minutes - minutes) < abs($1.minutes - minutes) }) ?? .three
+    }
+
     /// Word budgets calibrated to ~200 wpm minus absorption overhead.
     public var wordBudget: ClosedRange<Int> {
         switch self {

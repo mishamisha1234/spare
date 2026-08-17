@@ -42,6 +42,14 @@ protocol PurchaseStore: Sendable {
     /// can be re-read. Covers renewals, refunds, and purchases that complete
     /// outside the app.
     func transactionUpdates() -> AsyncStream<Void>
+    /// The signed transaction the proxy presents to Apple, or nil on the free
+    /// tier.
+    ///
+    /// The device does not decide it is premium; it hands over a receipt and
+    /// the server asks Apple. `ownedProductIDs` above is for the UI, which can
+    /// afford to trust the local answer because being wrong there costs a
+    /// misdrawn lock icon rather than a lesson.
+    func currentReceipt() async -> String?
 }
 
 /// Deterministic stand-in for UI tests and previews.
@@ -92,6 +100,11 @@ actor StubPurchaseStore: PurchaseStore {
     }
 
     func ownedProductIDs() async -> Set<String> { owned }
+
+    /// Always nil. There is no such thing as a fake receipt the proxy would
+    /// accept, and a stub that returned one would be pretending the server
+    /// check passes. UI tests reach the network through `MockProvider` anyway.
+    func currentReceipt() async -> String? { nil }
 
     nonisolated func transactionUpdates() -> AsyncStream<Void> { stream }
 }

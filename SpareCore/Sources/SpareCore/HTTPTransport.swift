@@ -55,10 +55,26 @@ public protocol HTTPTransport: Sendable {
 public enum HTTPTransportMapper {
     public static func providerError(status: Int, body: Data) -> LessonProviderError {
         let message = Self.message(from: body)
+        // A recognised proxy code takes precedence over the status: 402 and 429
+        // both cover several situations whose next step differs, and the code is
+        // the only thing that distinguishes them. Checked before the status
+        // switch so a 401 carrying a proxy code is read as the proxy meant it,
+        // not as a rejected Anthropic key.
+        if let code = Self.errorCode(from: body), let limit = ProxyLimit(code: code) {
+            return .limited(limit, message: message)
+        }
         switch status {
         case 401, 403: return .missingAPIKey
         default: return .httpStatus(code: status, message: message)
         }
+    }
+
+    /// Pulls `error.code` out of a Spare proxy error envelope. Anthropic's
+    /// envelope uses `error.type` instead, so this stays nil for upstream
+    /// errors and the status is used as before.
+    public static func errorCode(from body: Data) -> String? {
+        guard let root = try? JSONDecoder().decode(JSONValue.self, from: body) else { return nil }
+        return root["error"]?["code"]?.stringValue
     }
 
     /// Pulls `error.message` out of an API error envelope, falling back to the

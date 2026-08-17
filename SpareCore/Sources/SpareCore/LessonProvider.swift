@@ -17,6 +17,42 @@ public enum LessonStreamEvent: Sendable, Equatable {
     case finished(Lesson)
 }
 
+/// A refusal the Spare proxy issued, as opposed to one Anthropic issued.
+///
+/// Distinguished because the next step differs entirely. An HTTP failure is
+/// something to retry or a key to fix; these are a tier boundary to cross or a
+/// wait to sit out, and telling a reader who has used today's free lesson to
+/// "check your key in Settings" would be both wrong and, on a ship build,
+/// pointing at a screen that doesn't exist.
+///
+/// The app's own `EntitlementService` should normally have caught these before a
+/// request was made. Reaching one means the two disagreed — a clock skew, a
+/// lapsed subscription the device hasn't noticed, a tampered build — and the
+/// server is the side that is right.
+public enum ProxyLimit: String, Sendable, Equatable {
+    /// The free tier's one lesson a day is spent.
+    case dailyLesson = "dailyLimitReached"
+    /// This length is premium-only.
+    case lockedWindow
+    /// Premium's monthly mini-course allowance is spent.
+    case courseCap = "courseCapReached"
+    /// Going deeper is premium-only.
+    case premiumOnly = "goDeeperLocked"
+    /// Spare's own monthly spend ceiling was reached; free generation is paused.
+    case spendCeiling = "spendCeilingReached"
+    /// The proxy couldn't reach Apple to confirm the subscription. Fails closed
+    /// to free rather than open to premium, and is worth retrying.
+    case verificationUnavailable
+
+    /// Unrecognised codes map to nil rather than to a catch-all case, so a new
+    /// server code surfaces as a plain HTTP status instead of borrowing copy
+    /// written for a different situation.
+    public init?(code: String) {
+        guard let limit = ProxyLimit(rawValue: code) else { return nil }
+        self = limit
+    }
+}
+
 public enum LessonProviderError: Error, Equatable, Sendable {
     case missingAPIKey
     case network(String)
@@ -25,12 +61,23 @@ public enum LessonProviderError: Error, Equatable, Sendable {
     case refused(category: String?, explanation: String?)
     case cancelled
     case malformedStream(String)
+    /// A tier or spend limit the proxy enforced. `message` is the server's own
+    /// wording, which is written for the reader.
+    case limited(ProxyLimit, message: String)
 
     public var isRetryable: Bool {
         switch self {
         case .network, .malformedStream: return true
         case .httpStatus(let code, _): return code == 429 || code >= 500
         case .missingAPIKey, .decoding, .refused, .cancelled: return false
+        // A ceiling clears and an Apple outage ends; a tier boundary doesn't
+        // move by retrying, and offering a button that cannot help implies the
+        // failure is the reader's to fix.
+        case .limited(let limit, _):
+            switch limit {
+            case .spendCeiling, .verificationUnavailable: return true
+            case .dailyLesson, .lockedWindow, .courseCap, .premiumOnly: return false
+            }
         }
     }
 }

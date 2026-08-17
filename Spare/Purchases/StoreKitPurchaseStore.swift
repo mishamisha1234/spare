@@ -92,6 +92,26 @@ actor StoreKitPurchaseStore: PurchaseStore {
         return owned
     }
 
+    /// The JWS of the current entitlement, for the proxy to verify with Apple.
+    ///
+    /// Only `.verified` results are considered: an unverified JWS would be
+    /// refused by the server anyway, and sending one would turn a local
+    /// tampering attempt into a confusing server error rather than a plain
+    /// free tier.
+    ///
+    /// Where several products are owned — a subscription plus lifetime — the
+    /// first is enough. Every one of them entitles the same thing, and the
+    /// server only needs one transaction to ask Apple about.
+    func currentReceipt() async -> String? {
+        for await result in Transaction.currentEntitlements {
+            guard case .verified(let transaction) = result else { continue }
+            if transaction.revocationDate != nil { continue }
+            if let expiry = transaction.expirationDate, expiry < Date() { continue }
+            return result.jwsRepresentation
+        }
+        return nil
+    }
+
     /// `nonisolated` so subscribing doesn't need to hop onto the actor —
     /// `Transaction.updates` is a global sequence, not actor state.
     nonisolated func transactionUpdates() -> AsyncStream<Void> {

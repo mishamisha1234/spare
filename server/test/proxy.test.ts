@@ -11,7 +11,7 @@ import {
   sseLesson,
   subscriptionStatus,
 } from "./fixtures";
-import { NOW, call, modelRequest, premiumReceipt, testEnv } from "./harness";
+import { NOW, call, callRaw, modelRequest, premiumReceipt, testEnv } from "./harness";
 
 function premiumRoutes(sse: string) {
   return [
@@ -85,9 +85,11 @@ describe("streaming passes through intact", () => {
   });
 
   it("does not buffer the stream into one chunk", async () => {
+    // Reads the live stream rather than a buffered copy: the assertion is about
+    // chunk boundaries, and `call` would have flattened them by design.
     const sse = sseLesson("a".repeat(4000));
     const fetcher = fixtureFetch([anthropicStreaming(sse)]);
-    const response = await call({ fetcher });
+    const { response, ctx } = await callRaw({ fetcher });
 
     const reader = response.body!.getReader();
     let chunks = 0;
@@ -96,6 +98,8 @@ describe("streaming passes through intact", () => {
       if (done) break;
       chunks += 1;
     }
+    await waitOnExecutionContext(ctx);
+
     expect(chunks).toBeGreaterThan(1);
   });
 });
@@ -397,6 +401,7 @@ describe("request hygiene", () => {
       ctx,
       { fetcher, now: () => NOW },
     );
+    await response.arrayBuffer();
     await waitOnExecutionContext(ctx);
     expect(response.status).toBe(400);
   });
@@ -410,6 +415,7 @@ describe("request hygiene", () => {
       ctx,
       { fetcher, now: () => NOW },
     );
+    await response.arrayBuffer();
     await waitOnExecutionContext(ctx);
     expect(response.status).toBe(405);
   });
