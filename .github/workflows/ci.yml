@@ -78,6 +78,54 @@ jobs:
       - name: Test
         run: swift test --package-path SpareCore
 
+  server:
+    name: Proxy (Node)
+    runs-on: ubuntu-latest
+    # Independent of the Swift jobs: a server change shouldn't wait on an
+    # iOS build, and a Swift change shouldn't wait on npm.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # `npm install` rather than `npm ci`: there is no committed lockfile, and
+      # generating one requires running npm on a machine that isn't Windows.
+      - name: Install
+        working-directory: server
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck
+        working-directory: server
+        run: npm run typecheck
+
+      # The proxy holds the API key, so a key-shaped string reaching the repo
+      # is worse here than anywhere else. Same guard as SpareCore's.
+      - name: Reject committed secrets in the server
+        working-directory: server
+        run: |
+          set -u
+          patterns='sk-ant-[A-Za-z0-9_-]{16,}|BEGIN PRIVATE KEY'
+          # Two steps rather than a pipeline, so the allowed fixtures are
+          # filtered out without a line continuation to get mangled.
+          found=$(grep -rEn --include='*.ts' --include='*.toml' --include='*.json' "$patterns" . || true)
+          found=$(echo "$found" | grep -v 'sk-ant-fixture' | grep -v 'test/fixtures.ts' || true)
+          if [ -n "$found" ]; then
+            echo "$found"
+            echo "::error::Something shaped like a real secret is committed in server/."
+            exit 1
+          fi
+          echo "OK: no committed secrets in server/."
+
+      # Runs the Worker in the real workerd runtime with real Durable Objects,
+      # so the consistency guarantee the tier limits depend on is exercised
+      # rather than mocked. Every upstream host is a fixture handler; a test
+      # that reaches the network throws instead of passing.
+      - name: Test
+        working-directory: server
+        run: npm test
+
   ios:
     name: Spare (iOS)
     runs-on: macos-latest
