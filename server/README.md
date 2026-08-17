@@ -125,22 +125,54 @@ Stated here so it is a choice rather than a surprise.
 
 ## Deploying from Windows
 
+Needs Node 22 or newer — wrangler 4 and miniflare 5 both require it.
+
 ```powershell
 cd server
 npm install
 npx wrangler login
+```
+
+Create the cache namespace and put its id in `wrangler.toml`, replacing
+`REPLACE_WITH_KV_ID`. This is the one step that has to happen before the first
+deploy; a Worker with an unresolvable KV binding will not start.
+
+```powershell
+npx wrangler kv namespace create LESSONS
+```
+
+Then the secrets. Each command prompts for the value, so nothing is typed on a
+command line that a shell history would keep:
+
+```powershell
 npx wrangler secret put ANTHROPIC_API_KEY
-npx wrangler secret put APPSTORE_PRIVATE_KEY   # contents of the .p8
+npx wrangler secret put APPSTORE_PRIVATE_KEY   # the whole .p8, BEGIN/END lines included
 npx wrangler secret put APPSTORE_KEY_ID
 npx wrangler secret put APPSTORE_ISSUER_ID
 npx wrangler deploy
 ```
 
-Nothing here is committed. `wrangler.toml` holds only non-secret bindings.
+Deploy prints the Worker's URL. Put that in `project.yml` as `SPProxyBaseURL`
+and regenerate the Xcode project; the app reads it from `Info.plist` rather than
+from a constant so a redeploy elsewhere needs no code change.
+
+Nothing above is committed. `wrangler.toml` holds only non-secret bindings, and
+CI fails the build if anything shaped like a key or a PEM body reaches the repo.
 
 ## Testing
 
 `npm test` runs Vitest against recorded fixtures through
 `@cloudflare/vitest-pool-workers`, so the Worker runs in the real workerd
 runtime with real Durable Objects rather than a mock. No test makes a network
-call: the Anthropic and Apple hosts are both replaced by fixture handlers.
+call: the Anthropic and Apple hosts are both replaced by fixture handlers, and
+`fixtureFetch` throws on any request it has no recording for, so a test that
+reaches the internet fails instead of passing.
+
+**Storage is isolated per test file, not per test.** Without accounting for that,
+every test in a file shares one free-tier counter and one lesson cache, and they
+feed each other — a streaming assertion ends up comparing against a cached
+replay from the test above it, and a test named for the daily limit passes its
+first assertion because its request was an unmetered cache hit. `harness.ts`
+derives each test's device and topic from the running test's name so tests start
+independent; the cache tests, which are about sharing, state theirs explicitly
+and opt back in.
