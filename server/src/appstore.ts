@@ -186,6 +186,17 @@ export async function verifyEntitlement(
     typeof claim?.originalTransactionId === "string" ? claim.originalTransactionId : null;
   if (!originalTransactionId) return FREE_ENTITLEMENT;
 
+  // Deploying with only ANTHROPIC_API_KEY set is a legitimate first step: the
+  // free tier works, and nothing reads the App Store secrets until a receipt
+  // arrives. When one does, an unset secret would otherwise reach WebCrypto as
+  // undefined and throw a TypeError, which the router rethrows as an unhandled
+  // 500 — the app would show "something went wrong" for what is really a
+  // half-finished deploy. Reported as a verification outage instead: still
+  // failing closed to free, but retryable and named.
+  if (!config.keyId || !config.issuerId || !config.bundleId || !config.privateKeyPem) {
+    throw new AppStoreVerificationError(0, "unconfigured");
+  }
+
   const token = await mintAppStoreToken(config, now);
 
   for (const [host, environment] of [
@@ -216,7 +227,13 @@ export async function verifyEntitlement(
 export class AppStoreVerificationError extends Error {
   constructor(
     readonly status: number,
-    readonly environment: "production" | "sandbox",
+    /**
+     * Which host answered, or `"unconfigured"` when the App Store secrets are
+     * not set and no host was asked. Carried so a log distinguishes "Apple is
+     * down" from "this deploy is half finished" — the client sees the same
+     * retryable error either way, but only one of them is fixed by waiting.
+     */
+    readonly environment: "production" | "sandbox" | "unconfigured",
   ) {
     super(`App Store verification failed with ${status} on ${environment}`);
     this.name = "AppStoreVerificationError";

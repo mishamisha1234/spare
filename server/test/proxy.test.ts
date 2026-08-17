@@ -258,6 +258,35 @@ describe("premium", () => {
     expect(await response.json()).toMatchObject({ error: { code: "verificationUnavailable" } });
   });
 
+  it("fails closed and retryable when the App Store secrets are not set", async () => {
+    // The legitimate first deploy sets only ANTHROPIC_API_KEY, so the free tier
+    // works before an App Store Connect key exists. A premium request then must
+    // not reach WebCrypto with an undefined key and 500; it should read as a
+    // verification outage, which is retryable and does not grant premium.
+    const fetcher = fixtureFetch([anthropicStreaming(sseLesson("Should not be reached."))]);
+    const response = await call({
+      fetcher,
+      device: "unconfigured-premium",
+      env: testEnv({
+        APPSTORE_PRIVATE_KEY: "",
+        APPSTORE_KEY_ID: "",
+        APPSTORE_ISSUER_ID: "",
+      }),
+      body: {
+        window: "thirty",
+        format: "miniCourse",
+        topic: "Course before the key exists",
+        receipt: premiumReceipt,
+        request: modelRequest(),
+      },
+    });
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: { code: "verificationUnavailable" } });
+    // Nothing was generated, and Apple was never asked.
+    expect((fetcher as any).calls).toHaveLength(0);
+  });
+
   it("caps courses per month", async () => {
     const fetcher = fixtureFetch(premiumRoutes(sseLesson("Course.")));
     const device = "premium-device-cap";
