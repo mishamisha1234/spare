@@ -94,24 +94,3 @@ public struct KeyGatedProvider: LessonProvider {
         )
     }
 }
-
-extension AnthropicDirectProvider {
-    /// Non-streaming whole-lesson generation, both passes. The Reader always
-    /// streams; this exists for callers that want a finished lesson in hand.
-    public func generateLesson(
-        topic: TopicSuggestion,
-        window: TimeWindow,
-        profile: ProfileSnapshot
-    ) async throws -> Lesson {
-        var result: Lesson?
-        for try await event in streamLesson(
-            topic: topic, window: window, profile: profile, demand: .eager()
-        ) {
-            if case .finished(let lesson) = event { result = lesson }
-        }
-        guard let result else {
-            throw LessonProviderError.malformedStream("lesson stream finished without a result")
-        }
-        return result
-    }
-}

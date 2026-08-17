@@ -712,3 +712,30 @@ public struct GenerationPipeline: LessonProvider {
         }
     }
 }
+
+// MARK: - Non-streaming convenience
+
+extension GenerationPipeline {
+    /// Non-streaming whole-lesson generation, both passes. The Reader always
+    /// streams; this exists for callers that want a finished lesson in hand.
+    ///
+    /// Lives on the pipeline rather than on either provider, so the two get
+    /// identical behaviour from it rather than one of them getting it by
+    /// accident of which file the extension happened to sit in.
+    public func generateLesson(
+        topic: TopicSuggestion,
+        window: TimeWindow,
+        profile: ProfileSnapshot
+    ) async throws -> Lesson {
+        var result: Lesson?
+        for try await event in streamLesson(
+            topic: topic, window: window, profile: profile, demand: .eager()
+        ) {
+            if case .finished(let lesson) = event { result = lesson }
+        }
+        guard let result else {
+            throw LessonProviderError.malformedStream("lesson stream finished without a result")
+        }
+        return result
+    }
+}

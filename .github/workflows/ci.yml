@@ -86,9 +86,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 22, not 20: wrangler 4 and miniflare 5 require it, and the runner
+      # deprecation notice on 20 is a second reason not to pin to it.
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       # `npm install` rather than `npm ci`: there is no committed lockfile, and
       # generating one requires running npm on a machine that isn't Windows.
