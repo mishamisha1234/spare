@@ -106,10 +106,20 @@ jobs:
         working-directory: server
         run: |
           set -u
-          patterns='sk-ant-[A-Za-z0-9_-]{16,}|BEGIN PRIVATE KEY'
+          # Matches key *material*, not the words around it. An earlier version
+          # matched the bare string "BEGIN PRIVATE KEY" and so failed on
+          # appstore.ts, which contains that marker because it strips it while
+          # parsing a PEM. A guard that fires on the parser is a guard that gets
+          # switched off, so: an Anthropic key shape, or a PEM body line (60+
+          # base64 characters alone on a line, which is what actual key bytes
+          # look like at PEM's 64-column wrap).
+          patterns='sk-ant-[A-Za-z0-9_-]{16,}|^[A-Za-z0-9+/]{60,}={0,2}$'
           # Two steps rather than a pipeline, so the allowed fixtures are
           # filtered out without a line continuation to get mangled.
-          found=$(grep -rEn --include='*.ts' --include='*.toml' --include='*.json' "$patterns" . || true)
+          # node_modules is present by now (install runs first) and is full of
+          # base64 blobs and vendored certificates that would trip the PEM-body
+          # pattern. Only our own files are in scope.
+          found=$(grep -rEn --exclude-dir=node_modules --exclude-dir=.wrangler --include='*.ts' --include='*.toml' --include='*.json' "$patterns" . || true)
           found=$(echo "$found" | grep -v 'sk-ant-fixture' | grep -v 'test/fixtures.ts' || true)
           if [ -n "$found" ]; then
             echo "$found"
