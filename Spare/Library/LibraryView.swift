@@ -87,10 +87,19 @@ struct LibraryView: View {
 
                         ForEach(monthGroups, id: \.month) { group in
                             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                                Text(group.month.uppercased())
-                                    .font(Theme.Font.caption.font)
-                                    .foregroundStyle(palette.secondaryText)
-                                    .padding(.horizontal, Theme.Spacing.m)
+                                VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
+                                    Text(group.month.uppercased())
+                                        .font(Theme.Font.caption.font)
+                                        .foregroundStyle(palette.secondaryText)
+                                    // The collection counted, under the month
+                                    // it belongs to. Completion already calls
+                                    // these "things I now know"; the library
+                                    // should be the same object, counted.
+                                    Text(Self.thingsCount(group.lessons.count))
+                                        .font(Theme.Font.label.font)
+                                        .foregroundStyle(palette.secondaryText)
+                                }
+                                .padding(.horizontal, Theme.Spacing.m)
 
                                 VStack(spacing: 0) {
                                     ForEach(Array(group.lessons.enumerated()), id: \.element.id) { index, lesson in
@@ -106,9 +115,15 @@ struct LibraryView: View {
                         }
 
                         if hiddenCount > 0 {
-                            Text("\(hiddenCount) earlier \(hiddenCount == 1 ? "lesson" : "lessons") hidden on the free plan")
+                            // "hidden, not deleted" is a factual claim, and it
+                            // is true: nothing in this app ever deletes a
+                            // lesson. `visibleLibraryCount` caps what is
+                            // shown; the query behind it is unfiltered, so
+                            // upgrading restores every entry.
+                            Text("Free keeps your last \(EntitlementRules.freeLibraryLimit). Older entries are hidden, not deleted.")
                                 .font(Theme.Font.caption.font)
                                 .foregroundStyle(palette.secondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
                                 .padding(.horizontal, Theme.Spacing.m)
                         }
                     }
@@ -226,6 +241,10 @@ struct LibraryView: View {
         .padding(.vertical, Theme.Spacing.s)
         .contentShape(Rectangle())
         .accessibilityIdentifier("library.row.\(lesson.id)")
+    }
+
+    static func thingsCount(_ count: Int) -> String {
+        "\(count) \(count == 1 ? "thing" : "things")"
     }
 
     private var emptyState: some View {

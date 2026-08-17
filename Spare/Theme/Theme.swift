@@ -255,9 +255,16 @@ enum Theme {
     static let cornerRadius: CGFloat = 14
     static let borderWidth: CGFloat = 1
 
-    /// One shape for every chip. Onboarding topic chips and Library filter
-    /// chips were rendering as two different roundnesses.
-    static let pillRadius: CGFloat = .infinity
+    // Two shapes, and only two.
+    //
+    // Chips are `Capsule()`: the onboarding topic chips, the curiosity-gap
+    // rows, and the Library filter chips. Everything else — buttons, cards,
+    // text fields, option rows — uses `cornerRadius` above. There is no
+    // third roundness, which is what the topic chips at ~22 against the
+    // filter chips at full capsule used to be.
+    //
+    // No `pillRadius` constant: `Capsule()` already has no parameters to get
+    // wrong, so a token would add indirection without preventing drift.
 
     /// How much more of Home's leftover vertical space goes below the
     /// circle grid than above it. Greater than 1 lifts the block; the
