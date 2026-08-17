@@ -258,7 +258,10 @@ final class ProxyProviderTests: XCTestCase {
         _ = try await provider.suggestTopics(window: .three, profile: profile, history: [])
         _ = try await provider.suggestTopics(window: .three, profile: profile, history: [])
 
-        XCTAssertEqual(await reads.value, 2)
+        // Read out first: XCTAssertEqual's arguments are autoclosures, which
+        // cannot carry an `await`.
+        let count = await reads.value
+        XCTAssertEqual(count, 2)
     }
 
     // MARK: - Streaming
