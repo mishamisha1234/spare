@@ -47,7 +47,7 @@ targets:
         # change — and so this file records the one piece of the server's
         # identity the app is allowed to know. The key itself is a Cloudflare
         # secret and appears nowhere in this repo.
-        SPProxyBaseURL: https://spare-proxy.spare.workers.dev
+        SPProxyBaseURL: https://spare-proxy.mishabichashvili1998.workers.dev
         # Registers the scheme the widget's links use.
         CFBundleURLTypes:
           - CFBundleURLName: app.spare.ios.deeplink
