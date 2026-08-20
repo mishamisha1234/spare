@@ -7,9 +7,17 @@
     nothing is answered from cache. Each is written to its own .md file, and the
     run ends with a table of word count against budget and real cost per lesson.
 
-    This spends real money — roughly $2 for the full set, most of it in the
+    This spends real money — roughly $3 for the full set, most of it in the
     30-minute courses. The running total is printed after every lesson so it can
     be stopped with Ctrl+C at any point.
+
+    One caveat on what the word counts mean. This script sends its own short
+    prompt, not the app's editorial prompts from Prompts.swift, because those
+    are Swift and copying them here would give the text that most needs one
+    source of truth two. So the budget column measures how the model responds to
+    a plain request for a given length. It is a useful read on cost, speed,
+    truncation and the shape of the output; it is not a measurement of the app's
+    prompts.
 
     Needs the operator token, which is the same ADMIN_TOKEN the status endpoint
     uses. The bypass skips the daily limit and the cache so all 20 actually
@@ -45,11 +53,20 @@ $BaseURL = $BaseURL.TrimEnd("/")
 
 # Mirrors TimeWindow.swift. Kept here rather than fetched so the report says
 # what the app promises, not what the server happened to allow.
+# MaxTokens mirrors AnthropicAPI.maxTokens rather than being sized from the word
+# budget. Output tokens on this model include its thinking, not just the prose:
+# a trial run capped at 2,000 produced 415 words cut off mid-word, because most
+# of that budget went on thinking. Sizing these from word counts produces lessons
+# that look short when they were actually truncated, which would make every
+# number in the table below a lie about the model.
+#
+# thirty is 24,000, the policy ceiling for /v1/lesson, because this script writes
+# a course in one call where the app generates it a chapter at a time.
 $Windows = [ordered]@{
-    three   = @{ Label = "3 min";  Format = "oneThing";   Min = 500;  Max = 650;  MaxTokens = 2000;  Chapters = 1 }
-    ten     = @{ Label = "10 min"; Format = "explainer";  Min = 1600; Max = 2000; MaxTokens = 5000;  Chapters = 1 }
-    fifteen = @{ Label = "15 min"; Format = "lesson";     Min = 2400; Max = 3000; MaxTokens = 7000;  Chapters = 1 }
-    thirty  = @{ Label = "30 min"; Format = "miniCourse"; Min = 6000; Max = 6400; MaxTokens = 16000; Chapters = 4 }
+    three   = @{ Label = "3 min";  Format = "oneThing";   Min = 500;  Max = 650;  MaxTokens = 8000;  Chapters = 1 }
+    ten     = @{ Label = "10 min"; Format = "explainer";  Min = 1600; Max = 2000; MaxTokens = 16000; Chapters = 1 }
+    fifteen = @{ Label = "15 min"; Format = "lesson";     Min = 2400; Max = 3000; MaxTokens = 24000; Chapters = 1 }
+    thirty  = @{ Label = "30 min"; Format = "miniCourse"; Min = 6000; Max = 6400; MaxTokens = 24000; Chapters = 4 }
 }
 
 # Anthropic list pricing, mirroring CostEstimator in SpareCore.
@@ -156,6 +173,8 @@ function Invoke-Lesson {
                 if ($event.usage.output_tokens) { $outTok = [int]$event.usage.output_tokens }
                 if ($event.delta.stop_reason)   { $stopReason = [string]$event.delta.stop_reason }
             }
+            # message_stop arrives even when the model was cut off at the cap,
+            # so stop_reason is what says whether the lesson actually ended.
             "message_stop" { $complete = $true }
         }
     }
@@ -168,7 +187,7 @@ function Invoke-Lesson {
         Text       = $sb.ToString()
         InTokens   = $inTok
         OutTokens  = $outTok
-        Complete   = $complete
+        Complete   = ($complete -and $stopReason -ne "max_tokens")
         StopReason = $stopReason
         ErrorCode  = $errorCode
         CostUSD    = ($inTok / 1000000.0) * $PricePerMTokIn + ($outTok / 1000000.0) * $PricePerMTokOut
@@ -211,8 +230,10 @@ Write-Host ""
 $results = @()
 $runningCost = 0.0
 $index = 0
+$abort = $false
 
 foreach ($window in $plan) {
+    if ($abort) { break }
     $spec = $Windows[$window]
     foreach ($topic in $Topics[$window]) {
         $index++
@@ -228,10 +249,12 @@ foreach ($window in $plan) {
             if ($r.ErrorCode -eq "dailyLimitReached" -or $r.ErrorCode -eq "lockedWindow") {
                 Write-Host "        The operator token was not accepted, so this ran as an ordinary free device." -ForegroundColor Yellow
                 Write-Host "        Check ADMIN_TOKEN is set on the Worker and matches -Token, then redeploy." -ForegroundColor Yellow
+                $abort = $true
                 break
             }
             if ($r.ErrorCode -eq "spendCeilingReached") {
                 Write-Host "        The monthly spend ceiling stopped the run. Nothing further will generate." -ForegroundColor Yellow
+                $abort = $true
                 break
             }
             $results += [pscustomobject]@{
@@ -253,13 +276,13 @@ foreach ($window in $plan) {
             "",
             "- **Length:** $($spec.Label) ($($spec.Format))",
             "- **Words:** $words  (budget $($spec.Min)-$($spec.Max), $verdict)",
-            "- **Tokens:** $($r.InTokens) in / $($r.OutTokens) out",
+            "- **Tokens:** $($r.InTokens) in / $($r.OutTokens) out  (output includes thinking, so it exceeds the prose)",
             ("- **Cost:** `${0:N4}" -f $r.CostUSD),
             "- **Generated:** $(Get-Date -Format 'yyyy-MM-dd HH:mm') in ${seconds}s",
             ""
         )
         if (-not $r.Complete) {
-            $frontMatter += "> **Truncated.** stop_reason: $($r.StopReason). Raise MaxTokens for this length."
+            $frontMatter += "> **Truncated** at the token cap (stop_reason: $($r.StopReason)). The word count above is where it was cut off, not what the model would have written."
             $frontMatter += ""
         }
         if ($r.Cached) {
