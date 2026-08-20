@@ -333,26 +333,62 @@ describe("premium", () => {
 });
 
 describe("the lesson cache", () => {
-  it("serves a free user a cached lesson without spending their allowance", async () => {
+  it("serves a free user a cached lesson without calling Anthropic", async () => {
     const sse = sseLesson("Cached body.");
     const fetcher = fixtureFetch([anthropicStreaming(sse)]);
 
     // First device generates and populates the cache.
     await (await call({ fetcher, device: "cache-seed-device" })).text();
 
-    // A second device, same topic: served from cache, no upstream call, and
-    // its own daily allowance is still intact afterwards.
+    // A second device, same topic: served from cache, no upstream call.
     const callsBefore = (fetcher as any).calls.length;
     const cached = await call({ fetcher, device: "cache-reader-device" });
     expect(cached.headers.get("x-spare-cache")).toBe("hit");
     expect((fetcher as any).calls.length).toBe(callsBefore);
+  });
 
-    const stillAllowed = await call({
+  it("counts a cached lesson against the daily limit", async () => {
+    // The rule is one lesson a day whatever its source. A reader cannot tell a
+    // cached lesson from a generated one, so an allowance that only counted
+    // generations would make the free tier behave unpredictably from their side
+    // and be impossible to describe honestly on the paywall.
+    const fetcher = fixtureFetch([anthropicStreaming(sseLesson("Shared body."))]);
+    await (await call({ fetcher, device: "cache-meter-seed" })).text();
+
+    const reader = "cache-meter-reader";
+    const cached = await call({ fetcher, device: reader });
+    expect(cached.headers.get("x-spare-cache")).toBe("hit");
+    await cached.text();
+
+    // Same device, a topic the cache cannot answer: the allowance is gone.
+    const second = await call({
       fetcher,
-      device: "cache-reader-device",
+      device: reader,
       body: { window: "three", format: "oneThing", topic: "A completely different subject", request: modelRequest() },
     });
-    expect(stillAllowed.status).toBe(200);
+    expect(second.status).toBe(402);
+    expect(await second.json()).toMatchObject({ error: { code: "dailyLimitReached" } });
+  });
+
+  it("does not spend the allowance when the cached lesson is refused", async () => {
+    // Metering happens after deciding what to serve, so a request that ends in
+    // a refusal never costs the reader their lesson for the day. Here the
+    // device has already read the only cached entry, so it falls through to
+    // generation, which is what should be metered.
+    const fetcher = fixtureFetch([
+      anthropicStreaming(sseLesson("First.")),
+      anthropicStreaming(sseLesson("Second.")),
+    ]);
+    const device = "cache-refusal-device";
+
+    // Generates, which also records the lesson as read by this device.
+    await (await call({ fetcher, device })).text();
+
+    // Tomorrow, same topic: the cache holds it but this device has read it, so
+    // it generates instead — and that generation is what consumes the day.
+    const tomorrow = await call({ fetcher, device, now: NOW + 86_400_000 });
+    expect(tomorrow.status).toBe(200);
+    expect(tomorrow.headers.get("x-spare-cache")).toBeNull();
   });
 
   it("collides on topics that differ only by wording", async () => {
@@ -410,6 +446,7 @@ describe("the lesson cache", () => {
     const first = await call({ fetcher: fixtureFetch([]), device, body });
     expect(first.headers.get("x-spare-cache")).toBe("hit");
     await first.text();
+    // That hit consumed the day, so the next ask has to be tomorrow.
 
     // Second ask, next day so the daily limit is not what refuses it. The cache
     // declines, so it generates instead — which means an upstream call.

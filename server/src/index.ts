@@ -82,6 +82,15 @@ export default {
       return handleStatus(request, url, env, now);
     }
 
+    // Operator bypass, for generating a batch of lessons to read and judge.
+    //
+    // Skips the per-device limits and the cache, so every request generates.
+    // Deliberately does NOT skip the spend ceiling or the request policy: those
+    // are what stop a leaked token turning into an unbounded bill, and a bypass
+    // that disabled them would be a worse hole than the one it exists to work
+    // around. Spend is recorded exactly as for any other request.
+    const isOperator = isAuthorisedOperator(request, env);
+
     if (request.method !== "POST") {
       return errorResponse(405, "methodNotAllowed", "Only POST is accepted.");
     }
@@ -138,7 +147,9 @@ export default {
 
       case "/v1/lesson":
       case "/v1/chapter":
-        return handleGeneration(body, modelRequest, env, entitlement, deviceId, ctx, hooks, now);
+        return handleGeneration(
+          body, modelRequest, env, entitlement, deviceId, ctx, hooks, now, isOperator,
+        );
 
       case "/v1/go-deeper":
         // Premium-only, and cheap enough not to meter separately.
@@ -186,8 +197,7 @@ async function handleStatus(
     return errorResponse(405, "methodNotAllowed", "Status is a GET.");
   }
 
-  const presented = request.headers.get("x-spare-admin") ?? "";
-  if (!constantTimeEquals(presented, env.ADMIN_TOKEN)) {
+  if (!isAuthorisedOperator(request, env)) {
     return errorResponse(401, "unauthorized", "Not authorised.");
   }
 
@@ -220,6 +230,19 @@ async function handleStatus(
     status: 200,
     headers: { ...JSON_HEADERS, "cache-control": "no-store" },
   });
+}
+
+/**
+ * Whether this request carries the operator token.
+ *
+ * One definition, used by both the status endpoint and the generation bypass,
+ * so there is a single place where "is this us" is decided. Returns false when
+ * no token is configured, which is what makes an unconfigured deploy safe by
+ * default rather than safe by accident.
+ */
+function isAuthorisedOperator(request: Request, env: Env): boolean {
+  if (!env.ADMIN_TOKEN) return false;
+  return constantTimeEquals(request.headers.get("x-spare-admin") ?? "", env.ADMIN_TOKEN);
 }
 
 /**
@@ -293,6 +316,7 @@ async function handleGeneration(
   ctx: ExecutionContext,
   hooks: Hooks,
   now: number,
+  isOperator = false,
 ): Promise<Response> {
   const window = typeof body.window === "string" ? body.window : "three";
   const format = typeof body.format === "string" ? body.format : "oneThing";
@@ -301,34 +325,65 @@ async function handleGeneration(
   const isFree = entitlement.tier === "free";
   const cacheKey = lessonCacheKey({ window, format, topic });
 
-  // Free users are served from cache before anything is metered: a cache hit
-  // costs nothing, so spending a day's allowance on it would be punitive.
+  // Work out what we would serve before metering anything, so the allowance is
+  // spent on exactly one thing and never on a request that then fails.
   //
   // Two conditions beyond "there is an entry". It must be under 30 days old,
   // which `readCachedLesson` enforces. And this device must not already have
   // read it — otherwise a reader who asks about bridges twice gets the same
   // lesson back, which reads as the app being broken rather than as a cache
-  // working. `claimUnseen` is atomic, so two simultaneous requests cannot both
-  // claim the same entry.
-  if (isFree && topic) {
+  // working.
+  //
+  // The operator bypass skips the cache too: a batch run exists to produce
+  // fresh lessons to judge, and replaying old ones would quietly make it
+  // measure nothing.
+  let cachedEntry: Awaited<ReturnType<typeof readCachedLesson>> = null;
+  if (isFree && topic && !isOperator) {
     const cached = await readCachedLesson(env.LESSONS, cacheKey, now);
-    if (cached && (await claimUnseen(env, deviceId, cacheKey))) {
-      return replayCachedLesson(cached.sse);
+    if (cached && !(await hasSeenLesson(env, deviceId, cacheKey))) {
+      cachedEntry = cached;
     }
   }
 
-  const ceiling = await spendCheck(env, hooks, now);
-  if (!ceiling.withinCeiling && isFree) {
-    return errorResponse(
-      429,
-      "spendCeilingReached",
-      "Spare is at its monthly limit. Try again later.",
-    );
+  // The ceiling guards spend, and a cached lesson costs nothing to serve, so it
+  // only applies when we are about to generate. That keeps the documented
+  // behaviour: past the ceiling, free generation stops and the cache still
+  // answers.
+  if (!cachedEntry) {
+    const ceiling = await spendCheck(env, hooks, now);
+    if (!ceiling.withinCeiling && isFree) {
+      return errorResponse(
+        429,
+        "spendCeilingReached",
+        "Spare is at its monthly limit. Try again later.",
+      );
+    }
   }
 
-  const decision = await consume(env, deviceId, entitlement.tier, window, hooks, now);
-  if (!decision.allow) {
-    return errorResponse(402, decision.reason, denialMessage(decision.reason));
+  // One lesson a day, whatever its source.
+  //
+  // Cached reads used to be free, on the reasoning that a cache hit costs
+  // nothing so charging a day's allowance for it would be punitive. That was
+  // wrong for a reason that has nothing to do with cost: a reader cannot tell a
+  // cached lesson from a generated one, so an allowance that only counted
+  // generations made the free tier behave unpredictably from their side and
+  // impossible to describe honestly on the paywall. It also decayed — the
+  // fuller the cache, the more a free user could read, so the more successful
+  // the app became the weaker its paywall got.
+  //
+  // Metering here rather than inside the cache branch also closes the
+  // hasSeen/markSeen race for free: `consume` is atomic and allows one lesson
+  // per day, so two simultaneous requests cannot both reach the serve step.
+  if (!isOperator) {
+    const decision = await consume(env, deviceId, entitlement.tier, window, hooks, now);
+    if (!decision.allow) {
+      return errorResponse(402, decision.reason, denialMessage(decision.reason));
+    }
+  }
+
+  if (cachedEntry) {
+    await markSeen(env, deviceId, cacheKey);
+    return replayCachedLesson(cachedEntry.sse);
   }
 
   const upstream = await callAnthropic(modelRequest, {
@@ -410,20 +465,29 @@ async function consume(
 }
 
 /**
- * Claims a cached lesson for this device, if it hasn't read it before.
+ * Whether this device has already been served this lesson.
  *
- * Returns false both when the device has read it and when the claim itself
- * fails — a Durable Object hiccup means falling through to generation, which
- * costs money but serves a correct lesson. Serving a possible repeat to avoid
- * a cost is the wrong way round.
+ * A plain read, now that metering happens before the serve step: `consume` is
+ * atomic and allows one lesson a day, so the read-then-mark sequence cannot be
+ * raced by a second request from the same device. Before that it needed to be
+ * an atomic claim.
+ *
+ * Answers "yes" if the lookup itself fails, so a Durable Object hiccup falls
+ * through to generation. That costs money and serves a correct lesson, which is
+ * the right way round — serving a possible repeat to save a fraction of a penny
+ * is the trade nobody wants.
  */
-async function claimUnseen(env: Env, deviceId: string, cacheKey: string): Promise<boolean> {
-  const stub = env.USAGE.get(env.USAGE.idFromName(deviceId));
-  const response = await stub.fetch(
-    `https://usage/claimUnseen?key=${encodeURIComponent(cacheKey)}`,
-  );
-  const body = (await response.json()) as { unseen?: boolean };
-  return body.unseen === true;
+async function hasSeenLesson(env: Env, deviceId: string, cacheKey: string): Promise<boolean> {
+  try {
+    const stub = env.USAGE.get(env.USAGE.idFromName(deviceId));
+    const response = await stub.fetch(
+      `https://usage/hasSeen?key=${encodeURIComponent(cacheKey)}`,
+    );
+    const body = (await response.json()) as { seen?: boolean };
+    return body.seen === true;
+  } catch {
+    return true;
+  }
 }
 
 async function markSeen(env: Env, deviceId: string, cacheKey: string): Promise<void> {

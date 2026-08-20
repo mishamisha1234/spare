@@ -136,3 +136,153 @@ describe("status endpoint", () => {
     expect(await response.text()).not.toContain(TOKEN);
   });
 });
+
+/**
+ * The operator bypass.
+ *
+ * It exists so a batch of lessons can be generated for reading and judging
+ * without a device's daily limit getting in the way. It is also the only way to
+ * make the proxy spend money without limit, so what it does NOT skip matters
+ * more than what it does.
+ */
+describe("operator bypass", () => {
+  const lessonBody = (topic: string, window = "three", format = "oneThing") => ({
+    window,
+    format,
+    topic,
+    request: modelRequest(),
+  });
+
+  async function callAsOperator(options: {
+    device: string;
+    body: Record<string, unknown>;
+    fetcher: typeof fetch;
+    token?: string;
+    env?: ReturnType<typeof testEnv>;
+  }): Promise<Response> {
+    const ctx = createExecutionContext();
+    const request = new Request("https://proxy.spare.app/v1/lesson", {
+      method: "POST",
+      headers: {
+        "x-spare-device": options.device,
+        "content-type": "application/json",
+        "x-spare-admin": options.token ?? TOKEN,
+      },
+      body: JSON.stringify(options.body),
+    });
+    const response = await worker.fetch(
+      request,
+      options.env ?? testEnv({ ADMIN_TOKEN: TOKEN }),
+      ctx,
+      { fetcher: options.fetcher, now: () => NOW },
+    );
+    const buffered = await response.arrayBuffer();
+    await waitOnExecutionContext(ctx);
+    return new Response(buffered, { status: response.status, headers: response.headers });
+  }
+
+  it("generates past the daily limit", async () => {
+    const fetcher = fixtureFetch([anthropicStreaming(sseLesson("Batch lesson."))]);
+    const device = "operator-batch";
+
+    for (let n = 0; n < 4; n += 1) {
+      const response = await callAsOperator({
+        device, fetcher, body: lessonBody(`Batch topic ${n}`),
+      });
+      expect(response.status).toBe(200);
+      await response.text();
+    }
+  });
+
+  it("generates a locked window without a subscription", async () => {
+    // A batch has to be able to produce 30-minute courses, which no free device
+    // can ask for.
+    const fetcher = fixtureFetch([anthropicStreaming(sseLesson("Course."))]);
+    const response = await callAsOperator({
+      device: "operator-course",
+      fetcher,
+      body: lessonBody("A course", "thirty", "miniCourse"),
+    });
+    expect(response.status).toBe(200);
+  });
+
+  it("never serves the batch from cache", async () => {
+    // A batch exists to produce fresh lessons to judge. Replaying old ones would
+    // quietly make it measure nothing.
+    const fetcher = fixtureFetch([
+      anthropicStreaming(sseLesson("Seeded.")),
+      anthropicStreaming(sseLesson("Fresh.")),
+    ]);
+    await (await call({ fetcher, device: "operator-cache-seed" })).text();
+
+    const response = await callAsOperator({
+      device: "operator-cache-reader",
+      fetcher,
+      body: { window: "three", format: "oneThing", topic: "Why bridges hum", request: modelRequest() },
+    });
+    expect(response.headers.get("x-spare-cache")).toBeNull();
+  });
+
+  it("still obeys the spend ceiling", async () => {
+    // The bypass must not be a way to spend without limit. This is the one that
+    // decides whether a leaked token is an inconvenience or a bill.
+    const fetcher = fixtureFetch([anthropicStreaming(sseLesson("Should not happen."))]);
+    const response = await callAsOperator({
+      device: "operator-ceiling",
+      fetcher,
+      body: lessonBody("Past the ceiling"),
+      env: testEnv({ ADMIN_TOKEN: TOKEN, MONTHLY_SPEND_CEILING_USD: "0" }),
+    });
+
+    expect(response.status).toBe(429);
+    expect(await response.json()).toMatchObject({ error: { code: "spendCeilingReached" } });
+    expect((fetcher as any).calls).toHaveLength(0);
+  });
+
+  it("still obeys the request policy", async () => {
+    const fetcher = fixtureFetch([anthropicStreaming(sseLesson("Should not happen."))]);
+    const response = await callAsOperator({
+      device: "operator-policy",
+      fetcher,
+      body: {
+        window: "three",
+        format: "oneThing",
+        topic: "Cheap model",
+        request: modelRequest({ model: "some-other-model" }),
+      },
+    });
+    expect(response.status).toBe(400);
+    expect((fetcher as any).calls).toHaveLength(0);
+  });
+
+  it("is not granted by a wrong token", async () => {
+    const fetcher = fixtureFetch([anthropicStreaming(sseLesson("First."))]);
+    const device = "operator-wrong-token";
+
+    const first = await callAsOperator({
+      device, fetcher, body: lessonBody("One"), token: "not-the-token",
+    });
+    expect(first.status).toBe(200);
+    await first.text();
+
+    // Metered like any ordinary device, because the token was not accepted.
+    const second = await callAsOperator({
+      device, fetcher, body: lessonBody("Two"), token: "not-the-token",
+    });
+    expect(second.status).toBe(402);
+    expect(await second.json()).toMatchObject({ error: { code: "dailyLimitReached" } });
+  });
+
+  it("is not granted when no token is configured", async () => {
+    const fetcher = fixtureFetch([anthropicStreaming(sseLesson("First."))]);
+    const device = "operator-unconfigured";
+    const env = testEnv({ ADMIN_TOKEN: undefined });
+
+    const first = await callAsOperator({ device, fetcher, body: lessonBody("One"), env });
+    expect(first.status).toBe(200);
+    await first.text();
+
+    const second = await callAsOperator({ device, fetcher, body: lessonBody("Two"), env });
+    expect(second.status).toBe(402);
+  });
+});

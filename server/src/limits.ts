@@ -84,12 +84,12 @@ export class UsageCounter implements DurableObject {
       return Response.json(decision);
     }
 
-    // Atomic check-and-mark, for the same reason `consume` is atomic: split
-    // into a read then a write, two simultaneous requests both see "unseen"
-    // and the device is served the same cached lesson twice.
-    if (url.pathname === "/claimUnseen") {
+    // A plain read. It does not need to be an atomic claim any more: the router
+    // meters before it serves, and `consume` already allows only one lesson a
+    // day, so two simultaneous requests from one device cannot both be served.
+    if (url.pathname === "/hasSeen") {
       const key = url.searchParams.get("key") ?? "";
-      return Response.json({ unseen: await this.claimUnseen(key) });
+      return Response.json({ seen: (await this.seenKeys()).includes(key) });
     }
 
     if (url.pathname === "/markSeen") {
@@ -102,15 +102,6 @@ export class UsageCounter implements DurableObject {
 
   private async seenKeys(): Promise<string[]> {
     return (await this.state.storage.get<string[]>("seenLessons")) ?? [];
-  }
-
-  /** True if this device had not read the lesson; records it either way. */
-  private async claimUnseen(key: string): Promise<boolean> {
-    if (!key) return false;
-    const seen = await this.seenKeys();
-    if (seen.includes(key)) return false;
-    await this.state.storage.put("seenLessons", trimSeen([...seen, key]));
-    return true;
   }
 
   private async markSeen(key: string): Promise<void> {
