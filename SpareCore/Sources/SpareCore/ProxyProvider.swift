@@ -34,6 +34,8 @@ public struct ProxyProvider: LessonProvider {
     ///     Evaluated per request rather than captured, so a purchase or an
     ///     expiry takes effect without a relaunch. Returns nil on the free
     ///     tier, and the proxy then serves free-tier content.
+    ///   - operatorToken: The proxy's `ADMIN_TOKEN`, for the offline batch tool
+    ///     only. The app never passes one. See `ProxyRoute`.
     public init(
         transport: any HTTPTransport,
         baseURL: URL,
@@ -42,11 +44,17 @@ public struct ProxyProvider: LessonProvider {
         ledger: any UsageLedger = NoopUsageLedger(),
         sleeper: any Sleeper = TaskSleeper(),
         configuration: Configuration = .standard,
+        operatorToken: String? = nil,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         pipeline = GenerationPipeline(
             transport: transport,
-            route: ProxyRoute(baseURL: baseURL, deviceID: deviceID, receipt: receipt),
+            route: ProxyRoute(
+                baseURL: baseURL,
+                deviceID: deviceID,
+                receipt: receipt,
+                operatorToken: operatorToken
+            ),
             ledger: ledger,
             sleeper: sleeper,
             configuration: configuration,

@@ -117,15 +117,26 @@ public struct ProxyRoute: ProviderRoute {
     /// Async and `Sendable` because on device this reads StoreKit, which
     /// SpareCore cannot import.
     private let receipt: @Sendable () async -> String?
+    /// The proxy's operator token, or nil.
+    ///
+    /// Present only for the offline batch tool, which needs to generate more
+    /// lessons in a sitting than any device is allowed. The app never sets it:
+    /// `SpareApp` constructs `ProxyProvider` without this argument, and there is
+    /// no user-facing way to supply one. Sending it makes the server skip the
+    /// per-device limits and the cache — not the spend ceiling, and not the
+    /// request policy.
+    private let operatorToken: String?
 
     public init(
         baseURL: URL,
         deviceID: String,
-        receipt: @escaping @Sendable () async -> String? = { nil }
+        receipt: @escaping @Sendable () async -> String? = { nil },
+        operatorToken: String? = nil
     ) {
         self.baseURL = baseURL
         self.deviceID = deviceID
         self.receipt = receipt
+        self.operatorToken = operatorToken
     }
 
     /// One endpoint per kind of call, mirroring `LessonProvider`'s methods.
@@ -179,6 +190,9 @@ public struct ProxyRoute: ProviderRoute {
         // intermediary has no excuse to buffer.
         if request.stream {
             headers["accept"] = "text/event-stream"
+        }
+        if let operatorToken, !operatorToken.isEmpty {
+            headers["x-spare-admin"] = operatorToken
         }
 
         return HTTPRequest(

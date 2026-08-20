@@ -1,0 +1,97 @@
+name: Lesson batch
+
+# Manual only, and never on push.
+#
+# This is the one workflow in the repo that makes real API calls and spends real
+# money. It is deliberately a separate file from ci.yml so that "CI never makes
+# real API calls" stays true of CI, and so nothing here can be triggered by a
+# commit. It also needs two repository secrets that do not otherwise exist, and
+# a typed confirmation, so it cannot be started by a misclick.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "spend" to confirm this will cost real money'
+        required: true
+        default: ''
+      only:
+        description: 'One length only (leave blank for all 20 lessons)'
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''
+          - three
+          - ten
+          - fifteen
+          - thirty
+
+jobs:
+  batch:
+    name: Generate lessons
+    runs-on: ubuntu-latest
+    container: swift:6.1
+    # Twenty lessons at two passes each, and a course is an outline plus four
+    # chapters twice over. Sequential, because the point is readable output and
+    # a truthful per-lesson cost, not speed.
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the confirmation
+        run: |
+          set -u
+          if [ "${{ inputs.confirm }}" != "spend" ]; then
+            echo "::error::Type 'spend' in the confirm box to run this. It costs real money."
+            exit 1
+          fi
+          echo "Confirmed."
+
+      # Fails here rather than after a checkout and a build, so a missing secret
+      # costs seconds instead of minutes.
+      - name: Check the secrets exist
+        env:
+          URL: ${{ secrets.SPARE_PROXY_URL }}
+          TOKEN: ${{ secrets.SPARE_ADMIN_TOKEN }}
+        run: |
+          set -u
+          missing=0
+          if [ -z "${URL}" ]; then
+            echo "::error::Repository secret SPARE_PROXY_URL is not set."
+            missing=1
+          fi
+          if [ -z "${TOKEN}" ]; then
+            echo "::error::Repository secret SPARE_ADMIN_TOKEN is not set (the Worker's ADMIN_TOKEN)."
+            missing=1
+          fi
+          [ "$missing" -eq 0 ] || exit 1
+          echo "Both secrets present."
+
+      - name: Build
+        run: swift build --package-path SpareCore --product spare-batch -c release
+
+      - name: Generate
+        env:
+          SPARE_PROXY_URL: ${{ secrets.SPARE_PROXY_URL }}
+          SPARE_ADMIN_TOKEN: ${{ secrets.SPARE_ADMIN_TOKEN }}
+        run: |
+          set -u
+          args="--out $GITHUB_WORKSPACE/lessons"
+          if [ -n "${{ inputs.only }}" ]; then
+            args="$args --only ${{ inputs.only }}"
+          fi
+          swift run --package-path SpareCore -c release spare-batch $args | tee "$GITHUB_WORKSPACE/batch-log.txt"
+
+      # `always()`, so a run that dies partway still hands over the lessons it
+      # did produce. Losing an hour of generated text to a failure on lesson 19
+      # would be worse than the failure.
+      - name: Upload lessons
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lessons
+          path: |
+            lessons
+            batch-log.txt
+          if-no-files-found: warn
+          retention-days: 30
