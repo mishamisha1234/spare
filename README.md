@@ -236,9 +236,39 @@ Things this codebase cannot verify about itself, and which need a signed run on 
 1. **The App Group has never actually been exercised.** Entitlements aren't applied to unsigned builds, so CI proves the widget compiles and its views render, not that it can read the app's store. This is the single most likely thing to be quietly broken.
 2. **The store migration has never run against a real pre-App-Group store.** Same reason. Worth testing with a populated library before shipping, because the failure mode is someone's whole library appearing to vanish.
 3. **Notification fire-time verification** (see Known deviations) — a notification firing for an already-answered item is a real bug.
-4. **No real API call has ever been made.** Every provider test runs against recorded fixtures. Word counts, prompt quality, and cost per lesson are all unmeasured against the live API.
+4. **Prompt quality is unmeasured against the live API.** Every provider test runs against recorded fixtures. `spare-batch` (below) exists to close this: it generates twenty lessons through the real pipeline and reports words against budget, quality findings, and cost. Run it and read the output before deciding the prompts are done.
 5. **StoreKit has only run against `StubPurchaseStore`.** The real purchase, restore, and lapse paths need a sandbox account.
 6. **Prices are placeholders** (`$4.99` / `$39.99` / `$99.99`) and exist only in `Products.storekit`.
+
+## Judging the prompts: `spare-batch`
+
+An executable target in the SpareCore package that generates a batch of lessons
+through `ProxyProvider` and writes each to markdown, with words against budget,
+`LessonQualityCheck` findings, and real cost per lesson.
+
+It drives the actual pipeline, so it uses `Prompts.swift`, both passes, the real
+word budgets, and the chaptered path for a 30-minute course. That is the whole
+point: a script that sends its own prompt measures tokens honestly and says
+nothing about the writing.
+
+There is no Swift toolchain on the Windows machine this is developed on, so it
+runs as a manually dispatched Actions job:
+
+```
+gh workflow run "Lesson batch" -f confirm=spend
+gh workflow run "Lesson batch" -f confirm=spend -f only=three   # cheap trial
+```
+
+Or **Actions → Lesson batch → Run workflow** in the browser. Lessons come back as
+the `lessons` artifact: one `.md` per lesson, `summary.csv`, and `batch-log.txt`.
+
+Needs two repository secrets, `SPARE_PROXY_URL` and `SPARE_ADMIN_TOKEN` (the
+Worker's `ADMIN_TOKEN`), and the typed confirmation. It is the only workflow here
+that makes real API calls or spends money, which is why it is a separate file
+from `ci.yml` and cannot be triggered by a commit.
+
+Roughly $7 and about an hour for all twenty. Two passes per lesson doubles the
+obvious cost, and a course is an outline plus four chapters twice over.
 
 ## Roadmap
 
