@@ -10,6 +10,10 @@
  *   POST /v1/recall
  *   POST /v1/post-lesson-test
  *   POST /v1/go-deeper
+ *
+ * Plus one that is not a generation call:
+ *
+ *   GET  /v1/status      (authenticated; read-only spend and usage)
  */
 
 import {
@@ -39,6 +43,13 @@ export interface Env {
   BUNDLE_ID: string;
   /** Monthly ceiling in USD. A string because bindings are strings. */
   MONTHLY_SPEND_CEILING_USD: string;
+  /**
+   * Optional. Enables the read-only `/v1/status` endpoint when set.
+   *
+   * Unset is the safe default and the endpoint 404s, so a deploy that never
+   * configures it does not advertise that it exists.
+   */
+  ADMIN_TOKEN?: string;
   USAGE: DurableObjectNamespace;
   SPEND: DurableObjectNamespace;
   LESSONS: KVNamespace;
@@ -63,6 +74,13 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext, hooks: Hooks = {}): Promise<Response> {
     const now = hooks.now?.() ?? Date.now();
     const url = new URL(request.url);
+
+    // Handled before the method guard, because a status read is a GET. It is
+    // the only endpoint that is not a generation call, and the only one that
+    // answers a question about the deployment rather than about a lesson.
+    if (url.pathname === "/v1/status") {
+      return handleStatus(request, url, env, now);
+    }
 
     if (request.method !== "POST") {
       return errorResponse(405, "methodNotAllowed", "Only POST is accepted.");
@@ -134,6 +152,92 @@ export default {
     }
   },
 };
+
+/**
+ * Read-only operational status: what the ceiling is, and what has been spent
+ * against it this month.
+ *
+ * Exists because that question was otherwise unanswerable from outside. The
+ * `SpendLedger` object knew the number and nothing exposed it, so the one
+ * figure the whole design is built to protect could only be inferred from
+ * Anthropic's own billing page — which lags, and which cannot distinguish this
+ * Worker's spend from anything else on the same key.
+ *
+ * Authenticated, because monthly spend and per-device usage are nobody else's
+ * business. Unset token means the route does not exist at all rather than
+ * refusing politely: an endpoint that answers "unauthorized" has confirmed it
+ * is there.
+ *
+ * Deliberately read-only. There is no way through here to reset a counter,
+ * raise the ceiling, or clear the cache — a token pasted into a terminal should
+ * not be able to unlock free generation, and changing limits is a deploy, where
+ * it is reviewable.
+ */
+async function handleStatus(
+  request: Request,
+  url: URL,
+  env: Env,
+  now: number,
+): Promise<Response> {
+  if (!env.ADMIN_TOKEN) {
+    return errorResponse(404, "unknownEndpoint", "No such endpoint.");
+  }
+  if (request.method !== "GET") {
+    return errorResponse(405, "methodNotAllowed", "Status is a GET.");
+  }
+
+  const presented = request.headers.get("x-spare-admin") ?? "";
+  if (!constantTimeEquals(presented, env.ADMIN_TOKEN)) {
+    return errorResponse(401, "unauthorized", "Not authorised.");
+  }
+
+  const ceiling = Number(env.MONTHLY_SPEND_CEILING_USD ?? "0");
+  const spendStub = env.SPEND.get(env.SPEND.idFromName("global"));
+  const spend = (await (await spendStub.fetch(`https://spend/peek?now=${now}`)).json()) as {
+    month: string;
+    spentUSD: number;
+  };
+
+  const payload: Record<string, unknown> = {
+    month: spend.month,
+    spentUSD: Number(spend.spentUSD.toFixed(6)),
+    ceilingUSD: ceiling,
+    withinCeiling: spend.spentUSD < ceiling,
+    // What a free request would be told right now, so the answer doesn't have
+    // to be recomputed by eye from the two numbers above.
+    freeGenerationPaused: !(spend.spentUSD < ceiling),
+  };
+
+  // Optional: one device's counters, for confirming a limit actually moved.
+  const device = url.searchParams.get("device");
+  if (device) {
+    const usageStub = env.USAGE.get(env.USAGE.idFromName(device));
+    const usage = await (await usageStub.fetch(`https://usage/peek?now=${now}`)).json();
+    payload.device = { id: device, usage };
+  }
+
+  return new Response(JSON.stringify(payload, null, 2), {
+    status: 200,
+    headers: { ...JSON_HEADERS, "cache-control": "no-store" },
+  });
+}
+
+/**
+ * Compares without leaking length or position through timing.
+ *
+ * Hand-rolled rather than using a platform helper so it behaves identically in
+ * workerd and in the test runner. The loop runs over the longer of the two so
+ * a wrong-length guess costs the same as a wrong-value one.
+ */
+function constantTimeEquals(a: string, b: string): boolean {
+  if (a.length === 0 || b.length === 0) return false;
+  let diff = a.length ^ b.length;
+  const length = Math.max(a.length, b.length);
+  for (let i = 0; i < length; i += 1) {
+    diff |= (a.charCodeAt(i % a.length) || 0) ^ (b.charCodeAt(i % b.length) || 0);
+  }
+  return diff === 0;
+}
 
 function appStoreConfig(env: Env): AppStoreConfig {
   return {
