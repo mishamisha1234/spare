@@ -92,11 +92,14 @@ jobs:
         with:
           node-version: '22'
 
-      # `npm install` rather than `npm ci`: there is no committed lockfile, and
-      # generating one requires running npm on a machine that isn't Windows.
+      # `npm ci` now that the first deploy produced a lockfile. It installs the
+      # exact tree that was deployed rather than whatever resolves today, so a
+      # dependency publishing a broken patch release fails here as a changed
+      # lockfile rather than as a mystery test failure. It also fails loudly if
+      # the lockfile and package.json ever disagree.
       - name: Install
         working-directory: server
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Typecheck
         working-directory: server
