@@ -119,6 +119,22 @@ token means the route 404s rather than 401s, so a deploy that never configures i
 does not advertise that it exists. Read-only and GET-only: changing a limit stays
 a deploy, where it is reviewable.
 
+### The operator bypass
+
+A request carrying `x-spare-admin: $ADMIN_TOKEN` skips the per-device limits and
+the cache, so every request generates. It exists to produce a batch of lessons to
+read and judge (see `batch-lessons.ps1`), which the daily limit otherwise makes
+impossible.
+
+What it deliberately does **not** skip is the spend ceiling or the request
+policy. Those are what stop a leaked token becoming an unbounded bill, and a
+bypass that disabled them would be a worse hole than the one it exists to work
+around. Spend is recorded exactly as for any other request, so a batch shows up
+in `/v1/status` like everything else.
+
+Same token as the status endpoint, checked by the same constant-time comparison
+in one place, so there is a single definition of "is this us".
+
 ### Known limitation: a reinstall loses the library permanently
 
 There are no accounts, so there is no copy of anything anywhere but the phone.
@@ -184,6 +200,45 @@ this one, now, for them.
 
 Stated plainly because the two tiers differ in something a reader can notice, and
 that should be a choice on the record rather than a surprise.
+
+### A cached lesson counts against the daily limit
+
+One lesson a day, whatever its source.
+
+This was not the first design. Cache hits were originally unmetered, on the
+reasoning that a hit costs nothing so charging a day's allowance for it would be
+punitive. Verifying the deployment showed what that actually produced: one device
+read three cached lessons and still had its full generation allowance. The free
+tier was not one lesson a day. It was one *generated* lesson a day plus unlimited
+cached ones.
+
+It was changed for three reasons, none of them about cost:
+
+**A reader cannot tell the difference.** Nothing in the app distinguishes a
+cached lesson from a generated one; that is the point of the cache. So an
+allowance that only counts generations is an allowance whose size depends on
+something invisible. Two people doing the same thing on the same day get
+different limits, and neither can tell why.
+
+**It cannot be described honestly.** "One lesson a day, unless we happen to have
+one already, in which case more" is not a sentence that can go on a paywall or in
+an App Store listing. The paywall says *one lesson a day*, and copy that is
+approximately true is copy that eventually becomes a complaint.
+
+**Conversion pressure decayed as the cache filled.** The more popular Spare got,
+the more topics were already cached, so the more a free user could read without
+paying. That is a paywall that weakens exactly as the app succeeds, which is the
+opposite of how it should behave.
+
+A predictable limit we chose beats a generous one that leaks. The generosity is
+still there, in the shape that survives being described: free users get real
+lessons on real topics, one a day, and the cache is what makes that cheap enough
+to offer at all.
+
+The cost reasoning behind the original design is untouched. A cache hit still
+calls nothing and costs nothing; it is simply also a lesson. Past the spend
+ceiling free generation stops and the cache still answers, because metering a hit
+costs the reader an allowance, not us a payment.
 
 ## Deploying from Windows
 

@@ -298,8 +298,10 @@ if ($NoSpend) {
         "Refuses a second lesson to the same device today" `
         "expected 402 dailyLimitReached on a cache miss, got $($r2.Status) $(Get-ErrorCode $r2.Body) cacheHit=$($r2.CacheHit)"
 
-    # Pins the design choice rather than leaving it to be rediscovered as a
-    # bug: a cache hit costs nothing, so it is deliberately not metered.
+    # A cached read is a lesson. Pinned here because the opposite was true
+    # until verifying this deployment showed what it produced: one device
+    # read three cached lessons and still had its full allowance, so the
+    # free tier was one GENERATED lesson a day plus unlimited cached ones.
     $shared = New-Topic "A topic two devices both ask about"
     $seed = Invoke-Proxy -Path "/v1/lesson" -Device (New-Device) -Body (New-LessonBody -Topic $shared)
 
@@ -327,11 +329,14 @@ if ($NoSpend) {
             "no x-spare-cache: hit within ~16s of generating it"
 
         if ($null -ne $hit) {
+            # The reader has had its one lesson for the day now, even though
+            # serving it cost nothing. A second ask must be refused, and
+            # refused for the daily limit rather than for any cache reason:
+            # the topic is unique, so the cache cannot be what answers.
             $after = Invoke-Proxy -Path "/v1/lesson" -Device $reader -Body (New-LessonBody -Topic (New-Topic "After a cache hit"))
-            Write-Result ($after.Status -eq 200 -and -not $after.CacheHit) `
-                "A cache hit does not consume that device's daily lesson" `
-                "expected the allowance intact after a hit, got $($after.Status) $(Get-ErrorCode $after.Body)"
-            $script:Notes += "By design the free daily limit counts GENERATED lessons; cached ones are unmetered, so one device can read several in a day. It costs nothing, but it means the free tier is not really one lesson a day."
+            Write-Result ($after.Status -eq 402 -and (Get-ErrorCode $after.Body) -eq "dailyLimitReached" -and (-not $after.CacheHit)) `
+                "A cached read consumes that device's daily lesson" `
+                "expected 402 dailyLimitReached after a hit, got $($after.Status) $(Get-ErrorCode $after.Body)"
         }
     } else {
         Write-Result $false "Could not seed a shared lesson for the cache checks" `

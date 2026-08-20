@@ -12,6 +12,24 @@ import SpareCore
 /// failing at something. The yearly saving is the only comparative claim, it
 /// is computed from the two real prices, and it rounds down.
 struct PaywallView: View {
+
+    /// What the free tier actually gives, in one sentence.
+    ///
+    /// Built from `EntitlementRules` rather than written out, and pinned by
+    /// `PaywallCopyTests`, because this sentence is a promise: it appears on the
+    /// paywall and it is the wording the App Store listing follows. It was
+    /// briefly untrue in a direction nobody would have noticed — cached lessons
+    /// were served without counting against the daily allowance, so free users
+    /// got more than one a day and the more popular a topic became the more they
+    /// got. The server now meters every lesson whatever its source, which is
+    /// what makes this sentence accurate again.
+    static var freeTierDisclosure: String {
+        let lessons = EntitlementRules.freeLessonsPerDay == 1
+            ? "one lesson a day"
+            : "\(EntitlementRules.freeLessonsPerDay) lessons a day"
+        return "Free gives you the 3- and 10-minute lengths, \(lessons), and your last \(EntitlementRules.freeLibraryLimit) library entries."
+    }
+
     let trigger: PaywallTrigger
 
     @EnvironmentObject private var entitlements: EntitlementService
@@ -113,7 +131,7 @@ struct PaywallView: View {
         } else {
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 // What they'd be giving up, visible without leaving the sheet.
-                Text("Free gives you the 3- and 10-minute lengths, one lesson a day, and your last \(EntitlementRules.freeLibraryLimit) library entries.")
+                Text(Self.freeTierDisclosure)
                     .font(Theme.Font.label.font)
                     .foregroundStyle(palette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
