@@ -110,6 +110,15 @@ the signal that something is wrong; it is not meant to be reached.
 
 Per-IP throttling sits in front of everything as a second, cruder backstop.
 
+`GET /v1/status`, authenticated with `ADMIN_TOKEN`, reports the month's spend
+against the ceiling and optionally one device's counters. It exists because that
+figure was otherwise unanswerable from outside — the ledger knew it and nothing
+exposed it, leaving Anthropic's billing page as the only source, which lags and
+cannot separate this Worker's spend from anything else on the same key. Unset
+token means the route 404s rather than 401s, so a deploy that never configures it
+does not advertise that it exists. Read-only and GET-only: changing a limit stays
+a deploy, where it is reviewable.
+
 ### Known limitation: a reinstall loses the library permanently
 
 There are no accounts, so there is no copy of anything anywhere but the phone.

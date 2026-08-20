@@ -453,6 +453,47 @@ To change it, edit `MONTHLY_SPEND_CEILING_USD` in `wrangler.toml` and redeploy.
 Treat it as a smoke alarm rather than a budget: if it ever trips, something is
 wrong, not busy.
 
+## Checking what it has cost
+
+`GET /v1/status` reports the month's spend against the ceiling. It needs a token,
+which you invent — any long random string. Set it once:
+
+```powershell
+npx wrangler secret put ADMIN_TOKEN
+npx wrangler deploy
+```
+
+Then:
+
+```powershell
+curl.exe -s -H "x-spare-admin: YOUR_TOKEN" https://spare-proxy.mishabichashvili1998.workers.dev/v1/status
+```
+
+```json
+{
+  "month": "2026-08",
+  "spentUSD": 0.041233,
+  "ceilingUSD": 50,
+  "withinCeiling": true,
+  "freeGenerationPaused": false
+}
+```
+
+Add `?device=<id>` to include that device's daily and monthly counters.
+
+Three states worth recognising, because they look similar and mean different
+things:
+
+| Response | Means |
+|---|---|
+| `405 methodNotAllowed` | The deployed Worker predates this endpoint. Redeploy. |
+| `404 unknownEndpoint` | Deployed, but `ADMIN_TOKEN` isn't set. |
+| `401 unauthorized` | Token set, wrong one presented. |
+
+The endpoint is read-only and GET-only. There is no way through it to reset a
+counter or raise the ceiling — a token pasted into a terminal shouldn't be able
+to unlock free generation, and changing a limit stays a deploy.
+
 ## Watching it
 
 ```powershell
