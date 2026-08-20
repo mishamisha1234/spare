@@ -204,9 +204,14 @@ func run() async throws {
     for window in plan {
         for topic in topics[window] ?? [] {
             index += 1
+            // One complete line per lesson, printed when it finishes. The
+            // original wrote a partial line first and flushed, which reads
+            // better in a terminal but does not compile under Swift 6: `stdout`
+            // is a Glibc global var, and touching it from an async context is
+            // shared mutable state. In a CI log, where this actually runs, a
+            // line appearing every minute or two is the progress indicator.
             let counter = "[" + padLeft("\(index)", 2) + "/\(total)]"
-            print("\(counter) " + pad(window.label, 7) + " " + topic.title, terminator: "")
-            fflush(stdout)
+            let prefix = counter + " " + pad(window.label, 7) + " " + pad(topic.title, 40)
 
             // A ledger per lesson, so the cost reported is this lesson's and not
             // a share of the run. Every call the pipeline makes lands here,
@@ -248,7 +253,7 @@ func run() async throws {
                 )
                 rows.append(row)
 
-                print("  " + padLeft("\(row.words)", 5) + " words  "
+                print(prefix + "  " + padLeft("\(row.words)", 5) + " words  "
                       + pad(row.verdict, 9) + "  " + padLeft(money(cost), 9)
                       + "  " + padLeft(String(format: "%.0f", seconds), 4) + "s"
                       + "  " + padLeft("\(events.count)", 2) + " calls"
@@ -257,7 +262,7 @@ func run() async throws {
                     print("        - \(finding.description)")
                 }
             } catch {
-                print("  FAILED  \(describe(error))")
+                print(prefix + "  FAILED  " + describe(error))
                 if isFatal(error) {
                     print("")
                     print("Stopping: nothing further will succeed.")
