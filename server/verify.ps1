@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Checks a deployed Spare proxy is working and enforcing its rules.
 
@@ -82,7 +82,12 @@ function Invoke-Proxy {
 
     # Not $args: that is an automatic variable, and splatting it would pass
     # whatever PowerShell put there rather than what we built.
-    $curlArgs = @("-s", "-S", "-w", "`n<<<%{http_code}>>>", "-X", $Method, "$BaseURL$Path")
+    # Headers are dumped to a file and read back, because x-spare-cache is
+    # the only way to tell a generated lesson from a replayed one. Both are
+    # 200 with an SSE body, and a check that cannot tell them apart stops
+    # testing generation the moment its topic gets cached.
+    $hdrFile = [System.IO.Path]::GetTempFileName()
+    $curlArgs = @("-s", "-S", "-D", $hdrFile, "-w", "`n<<<%{http_code}>>>", "-X", $Method, "$BaseURL$Path")
     if ($Device) { $curlArgs += @("-H", "x-spare-device: $Device") }
 
     $tmp = $null
@@ -98,10 +103,13 @@ function Invoke-Proxy {
         $curlArgs += @("-H", "content-type: application/json", "-d", "@$tmp")
     }
 
+    $headerText = ""
     try {
         $raw = (& curl.exe @curlArgs) -join "`n"
+        if (Test-Path $hdrFile) { $headerText = Get-Content $hdrFile -Raw }
     } finally {
         if ($tmp -and (Test-Path $tmp)) { Remove-Item $tmp -Force }
+        if (Test-Path $hdrFile) { Remove-Item $hdrFile -Force }
     }
 
     $status = 0
@@ -111,7 +119,13 @@ function Invoke-Proxy {
     # cast error that reads like the server sent something malformed.
     $responseBody = ($raw -replace "`n?<<<\d+>>>", "")
 
-    return [pscustomobject]@{ Status = $status; Body = $responseBody }
+    $cacheState = if ($headerText -match "(?im)^x-spare-cache:\s*(\S+)") { $Matches[1] } else { "" }
+
+    return [pscustomobject]@{
+        Status   = $status
+        Body     = $responseBody
+        CacheHit = ($cacheState -eq "hit")
+    }
 }
 
 function Get-ErrorCode {
@@ -121,6 +135,20 @@ function Get-ErrorCode {
 }
 
 function New-Device { "verify-" + [guid]::NewGuid().ToString("N") }
+
+<#
+    A topic no previous run has used.
+
+    The generation checks were originally written with fixed topics, which
+    made them correct exactly once per deployment: the first run generated
+    and cached them, and every run after was served a replay. That is how
+    the daily-limit check came to fail - its first request was an unmetered
+    cache hit, so the allowance was still intact when the second arrived and
+    the second was allowed. A per-run suffix makes every generation check a
+    guaranteed cache miss.
+#>
+$script:RunTag = [guid]::NewGuid().ToString("N").Substring(0, 8)
+function New-Topic { param([string]$Stem) "$Stem $script:RunTag" }
 
 <# A minimal but genuine Anthropic request. #>
 function New-ModelRequest {
@@ -238,14 +266,18 @@ if ($NoSpend) {
     Write-Host "Skipping the live generation check: the ceiling is blocking it by design." -ForegroundColor DarkGray
 } else {
     Write-Host ""
-    Write-Host "Live generation  (one real call, capped at 16 tokens, well under a penny)" -ForegroundColor Cyan
+    Write-Host "Live generation  (a few real calls, each capped at 16 tokens, well under a penny)" -ForegroundColor Cyan
+    Write-Host "                 includes a short wait while the cache populates" -ForegroundColor DarkGray
 
     $device = New-Device
-    $r = Invoke-Proxy -Path "/v1/lesson" -Device $device -Body (New-LessonBody -Topic "Why bridges hum on a windy day")
+    $r = Invoke-Proxy -Path "/v1/lesson" -Device $device -Body (New-LessonBody -Topic (New-Topic "Why bridges hum on a windy day"))
 
-    $streamed = $r.Status -eq 200 -and $r.Body -match "event:\s*message_start"
-    Write-Result $streamed "Generates a lesson and streams it back" `
-        "expected 200 with SSE events, got $($r.Status) $(Get-ErrorCode $r.Body)"
+    # The CacheHit clause is load-bearing. A replayed lesson is also 200 with
+    # an SSE body, so without it this passes on a cache hit and stops proving
+    # the API key works at all.
+    $streamed = $r.Status -eq 200 -and $r.Body -match "event:\s*message_start" -and (-not $r.CacheHit)
+    Write-Result $streamed "Generates a lesson and streams it back (not a cached replay)" `
+        "expected a generated 200 with SSE, got $($r.Status) $(Get-ErrorCode $r.Body) cacheHit=$($r.CacheHit)"
 
     if (-not $streamed) {
         switch (Get-ErrorCode $r.Body) {
@@ -258,15 +290,57 @@ if ($NoSpend) {
 
     Write-Result ($r.Body -notmatch "sk-ant-") "No API key appears in the response" ""
 
-    # The same device, a different topic so the cache cannot be what answers.
-    $r2 = Invoke-Proxy -Path "/v1/lesson" -Device $device -Body (New-LessonBody -Topic "Something else entirely today")
-    Write-Result ($r2.Status -eq 402 -and (Get-ErrorCode $r2.Body) -eq "dailyLimitReached") `
+    # A second unique topic, so the cache can neither answer it nor refuse it.
+    # This is the check that proves the counter, and it only means anything if
+    # the request above it was genuinely metered.
+    $r2 = Invoke-Proxy -Path "/v1/lesson" -Device $device -Body (New-LessonBody -Topic (New-Topic "Something else entirely today"))
+    Write-Result ($r2.Status -eq 402 -and (Get-ErrorCode $r2.Body) -eq "dailyLimitReached" -and (-not $r2.CacheHit)) `
         "Refuses a second lesson to the same device today" `
-        "expected 402 dailyLimitReached, got $($r2.Status) $(Get-ErrorCode $r2.Body)"
+        "expected 402 dailyLimitReached on a cache miss, got $($r2.Status) $(Get-ErrorCode $r2.Body) cacheHit=$($r2.CacheHit)"
+
+    # Pins the design choice rather than leaving it to be rediscovered as a
+    # bug: a cache hit costs nothing, so it is deliberately not metered.
+    $shared = New-Topic "A topic two devices both ask about"
+    $seed = Invoke-Proxy -Path "/v1/lesson" -Device (New-Device) -Body (New-LessonBody -Topic $shared)
+
+    if ($seed.Status -eq 200 -and -not $seed.CacheHit) {
+        # Polled, not asked once. A freshly generated lesson is not instantly
+        # visible, for two deliberate reasons that stack: the cache write runs
+        # on a teed branch inside waitUntil, after the response has already
+        # gone to the client, and KV is eventually consistent. Measured on this
+        # deployment: still a miss at 2s, a hit by 7s. Asserting an immediate
+        # hit would assert a promise the design does not make.
+        #
+        # Each attempt needs its own device, because a miss GENERATES and would
+        # spend the allowance of the device we are about to test with.
+        $hit = $null
+        $reader = $null
+        foreach ($attempt in 1..4) {
+            if ($attempt -gt 1) { Start-Sleep -Seconds 4 }
+            $candidate = New-Device
+            $probe = Invoke-Proxy -Path "/v1/lesson" -Device $candidate -Body (New-LessonBody -Topic $shared)
+            if ($probe.Status -eq 200 -and $probe.CacheHit) { $hit = $probe; $reader = $candidate; break }
+        }
+
+        Write-Result ($null -ne $hit) `
+            "A second device is served that lesson from cache" `
+            "no x-spare-cache: hit within ~16s of generating it"
+
+        if ($null -ne $hit) {
+            $after = Invoke-Proxy -Path "/v1/lesson" -Device $reader -Body (New-LessonBody -Topic (New-Topic "After a cache hit"))
+            Write-Result ($after.Status -eq 200 -and -not $after.CacheHit) `
+                "A cache hit does not consume that device's daily lesson" `
+                "expected the allowance intact after a hit, got $($after.Status) $(Get-ErrorCode $after.Body)"
+            $script:Notes += "By design the free daily limit counts GENERATED lessons; cached ones are unmetered, so one device can read several in a day. It costs nothing, but it means the free tier is not really one lesson a day."
+        }
+    } else {
+        Write-Result $false "Could not seed a shared lesson for the cache checks" `
+            "seed returned $($seed.Status) $(Get-ErrorCode $seed.Body)"
+    }
 
     # A different device is unaffected: the limit is per device, not global.
     $r3 = Invoke-Proxy -Path "/v1/lesson" -Device (New-Device) `
-        -Body (New-LessonBody -Topic "A course" -Window "thirty" -Format "miniCourse")
+        -Body (New-LessonBody -Topic (New-Topic "A course") -Window "thirty" -Format "miniCourse")
     Write-Result ($r3.Status -eq 402 -and (Get-ErrorCode $r3.Body) -eq "lockedWindow") `
         "A different device is not affected by the first one's limit" `
         "expected 402 lockedWindow (not dailyLimitReached), got $($r3.Status) $(Get-ErrorCode $r3.Body)"
