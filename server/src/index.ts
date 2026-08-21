@@ -146,6 +146,7 @@ export default {
         return handleUnmetered(modelRequest, env, entitlement, ctx, hooks, now);
 
       case "/v1/lesson":
+      case "/v1/outline":
       case "/v1/chapter":
         return handleGeneration(
           body, modelRequest, env, entitlement, deviceId, ctx, hooks, now, isOperator,
@@ -325,6 +326,12 @@ async function handleGeneration(
   const isFree = entitlement.tier === "free";
   const cacheKey = lessonCacheKey({ window, format, topic });
 
+  // The outline is the only generation call that comes back as JSON. It is
+  // metered like the rest — it is what starts a course, so it is what the
+  // course cap should count — but there is nothing to tee, and the cache holds
+  // SSE, so both the cache read and the cache write are skipped for it.
+  const streaming = modelRequest.stream === true;
+
   // Work out what we would serve before metering anything, so the allowance is
   // spent on exactly one thing and never on a request that then fails.
   //
@@ -338,7 +345,7 @@ async function handleGeneration(
   // fresh lessons to judge, and replaying old ones would quietly make it
   // measure nothing.
   let cachedEntry: Awaited<ReturnType<typeof readCachedLesson>> = null;
-  if (isFree && topic && !isOperator) {
+  if (streaming && isFree && topic && !isOperator) {
     const cached = await readCachedLesson(env.LESSONS, cacheKey, now);
     if (cached && !(await hasSeenLesson(env, deviceId, cacheKey))) {
       cachedEntry = cached;
@@ -375,7 +382,16 @@ async function handleGeneration(
   // hasSeen/markSeen race for free: `consume` is atomic and allows one lesson
   // per day, so two simultaneous requests cannot both reach the serve step.
   if (!isOperator) {
-    const decision = await consume(env, deviceId, entitlement.tier, window, hooks, now);
+    // Keyed on the lesson, not the request. The draft and the revision, and an
+    // outline and its eight chapter calls, all carry the same key and are one
+    // charge between them. Counting requests meant a free user's allowance went
+    // on the draft and the revision came back 402 — the free tier could not
+    // finish a single lesson — and one course counted nine against a cap of
+    // twelve. `ProxyProviderTests` already asserted this contract from the
+    // client side; nothing asserted it here.
+    const decision = await consume(
+      env, deviceId, entitlement.tier, window, cacheKey, hooks, now,
+    );
     if (!decision.allow) {
       return errorResponse(402, decision.reason, denialMessage(decision.reason));
     }
@@ -392,6 +408,12 @@ async function handleGeneration(
   });
 
   if (!upstream.ok) return passUpstreamError(upstream);
+
+  if (!streaming) {
+    const text = await upstream.text();
+    recordSpendFromBody(text, env, ctx, hooks, now);
+    return new Response(text, { status: 200, headers: JSON_HEADERS });
+  }
 
   // Forwarded byte-for-byte; observation happens on a teed branch after the
   // response is already on its way. See `forwardStream`.
@@ -454,12 +476,15 @@ async function consume(
   deviceId: string,
   tier: string,
   window: string,
+  lessonKey: string,
   hooks: Hooks,
   now: number,
 ): Promise<Decision> {
   const stub = env.USAGE.get(env.USAGE.idFromName(deviceId));
   const response = await stub.fetch(
-    `https://usage/consume?tier=${encodeURIComponent(tier)}&window=${encodeURIComponent(window)}&now=${now}`,
+    `https://usage/consume?tier=${encodeURIComponent(tier)}` +
+      `&window=${encodeURIComponent(window)}` +
+      `&key=${encodeURIComponent(lessonKey)}&now=${now}`,
   );
   return (await response.json()) as Decision;
 }

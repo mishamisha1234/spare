@@ -13,6 +13,17 @@ import {
 } from "./fixtures";
 import { NOW, call, callRaw, modelRequest, premiumReceipt, testEnv } from "./harness";
 
+/** Reads a device's counters straight out of its Durable Object. */
+async function peekUsage(device: string): Promise<{
+  lessonsToday: number;
+  coursesThisMonth: number;
+}> {
+  const environment = testEnv();
+  const stub = environment.USAGE.get(environment.USAGE.idFromName(device));
+  const response = await stub.fetch(`https://usage/peek?now=${NOW}`);
+  return (await response.json()) as { lessonsToday: number; coursesThisMonth: number };
+}
+
 function premiumRoutes(sse: string) {
   return [
     appleProduction(
@@ -107,6 +118,92 @@ describe("streaming passes through intact", () => {
     await waitOnExecutionContext(ctx);
 
     expect(chunks).toBeGreaterThan(1);
+  });
+});
+
+describe("one lesson is one charge, however many requests it takes", () => {
+  // A lesson is a draft and a revision. A course is an outline plus four
+  // chapters, twice over. Counting requests instead of lessons meant a free
+  // user's whole daily allowance went on the draft and the revision came back
+  // 402 — the free tier could not finish a single lesson through the proxy —
+  // and one course counted nine against a cap of twelve a month.
+  //
+  // `ProxyProviderTests` asserted this contract from the client side, in as
+  // many words, from the day the endpoints were written. Nothing asserted it
+  // here, and the client cannot see what the meter does.
+  it("does not charge the revision pass of a lesson it already charged", async () => {
+    const fetcher = fixtureFetch([
+      anthropicStreaming(sseLesson("Draft.")),
+      anthropicStreaming(sseLesson("Revised.")),
+    ]);
+    const device = "two-pass-device";
+    const body = {
+      window: "three",
+      format: "oneThing",
+      topic: "A lesson in two passes",
+      request: modelRequest(),
+    };
+
+    const draft = await call({ fetcher, device, body });
+    expect(draft.status).toBe(200);
+
+    const revision = await call({ fetcher, device, body });
+    expect(revision.status, "the revision pass of a charged lesson must not be refused").toBe(200);
+  });
+
+  it("still refuses a different lesson the same day", async () => {
+    const fetcher = fixtureFetch([
+      anthropicStreaming(sseLesson("First.")),
+      anthropicStreaming(sseLesson("First again.")),
+    ]);
+    const device = "two-pass-device-2";
+    const first = { window: "three", format: "oneThing", topic: "The charged one", request: modelRequest() };
+
+    expect((await call({ fetcher, device, body: first })).status).toBe(200);
+    expect((await call({ fetcher, device, body: first })).status).toBe(200);
+
+    const other = await call({
+      fetcher,
+      device,
+      body: { ...first, topic: "A different subject entirely" },
+    });
+    expect(other.status).toBe(402);
+    expect(await other.json()).toMatchObject({ error: { code: "dailyLimitReached" } });
+  });
+
+  it("counts a whole course as one course, not one per chapter call", async () => {
+    const outline = anthropicJSON(jsonMessage({ title: "A course" }));
+    const routes = [
+      appleProduction(
+        subscriptionStatus({
+          productId: "app.spare.premium.yearly",
+          status: 1,
+          expiresDate: NOW + 30 * 86_400_000,
+        }),
+      ),
+      outline,
+    ];
+    for (let index = 0; index < 8; index += 1) {
+      routes.push(anthropicStreaming(sseLesson(`Chapter ${index}.`)));
+    }
+    const fetcher = fixtureFetch(routes);
+    const device = "course-cap-device";
+    const course = {
+      window: "thirty",
+      format: "miniCourse",
+      topic: "One course, nine calls",
+      receipt: premiumReceipt,
+      request: modelRequest({ max_tokens: 4_000 }),
+    };
+
+    expect((await call({ fetcher, device, path: "/v1/outline", body: course })).status).toBe(200);
+    for (let index = 0; index < 8; index += 1) {
+      const chapter = await call({ fetcher, device, path: "/v1/chapter", body: course });
+      expect(chapter.status, `chapter call ${index} was refused`).toBe(200);
+    }
+
+    const usage = await peekUsage(device);
+    expect(usage.coursesThisMonth, "nine requests, one course").toBe(1);
   });
 });
 

@@ -132,9 +132,9 @@ final class ProxyProviderTests: XCTestCase {
     }
 
     func testChapterPassesUseTheChapterEndpoint() async throws {
-        // The outline is part of starting the course, so it goes to /v1/lesson
-        // and is what the course cap counts. The chapters that follow are not
-        // separately chargeable.
+        // The outline starts the course and is what the course cap counts. It
+        // has its own endpoint because it is the one generation call that is
+        // not streamed; the chapters that follow are not separately chargeable.
         let outline = FixtureTransport.Step.body(
             status: 200, text: HTTPFixtures.messageBody(json: HTTPFixtures.outlineJSON())
         )
@@ -149,8 +149,116 @@ final class ProxyProviderTests: XCTestCase {
         ))
 
         let paths = transport.requests.map(\.url.path)
-        XCTAssertEqual(paths.first, "/v1/lesson")
+        XCTAssertEqual(paths.first, "/v1/outline")
         XCTAssertTrue(paths.dropFirst().allSatisfy { $0 == "/v1/chapter" })
+    }
+
+    // MARK: - Streaming mode matches the endpoint
+
+    /// The contract this file exists for, and the one it was missing.
+    ///
+    /// The proxy does not forward the client's `stream` flag — it rebuilds every
+    /// request and sets `stream` from the endpoint. So for each call the
+    /// pipeline makes, whether it streams has to agree with whether its endpoint
+    /// streams, or the request cannot work at all.
+    ///
+    /// Nothing checked that. `testChapterPassesUseTheChapterEndpoint` asserted
+    /// the outline's path and the outline's path alone, and the outline is a
+    /// non-streaming JSON call that was going to a streaming endpoint. Every
+    /// 30-minute course through the proxy failed on its first call, and this
+    /// suite stayed green because a fixture answers whatever it is asked.
+    private func assertStreamModeMatchesEndpoint(
+        _ transport: FixtureTransport,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        XCTAssertFalse(transport.requests.isEmpty, "no requests captured", file: file, line: line)
+        for request in transport.requests {
+            let path = request.url.path
+            let body = try XCTUnwrap(request.body)
+            let outer = try XCTUnwrap(
+                JSONDecoder().decode(JSONValue.self, from: body).objectValue
+            )
+            let nested = try XCTUnwrap(outer["request"]?.objectValue)
+            let streams = nested["stream"]?.boolValue ?? false
+            XCTAssertEqual(
+                streams, ProxyRoute.streamingPaths.contains(path),
+                "\(path) is sent with stream: \(streams), which the proxy will override",
+                file: file, line: line
+            )
+        }
+    }
+
+    func testEveryCourseCallStreamsIfAndOnlyIfItsEndpointDoes() async throws {
+        var steps: [FixtureTransport.Step] = [
+            .body(status: 200, text: HTTPFixtures.messageBody(json: HTTPFixtures.outlineJSON()))
+        ]
+        for _ in 0..<(TimeWindow.thirty.format.chapterCount * 2) {
+            steps.append(.sse(HTTPFixtures.stream(json: HTTPFixtures.chapterJSON())))
+        }
+        let transport = FixtureTransport(steps)
+
+        _ = try await collect(makeProvider(transport).streamLesson(
+            topic: topic, window: .thirty, profile: profile, demand: .eager()
+        ))
+
+        try assertStreamModeMatchesEndpoint(transport)
+    }
+
+    func testEveryLessonCallStreamsIfAndOnlyIfItsEndpointDoes() async throws {
+        let transport = FixtureTransport([
+            .sse(HTTPFixtures.stream(json: HTTPFixtures.lessonJSON())),
+            .sse(HTTPFixtures.stream(json: HTTPFixtures.lessonJSON())),
+        ])
+
+        _ = try await collect(makeProvider(transport).streamLesson(
+            topic: topic, window: .ten, profile: profile, demand: .eager()
+        ))
+
+        try assertStreamModeMatchesEndpoint(transport)
+    }
+
+    func testEveryUnmeteredCallStreamsIfAndOnlyIfItsEndpointDoes() async throws {
+        let suggestions = FixtureTransport(.body(
+            status: 200, text: HTTPFixtures.messageBody(json: HTTPFixtures.suggestionsJSON)
+        ))
+        _ = try await makeProvider(suggestions)
+            .suggestTopics(window: .ten, profile: profile, history: [])
+        try assertStreamModeMatchesEndpoint(suggestions)
+
+        let recall = FixtureTransport(.body(
+            status: 200, text: HTTPFixtures.messageBody(json: HTTPFixtures.recallJSON)
+        ))
+        _ = try await makeProvider(recall).generateRecallQuestion(for: fixtureLesson())
+        try assertStreamModeMatchesEndpoint(recall)
+
+        let test = FixtureTransport(.body(
+            status: 200, text: HTTPFixtures.messageBody(json: HTTPFixtures.postLessonTestJSON)
+        ))
+        _ = try await makeProvider(test).generatePostLessonTest(for: fixtureLesson())
+        try assertStreamModeMatchesEndpoint(test)
+
+        let deeper = FixtureTransport([
+            .body(status: 200, text: HTTPFixtures.messageBody(json: HTTPFixtures.lessonJSON())),
+            .body(status: 200, text: HTTPFixtures.messageBody(json: HTTPFixtures.lessonJSON())),
+        ])
+        _ = try await makeProvider(deeper).goDeeper(
+            from: fixtureLesson(),
+            angle: DeeperAngle(text: "How a tuned mass damper works"),
+            window: .ten,
+            profile: profile
+        )
+        try assertStreamModeMatchesEndpoint(deeper)
+    }
+
+    /// Every endpoint the client can address must be one the proxy knows, and
+    /// the streaming mirror must not name one that does not exist.
+    func testStreamingPathsAreAllRealEndpoints() {
+        let all = Set(UsageKind.allCases.map { ProxyRoute.path(for: $0) })
+        XCTAssertTrue(
+            ProxyRoute.streamingPaths.isSubset(of: all),
+            "streamingPaths names an endpoint nothing routes to"
+        )
     }
 
     // MARK: - The envelope

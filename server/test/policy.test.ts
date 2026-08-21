@@ -5,8 +5,32 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { anthropicStreaming, fixtureFetch, jsonMessage, sseLesson } from "./fixtures";
-import { call, modelRequest, recordingAnthropic } from "./harness";
+import {
+  anthropicStreaming,
+  appleProduction,
+  fixtureFetch,
+  jsonMessage,
+  sseLesson,
+  subscriptionStatus,
+} from "./fixtures";
+import { NOW, call, modelRequest, premiumReceipt, recordingAnthropic } from "./harness";
+
+/**
+ * A live premium subscription.
+ *
+ * The outline endpoint only ever carries a 30-minute course, which is a premium
+ * length — a free device is refused at the tier check before the policy layer
+ * is reached, so a policy test about the outline has to be a premium one.
+ */
+function premiumRoute() {
+  return appleProduction(
+    subscriptionStatus({
+      productId: "app.spare.premium.yearly",
+      status: 1,
+      expiresDate: NOW + 30 * 86_400_000,
+    }),
+  );
+}
 
 /** An SSE response, for endpoints whose upstream call streams. */
 const streamed = () =>
@@ -19,6 +43,69 @@ const plain = () =>
 function lessonBody(topic: string, request: Record<string, unknown>) {
   return { window: "three", format: "oneThing", topic, request };
 }
+
+describe("streaming mode is decided by the endpoint", () => {
+  // The client does not get a say, so the client's routing has to agree with
+  // this table. `ProxyRoute.streamingPaths` in SpareCore is the other half.
+  it("forces streaming on the endpoints whose response is forwarded", async () => {
+    // A device each: one lesson a day is the free tier, and the second
+    // iteration would otherwise be refused before it reached the policy.
+    for (const path of ["/v1/lesson", "/v1/chapter"]) {
+      const { route, bodies } = recordingAnthropic(streamed);
+      await call({
+        fetcher: fixtureFetch([route]),
+        path,
+        device: `device-streamed-${path.replace(/\W+/g, "-")}`,
+        body: lessonBody(`streamed ${path}`, modelRequest({ stream: false })),
+      });
+      expect(bodies[0].stream, `${path} should stream`).toBe(true);
+    }
+  });
+
+  it("forces the outline not to stream, whatever the client asked for", async () => {
+    // The bug this endpoint exists to fix: the course outline is a small
+    // structured JSON call, it was routed to /v1/lesson because an outline is
+    // part of starting a lesson, and the policy turned it into a streaming
+    // request. Every 30-minute course through the proxy failed on its first
+    // call. Neither side's tests could see it — the client's fixtures answer
+    // whatever they are asked, and these tests build their own bodies.
+    const { route, bodies } = recordingAnthropic(plain);
+    const response = await call({
+      fetcher: fixtureFetch([premiumRoute(), route]),
+      path: "/v1/outline",
+      device: "device-outline-mode",
+      body: {
+        window: "thirty",
+        format: "miniCourse",
+        topic: "outline mode",
+        receipt: premiumReceipt,
+        request: modelRequest({ stream: true, max_tokens: 4_000 }),
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(bodies[0].stream).toBe(false);
+    expect(response.headers.get("content-type")).toContain("application/json");
+  });
+
+  it("caps the outline well below a lesson, because it is a plan not prose", async () => {
+    const { route, bodies } = recordingAnthropic(plain);
+    await call({
+      fetcher: fixtureFetch([premiumRoute(), route]),
+      path: "/v1/outline",
+      device: "device-outline-ceiling",
+      body: {
+        window: "thirty",
+        format: "miniCourse",
+        topic: "outline ceiling",
+        receipt: premiumReceipt,
+        request: modelRequest({ max_tokens: 24_000 }),
+      },
+    });
+
+    expect(bodies[0].max_tokens).toBe(4_000);
+  });
+});
 
 describe("the client cannot choose what it costs", () => {
   it("refuses a model the server does not pay for", async () => {

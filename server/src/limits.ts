@@ -33,6 +33,21 @@ export interface UsageState {
   /** UTC month key, e.g. "2026-08". */
   month: string;
   coursesThisMonth: number;
+  /**
+   * Lesson keys already charged for today.
+   *
+   * One lesson is several HTTP requests: a draft and a revision, and for a
+   * course an outline plus four chapters twice over. Counting requests charged
+   * a free user's single daily lesson to the draft and then refused the
+   * revision, so the free tier could not finish one lesson; and it counted a
+   * single course as nine against a cap of twelve a month.
+   *
+   * Keyed on the lesson rather than on a pass number the client sends, because
+   * the key is already derived from window, format, and topic — facts the proxy
+   * needs anyway — and a client-supplied "this is only the revision" flag would
+   * be a free-generation switch for anyone who read the request.
+   */
+  chargedKeys: string[];
 }
 
 /**
@@ -46,9 +61,25 @@ export interface UsageState {
  */
 export const SEEN_HISTORY_LIMIT = 400;
 
+/**
+ * How many distinct lessons a device may be charged for in one day before the
+ * oldest is forgotten.
+ *
+ * Rolls over daily, so unlike the seen list this never has to hold a year. A
+ * premium reader doing a hundred lessons in a day is already implausible; the
+ * cost of falling off the end is one extra charge for a lesson resumed after
+ * ninety-nine others, which for a premium reader is not a charge at all.
+ */
+export const CHARGED_HISTORY_LIMIT = 100;
+
 /** Keeps the most recent `SEEN_HISTORY_LIMIT` entries, dropping the oldest. */
 function trimSeen(keys: string[]): string[] {
   return keys.length <= SEEN_HISTORY_LIMIT ? keys : keys.slice(-SEEN_HISTORY_LIMIT);
+}
+
+/** Same, for the day's charged keys. */
+function trimCharged(keys: string[]): string[] {
+  return keys.length <= CHARGED_HISTORY_LIMIT ? keys : keys.slice(-CHARGED_HISTORY_LIMIT);
 }
 
 export function dayKey(now: number): string {
@@ -80,7 +111,8 @@ export class UsageCounter implements DurableObject {
     if (url.pathname === "/consume") {
       const tier = (url.searchParams.get("tier") ?? "free") as Tier;
       const window = url.searchParams.get("window") ?? "three";
-      const decision = await this.consume(tier, window, now);
+      const key = url.searchParams.get("key") ?? "";
+      const decision = await this.consume(tier, window, key, now);
       return Response.json(decision);
     }
 
@@ -117,6 +149,7 @@ export class UsageCounter implements DurableObject {
       lessonsToday: 0,
       month: monthKey(now),
       coursesThisMonth: 0,
+      chargedKeys: [],
     };
 
     // Rollover on read.
@@ -127,6 +160,9 @@ export class UsageCounter implements DurableObject {
       lessonsToday: stored.day === today ? stored.lessonsToday : 0,
       month: thisMonth,
       coursesThisMonth: stored.month === thisMonth ? stored.coursesThisMonth : 0,
+      // Rolls over with the day it belongs to. A record written before this
+      // deploy has no field at all, hence the fallback.
+      chargedKeys: stored.day === today ? (stored.chargedKeys ?? []) : [],
     };
   }
 
@@ -137,10 +173,24 @@ export class UsageCounter implements DurableObject {
    * the same object are individually atomic but jointly racy, which is the
    * bug this class exists to prevent.
    */
-  private async consume(tier: Tier, window: string, now: number): Promise<Decision> {
+  private async consume(
+    tier: Tier,
+    window: string,
+    key: string,
+    now: number,
+  ): Promise<Decision> {
     const usage = await this.load(now);
     const isPremium = tier !== "free";
     const isChaptered = (CHAPTERED_WINDOWS as readonly string[]).includes(window);
+
+    // Already paid for today. The second pass of a lesson, and every chapter of
+    // a course, arrive as separate requests carrying the same key -- they are
+    // one lesson to the reader and have to be one unit here. Allowed without a
+    // tier check as well as without a charge: refusing the revision pass of a
+    // lesson whose draft was allowed would leave the reader with half a lesson.
+    if (key && usage.chargedKeys.includes(key)) {
+      return { allow: true, servedFromCache: false };
+    }
 
     if (!isPremium) {
       if (!(FREE_WINDOWS as readonly string[]).includes(window)) {
@@ -157,6 +207,7 @@ export class UsageCounter implements DurableObject {
       ...usage,
       lessonsToday: isPremium ? usage.lessonsToday : usage.lessonsToday + 1,
       coursesThisMonth: isChaptered ? usage.coursesThisMonth + 1 : usage.coursesThisMonth,
+      chargedKeys: key ? trimCharged([...usage.chargedKeys, key]) : usage.chargedKeys,
     });
 
     return { allow: true, servedFromCache: false };

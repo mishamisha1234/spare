@@ -139,17 +139,38 @@ public struct ProxyRoute: ProviderRoute {
         self.operatorToken = operatorToken
     }
 
+    /// Endpoints whose requests the proxy forces to `stream: true`.
+    ///
+    /// Mirrors `STREAMING_ENDPOINTS` in `server/src/policy.ts`, and exists so
+    /// the mirror can be asserted. The proxy rebuilds every request from an
+    /// allowlist and sets `stream` from the endpoint, never from what the
+    /// client sent — so a non-streaming call routed to one of these is not a
+    /// mismatch that degrades, it is a request that cannot work.
+    ///
+    /// That is what happened to the course outline. It is a small structured
+    /// JSON call, it was routed to `/v1/lesson` because an outline is part of
+    /// starting a lesson, and the proxy turned it into a streaming request.
+    /// Every 30-minute course requested through the proxy failed, and neither
+    /// side's tests could see it: the fixtures here decide what comes back, and
+    /// the server's tests build their own request bodies.
+    static let streamingPaths: Set<String> = ["/v1/lesson", "/v1/chapter"]
+
     /// One endpoint per kind of call, mirroring `LessonProvider`'s methods.
     ///
     /// Draft and revision passes of the same lesson share an endpoint: they are
     /// one lesson to the reader and must be one unit to the meter. Charging a
     /// free user's daily lesson twice because generation happens in two passes
     /// would be an implementation detail leaking into the price.
+    ///
+    /// The outline has its own endpoint rather than sharing the lesson's,
+    /// because it is the one generation call that is not streamed.
     static func path(for kind: UsageKind) -> String {
         switch kind {
         case .suggestions:
             return "/v1/suggestions"
-        case .courseOutline, .lessonDraft, .lessonRevision:
+        case .courseOutline:
+            return "/v1/outline"
+        case .lessonDraft, .lessonRevision:
             return "/v1/lesson"
         case .chapterDraft, .chapterRevision:
             return "/v1/chapter"

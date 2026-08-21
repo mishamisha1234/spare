@@ -32,13 +32,26 @@ export const ALLOWED_MODELS = new Set(["claude-opus-5"]);
 export const TOKEN_CEILINGS: Record<string, number> = {
   "/v1/suggestions": 4_000,
   "/v1/lesson": 24_000,
+  // The course outline: a small structured plan, not prose, and the only
+  // generation call that is not streamed. It had no endpoint of its own and was
+  // sent to /v1/lesson, which forces streaming — so every 30-minute course ever
+  // requested through the proxy failed. See STREAMING_ENDPOINTS below.
+  "/v1/outline": 4_000,
   "/v1/chapter": 24_000,
   "/v1/recall": 2_000,
   "/v1/post-lesson-test": 3_500,
   "/v1/go-deeper": 24_000,
 };
 
-/** Endpoints whose upstream call must stream, because the response is forwarded. */
+/**
+ * Endpoints whose upstream call must stream, because the response is forwarded.
+ *
+ * Mirrored by `ProxyRoute.streamingPaths` in SpareCore, and that mirror is the
+ * whole contract: the client decides per call whether to stream, this decides
+ * per endpoint, and when the two disagree the request is broken in a way
+ * neither side's tests can see. A non-streaming call routed to an endpoint in
+ * this set is the bug that kept every 30-minute course from ever working.
+ */
 export const STREAMING_ENDPOINTS = new Set(["/v1/lesson", "/v1/chapter"]);
 
 /**
