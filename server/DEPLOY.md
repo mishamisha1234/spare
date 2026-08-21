@@ -10,6 +10,13 @@ having worked.
 Nothing here can be done for you: every step needs an account only you can log
 into.
 
+> **Already deployed?** The Worker running right now predates two fixes it needs.
+> Until you redeploy, the free tier cannot finish a single lesson (a lesson's
+> revision pass is refused as if it were a second lesson) and every 30-minute
+> course fails on its first call. Both are server-side, so redeploying is the
+> whole fix: `cd server`, then `npx wrangler deploy`. Nothing else in this guide
+> needs redoing — your secrets, KV namespace, and URL all survive a redeploy.
+
 You can do this in two sittings. **Part 1 gets free lessons working.** Part 2 adds
 subscriptions. The proxy is designed to run correctly with only Part 1 done, so
 there's no rush between them.

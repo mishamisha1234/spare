@@ -88,6 +88,57 @@ A TestFlight or sandbox purchase only exists on the sandbox host. The server
 tries production first and falls back to sandbox on a not-found, which is the
 documented pattern — without it, every internal build looks unsubscribed.
 
+## One lesson is one charge, however many requests it takes
+
+A lesson is two HTTP requests: a draft and a revision. A 30-minute course is
+nine: an outline, then four chapters twice over. The meter counted requests.
+
+That is not a rounding error, it is two separate product failures. A free user's
+whole daily allowance went on the draft pass, and the revision came back `402
+dailyLimitReached` — so the free tier could not finish a single lesson through
+the proxy, ever. And one course counted nine against a cap of twelve a month, so
+a premium subscriber got one course and a bit rather than twelve.
+
+`ProxyProviderTests` had asserted the contract from the client side since the
+endpoints were written, in as many words: *"two passes are one lesson to the
+reader and must be one unit to the meter."* The client honoured it. Nothing on
+this side implemented it, and nothing on this side tested it.
+
+The charge is now keyed on the lesson. The key is the cache key — window, format,
+and topic — which the proxy already derives for its own reasons, and every
+request belonging to one lesson carries the same one. A device's charged keys for
+the day are stored alongside its counters and roll over with them.
+
+The obvious alternative was a `pass` field on the envelope, so the client could
+say "this is only the revision, don't charge it". That is a free-generation
+switch for anyone who reads one request. Deriving the unit from facts the proxy
+needs anyway is the only version that does not depend on the client being honest.
+
+### The outline needs its own endpoint
+
+`applyPolicy` sets `stream` from the endpoint and never from what the client
+sent, because a client-supplied flag deciding server control flow is not
+somewhere that decision belongs. Every generation call streams — except the
+course outline, which is a small structured plan and comes back as JSON.
+
+The outline was routed to `/v1/lesson`, on the reasoning that an outline is part
+of starting a lesson and should be what the course cap counts. So the policy
+turned a non-streaming request into a streaming one, and **every 30-minute
+course ever requested through the proxy failed on its first call.**
+
+Neither test suite could see it. The client's tests use fixtures that answer
+whatever they are asked, so a streaming response to a non-streaming call is
+whatever the fixture says it is. The server's tests build their own request
+bodies, so they never sent the one the client actually sends. Each half was
+correct alone; the contract between them was untested.
+
+`/v1/outline` is metered like the rest — it is what starts a course, so it is
+what the course cap counts — but it is not cached, because the cache holds SSE,
+and it is capped at 4,000 tokens rather than inheriting a lesson's 24,000. The
+mirror is now asserted from both ends: `ProxyRoute.streamingPaths` in SpareCore,
+and a test there that every request the pipeline sends streams if and only if
+its endpoint does.
+
 ## The honest limit on tier enforcement
 
 Moving limits server-side removes *client* enforcement, not *all* spoofing.
