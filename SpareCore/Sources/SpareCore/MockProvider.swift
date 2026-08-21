@@ -272,7 +272,17 @@ public struct MockProvider: LessonProvider {
         paragraphOffset: Int,
         trailingReflection: Bool
     ) -> String {
-        let fixtureParagraphs = Self.fixtureParagraphs(topic: topic)
+        let allParagraphs = Self.fixtureParagraphs(topic: topic)
+        // The last one is the closing paragraph, and it is appended at the end
+        // rather than cycled through with the rest.
+        //
+        // The fill loop stops on whichever paragraph happens to fit, and with
+        // eight paragraphs cycling that was sometimes the opening one -- so a
+        // fixture ended by repeating its own first paragraph verbatim and
+        // tripped the closing-restates-opening check. Which paragraph a fixture
+        // ends on should not depend on where the word budget ran out.
+        let closing = allParagraphs[allParagraphs.count - 1]
+        let fixtureParagraphs = Array(allParagraphs.dropLast())
         var parts: [String] = []
         var words = 0
         var paragraphIndex = paragraphOffset
@@ -311,7 +321,7 @@ public struct MockProvider: LessonProvider {
         // which is how 1,600 became 1,602.
         let reflection = "*Where in \(topic.title.lowercased()) have you already seen this and not noticed?*"
         let reservedForReflection = trailingReflection ? reflection.lessonWordCount : 0
-        let ceiling = (maximumWords ?? Int.max) - reservedForReflection
+        let ceiling = (maximumWords ?? Int.max) - reservedForReflection - closing.lessonWordCount
         while words < targetWords {
             // A section break every fourth paragraph for sectioned, unchaptered
             // formats.
@@ -329,6 +339,8 @@ public struct MockProvider: LessonProvider {
             words += paragraphWords
             paragraphIndex += 1
         }
+
+        parts.append(closing)
 
         if trailingReflection {
             parts.append(reflection)

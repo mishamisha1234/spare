@@ -257,11 +257,15 @@ public enum Prompts {
         "landscape." Cut one only where it's standing in for real thought, keep
         it where the topic calls for it.
 
-        Reconsider these pivots too: "here is the fact that", "here is the part
-        that", "here is the detail that", "that one fact reorganizes". They are
-        almost never doing work — the sentence is usually stronger stating the
-        fact and trusting it. Keep one only where the pivot is genuinely the
-        point.
+        Reconsider these pivots too, one per line so none of them is broken
+        across a line and read as two things:
+        - "here is the fact that"
+        - "here is the part that"
+        - "here is the detail that"
+        - "that one fact reorganizes"
+        They are almost never doing work — the sentence is usually stronger
+        stating the fact and trusting it. Keep one only where the pivot is
+        genuinely the point.
 
         Revise in place, front to back. Do not reorder sections or chapters: the
         reader is already being shown your output as it arrives, so the opening
