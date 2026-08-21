@@ -70,6 +70,55 @@ describe("the key never leaves the server", () => {
     expect(text).not.toContain("sk-ant");
     expect(text).not.toContain("invalid x-api-key");
   });
+
+  it("does name the class of upstream failure, which is a fixed enum", async () => {
+    // Withholding this cost two investigations. Six identical "rejected
+    // upstream" lines in a batch log could have been a malformed request, an
+    // expired key, or an exhausted balance, and nothing in the log chose
+    // between them.
+    const fetcher = fixtureFetch([
+      anthropicJSON(
+        JSON.stringify({
+          error: { type: "invalid_request_error", message: "credit balance too low for org 1234" },
+        }),
+        400,
+      ),
+    ]);
+    const response = await call({ fetcher, device: "upstream-type-device" });
+    const text = await response.text();
+
+    expect(response.status).toBe(502);
+    expect(text).toContain("invalid_request_error");
+    expect(text).not.toContain("credit balance");
+    expect(text).not.toContain("1234");
+  });
+
+  it("reports a type it does not recognise as unrecognised rather than echoing it", async () => {
+    const fetcher = fixtureFetch([
+      anthropicJSON(JSON.stringify({ error: { type: "account_id_9f2a_suspended" } }), 400),
+    ]);
+    const response = await call({ fetcher, device: "upstream-unknown-device" });
+    const text = await response.text();
+
+    expect(text).toContain("unrecognised");
+    expect(text).not.toContain("9f2a");
+  });
+
+  it("separates Anthropic being down from Anthropic refusing what we sent", async () => {
+    // 503 is worth retrying and 502 is not, so they cannot share a status.
+    const down = fixtureFetch([
+      anthropicJSON(JSON.stringify({ error: { type: "overloaded_error" } }), 529),
+    ]);
+    const outage = await call({ fetcher: down, device: "upstream-down-device" });
+    expect(outage.status).toBe(503);
+    expect(await outage.text()).toContain("overloaded_error");
+
+    const refused = fixtureFetch([
+      anthropicJSON(JSON.stringify({ error: { type: "not_found_error" } }), 404),
+    ]);
+    const rejected = await call({ fetcher: refused, device: "upstream-refused-device" });
+    expect(rejected.status).toBe(502);
+  });
 });
 
 describe("streaming passes through intact", () => {

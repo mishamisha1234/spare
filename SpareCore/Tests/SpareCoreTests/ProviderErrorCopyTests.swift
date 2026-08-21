@@ -7,6 +7,27 @@ final class ProviderErrorCopyTests: XCTestCase {
         ProviderErrorCopy.presentation(for: error)
     }
 
+    // MARK: - The two 5xx-shaped outcomes are not the same outcome
+
+    /// 503 is the proxy saying Anthropic is down. 502 is the proxy saying
+    /// Anthropic refused what it sent, which is a bug or an account problem at
+    /// our end and does not come right by waiting. They used to share both a
+    /// status and a retry policy, so a batch spent three attempts on every
+    /// request Anthropic was never going to accept, and told the reader
+    /// Anthropic was having trouble when it was not.
+    func testAnUpstreamRefusalIsNotRetriedAndDoesNotBlameAnthropic() {
+        let refused = LessonProviderError.httpStatus(code: 502, message: "")
+        XCTAssertFalse(refused.isRetryable)
+        XCTAssertFalse(copy(refused).isRetryable)
+        XCTAssertNotEqual(copy(refused).title, copy(.httpStatus(code: 503, message: "")).title)
+    }
+
+    func testAnUpstreamOutageIsStillRetried() {
+        let outage = LessonProviderError.httpStatus(code: 503, message: "")
+        XCTAssertTrue(outage.isRetryable)
+        XCTAssertTrue(copy(outage).isRetryable)
+    }
+
     // MARK: - Every case is covered and says something
 
     func testEveryErrorProducesNonEmptyCopy() {
@@ -16,6 +37,7 @@ final class ProviderErrorCopyTests: XCTestCase {
             .httpStatus(code: 429, message: ""),
             .httpStatus(code: 401, message: ""),
             .httpStatus(code: 503, message: ""),
+            .httpStatus(code: 502, message: ""),
             .httpStatus(code: 418, message: ""),
             .decoding("bad"),
             .malformedStream("truncated"),
@@ -64,6 +86,7 @@ final class ProviderErrorCopyTests: XCTestCase {
             .network("x"),
             .httpStatus(code: 429, message: ""),
             .httpStatus(code: 503, message: ""),
+            .httpStatus(code: 502, message: ""),
             .malformedStream("x"),
             .missingAPIKey,
             .refused(category: nil, explanation: nil),

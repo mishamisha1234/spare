@@ -78,6 +78,16 @@ public enum ProviderErrorCopy {
                 pointsToSettings: true
             )
 
+        // Split out from the 5xx block above: 502 from the Spare proxy means
+        // Anthropic refused the request the proxy built, which is not Anthropic
+        // having trouble and does not come right by waiting.
+        case .httpStatus(let code, _) where code == 502:
+            return ErrorPresentation(
+                title: "Request refused",
+                message: "Spare's request was rejected. That's a fault on Spare's side, not yours.",
+                isRetryable: false
+            )
+
         case .httpStatus(let code, _) where code >= 500:
             return ErrorPresentation(
                 title: "Anthropic is having trouble",

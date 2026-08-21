@@ -68,7 +68,12 @@ public enum LessonProviderError: Error, Equatable, Sendable {
     public var isRetryable: Bool {
         switch self {
         case .network, .malformedStream: return true
-        case .httpStatus(let code, _): return code == 429 || code >= 500
+        // 502 is the proxy's word for "Anthropic refused what we sent", as
+        // distinct from 503, "Anthropic is down". The first is a bug or an
+        // account problem at this end and does not improve on the third
+        // attempt; the second usually does. They used to be the same status and
+        // therefore the same three wasted retries.
+        case .httpStatus(let code, _): return code == 429 || (code >= 500 && code != 502)
         case .missingAPIKey, .decoding, .refused, .cancelled: return false
         // A ceiling clears and an Apple outage ends; a tier boundary doesn't
         // move by retrying, and offering a button that cannot help implies the

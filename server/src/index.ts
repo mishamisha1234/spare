@@ -457,18 +457,65 @@ function denialMessage(reason: Decision extends { allow: false } ? never : strin
 }
 
 /**
- * Upstream failures are forwarded as a status the app can map, with the
- * message discarded — an Anthropic error body can name the model, the account,
- * or the key's shape, none of which belongs in a client response.
+ * Anthropic's own error taxonomy, as an allowlist.
+ *
+ * The whole error body still never reaches a client — it can name the model,
+ * the account, or the key's shape. But the `type` field is a fixed enum with
+ * none of that in it, and withholding it cost two separate investigations: a
+ * batch run reported six identical "rejected upstream" failures and the log
+ * could not say whether that was a malformed request, an expired key, or an
+ * exhausted balance. A value not on this list is reported as unrecognised
+ * rather than echoed, so nothing free-form can ride out on this path.
  */
-function passUpstreamError(upstream: Response): Response {
+const UPSTREAM_ERROR_TYPES = new Set([
+  "invalid_request_error",
+  "authentication_error",
+  "permission_error",
+  "not_found_error",
+  "request_too_large",
+  "rate_limit_error",
+  "billing_error",
+  "api_error",
+  "overloaded_error",
+]);
+
+async function upstreamErrorType(upstream: Response): Promise<string> {
+  try {
+    const body = (await upstream.clone().json()) as { error?: { type?: unknown } };
+    const type = body?.error?.type;
+    if (typeof type === "string" && UPSTREAM_ERROR_TYPES.has(type)) return type;
+    return "unrecognised";
+  } catch {
+    return "unreadable";
+  }
+}
+
+/**
+ * Upstream failures are forwarded as a status the app can map, plus the class
+ * of failure and nothing else.
+ *
+ * The two 5xx-shaped outcomes are split. 503 means Anthropic is down and the
+ * request was fine, which is worth retrying. 502 means Anthropic refused what
+ * this proxy sent, which is a bug or an account problem here — retrying it
+ * three times, as the client used to, buys nothing but latency.
+ */
+async function passUpstreamError(upstream: Response): Promise<Response> {
   if (upstream.status === 429) {
     return errorResponse(429, "rateLimited", "Anthropic is throttling requests. Try shortly.");
   }
+  const kind = await upstreamErrorType(upstream);
   if (upstream.status >= 500) {
-    return errorResponse(502, "upstreamUnavailable", "The model is unavailable right now.");
+    return errorResponse(
+      503,
+      "upstreamUnavailable",
+      `The model is unavailable right now (${upstream.status} ${kind}).`,
+    );
   }
-  return errorResponse(502, "upstreamRejected", "The request was rejected upstream.");
+  return errorResponse(
+    502,
+    "upstreamRejected",
+    `The request was rejected upstream (${upstream.status} ${kind}).`,
+  );
 }
 
 async function consume(
