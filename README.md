@@ -267,6 +267,11 @@ Worker's `ADMIN_TOKEN`), and the typed confirmation. It is the only workflow her
 that makes real API calls or spends money, which is why it is a separate file
 from `ci.yml` and cannot be triggered by a commit.
 
+It also needs the Worker to be **current**. The 30-minute lengths call
+`/v1/outline`, which only exists after a redeploy; against an older Worker they
+fail with a 404 and the run stops before spending anything, which is the
+intended behaviour rather than a bug to work around.
+
 Roughly $3 and half an hour for all eight. Two passes per lesson doubles the
 obvious cost, and a course is an outline plus four chapters twice over.
 
