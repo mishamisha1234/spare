@@ -236,7 +236,7 @@ Things this codebase cannot verify about itself, and which need a signed run on 
 1. **The App Group has never actually been exercised.** Entitlements aren't applied to unsigned builds, so CI proves the widget compiles and its views render, not that it can read the app's store. This is the single most likely thing to be quietly broken.
 2. **The store migration has never run against a real pre-App-Group store.** Same reason. Worth testing with a populated library before shipping, because the failure mode is someone's whole library appearing to vanish.
 3. **Notification fire-time verification** (see Known deviations) — a notification firing for an already-answered item is a real bug.
-4. **Prompt quality is unmeasured against the live API.** Every provider test runs against recorded fixtures. `spare-batch` (below) exists to close this: it generates twenty lessons through the real pipeline and reports words against budget, quality findings, and cost. Run it and read the output before deciding the prompts are done.
+4. **Prompt quality has been measured once.** Every provider test runs against recorded fixtures; `spare-batch` (below) is the only thing that puts the real prompts in front of the real API. The first batch of twelve produced a full editorial read, and the rules that came out of it are in `Prompts.swift` now. What is not yet known is whether they worked — the second batch is the check. Read the output before deciding the prompts are done.
 5. **StoreKit has only run against `StubPurchaseStore`.** The real purchase, restore, and lapse paths need a sandbox account.
 6. **Prices are placeholders** (`$4.99` / `$39.99` / `$99.99`) and exist only in `Products.storekit`.
 
@@ -267,8 +267,34 @@ Worker's `ADMIN_TOKEN`), and the typed confirmation. It is the only workflow her
 that makes real API calls or spends money, which is why it is a separate file
 from `ci.yml` and cannot be triggered by a commit.
 
-Roughly $7 and about an hour for all twenty. Two passes per lesson doubles the
+Roughly $3 and half an hour for all eight. Two passes per lesson doubles the
 obvious cost, and a course is an outline plus four chapters twice over.
+
+### What the first batch changed
+
+Twelve lessons, read as a commissioning editor would read them. The prose was
+publishable; the problems were structural, and three of them were tics visible
+only across a batch:
+
+- **Every lesson ended the same way**, eight of twelve opening the last
+  paragraph with "Next time you…". Now banned in the prompt and on the
+  hard-banned list, and `LessonQualityCheck` reads the closing paragraph for it.
+- **Eight of twelve built their central analogy out of the reader's own field**,
+  because the test profile says logistics. The reader context now says to use it
+  sparingly and never twice running.
+- **The same pivot phrasing** recurred across unrelated subjects. On the
+  advisory list, for the revision pass to judge.
+
+Six structural rules came out of the same read: one argument per lesson with a
+second good one demoted to a deeper angle, a section ceiling, analogies capped
+at a paragraph, no displayed arithmetic, real space for a named person's fate,
+one adjacent thing left unexplained, and a subtitle forbidden from carrying the
+surprising claim. Four of those are mechanically checkable and are now findings;
+the rest are prompt rules the revision pass has to enforce by judgement.
+
+The second batch is eight fresh subjects, two per length, against the same
+reader profile — same profile deliberately, since whether the analogies still
+all come from freight is one of the things being tested.
 
 ## Roadmap
 

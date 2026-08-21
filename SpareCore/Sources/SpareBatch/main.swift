@@ -93,37 +93,36 @@ struct Failure: Error, CustomStringConvertible {
 
 // MARK: - What to generate
 
-/// Twenty subjects, five per length, spread across domains so the batch shows
-/// what the prompts do with different kinds of material rather than five
+/// Eight subjects, two per length, spread across domains so the batch shows
+/// what the prompts do with different kinds of material rather than two
 /// variations on one.
+///
+/// Deliberately fresh: none of these appeared in the first batch, and none is
+/// adjacent to one that did. A rewritten prompt judged on the same subjects
+/// would be judged partly on how well the model already knew them.
+///
+/// Chosen against the specific rules that changed, too. Several carry a second
+/// argument that wants to become a section (the Aral Sea is an irrigation story
+/// and a fisheries collapse; decipherment is four separate scripts), which is
+/// what "one argument per lesson" now has to hold back. Several have a named
+/// person whose fate is load-bearing, which is what "give people room" has to
+/// spend words on. And two are quantitative enough to tempt a displayed sum.
 let topics: [TimeWindow: [(title: String, hook: String, domain: String)]] = [
     .three: [
-        ("Why cast iron pans season", "Rust and dinner share a chemistry.", "Chemistry"),
-        ("How noise-cancelling works", "Silence built by adding sound.", "Physics"),
-        ("Why onions make you cry", "A plant defence aimed at something else.", "Biology"),
-        ("Why bread stales in the fridge", "Cold speeds up the thing you want slowed.", "Food science"),
-        ("How thermoses know the difference", "One flask, two opposite jobs.", "Engineering"),
+        ("Why paper cuts hurt so much", "A shallow wound the body treats as an emergency.", "Biology"),
+        ("Why tunnels are dug from both ends", "Meeting in the middle is a surveying problem, not a digging one.", "Engineering"),
     ],
     .ten: [
-        ("The Venetian arsenal's assembly line", "Ships in a day, four centuries early.", "History"),
-        ("Why antibiotics stopped working", "Evolution on a schedule we set.", "Medicine"),
-        ("Pricing risk before statistics", "Insurance older than the maths.", "Economics"),
-        ("Why the Dutch chose polders", "Taking land instead of holding water back.", "Engineering"),
-        ("How sourdough survives centuries", "A culture older than most countries.", "Biology"),
+        ("How standard time was imposed", "Railways needed one clock, and towns fought back.", "History"),
+        ("Why insulin stayed cheap for decades", "A patent sold for a dollar, and what happened after.", "Medicine"),
     ],
     .fifteen: [
-        ("How lighthouses solved being seen", "The optics problem that took a century.", "Engineering"),
-        ("The metric system needed a revolution", "Measurement as a political act.", "History"),
-        ("How refrigeration rewrote eating", "Distance stopped mattering to food.", "Technology"),
-        ("Why cathedrals kept falling down", "Building past what anyone could calculate.", "Architecture"),
-        ("How the telegraph changed news", "When information outran the horse.", "Media"),
+        ("How double-entry bookkeeping spread", "A merchant's habit that made the modern firm possible.", "Economics"),
+        ("Why the Aral Sea drained", "Every decision along the way was locally rational.", "Environment"),
     ],
     .thirty: [
-        ("Aviation safety, written after crashes", "Every rule has a date and a death toll.", "Engineering"),
-        ("Why cities rebuild on floodplains", "Rational people, repeated disaster.", "Urbanism"),
-        ("Vaccines from inoculation to mRNA", "Three centuries of the same idea.", "Medicine"),
-        ("How the container reshaped trade", "A steel box that moved factories.", "Economics"),
-        ("How clocks made industrial work", "Time as something you could be sold.", "History"),
+        ("How lost writing systems were deciphered", "Linear B, Maya glyphs, and the ones still unread.", "Linguistics"),
+        ("How electricity grids stay balanced", "Supply has to equal demand every second, forever.", "Engineering"),
     ],
 ]
 
@@ -195,6 +194,7 @@ func run() async throws {
     print("  proxy:  \(options.baseURL.absoluteString)")
     print("  output: \(options.outputDirectory.path)")
     print("  \(total) lessons, two passes each; a 30-minute course is an outline plus 4 chapters x 2")
+    print("  reader: \(profile.work)")
     print("")
 
     var rows: [Row] = []
@@ -325,7 +325,12 @@ func write(
         }
         .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
 
-    let name = String(format: "%02d-%@-%@.md", index, window.rawValue, slug)
+    // Not String(format:) with %@ — that is a Darwin ObjC bridge and this runs
+    // on Linux, where it fails silently rather than failing to compile. The
+    // rest of the reporting was already converted; this one was missed, and it
+    // would have named every file after whatever %@ happened to produce.
+    let number = index < 10 ? "0\(index)" : "\(index)"
+    let name = "\(number)-\(window.rawValue)-\(slug).md"
     let url = directory.appendingPathComponent(name)
 
     let budget = window.wordBudget

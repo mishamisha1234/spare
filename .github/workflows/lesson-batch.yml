@@ -15,7 +15,7 @@ on:
         required: true
         default: ''
       only:
-        description: 'One length only (leave blank for all 20 lessons)'
+        description: 'One length only (leave blank for all 8 lessons)'
         required: false
         default: ''
         type: choice
@@ -31,10 +31,10 @@ jobs:
     name: Generate lessons
     runs-on: ubuntu-latest
     container: swift:6.1
-    # Twenty lessons at two passes each, and a course is an outline plus four
+    # Eight lessons at two passes each, and a course is an outline plus four
     # chapters twice over. Sequential, because the point is readable output and
     # a truthful per-lesson cost, not speed.
-    timeout-minutes: 180
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
