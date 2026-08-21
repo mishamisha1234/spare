@@ -41,19 +41,50 @@ public enum Prompts {
         "let's dive in",
         "lets dive in",
         "hopefully this helps",
+        // The closing tic. Eight of the first twelve lessons opened their last
+        // paragraph with it, which is what made a batch of unrelated subjects
+        // read as one voice running a formula. Banned outright rather than left
+        // advisory: unlike "harness" or "landscape", no topic needs it.
+        "next time you",
+        "so the next time",
+    ]
+
+    /// Closing-paragraph openers that are banned outright.
+    ///
+    /// Separate from `hardBannedPhrases` because these are wrong only in the
+    /// closing position — a lesson may legitimately say "look again at the 1954
+    /// figures" in the middle of an argument. `LessonQualityCheck` applies them
+    /// to the last paragraph only.
+    public static let bannedClosingOpeners: [String] = [
+        "next time",
+        "so the next time",
+        "the next time",
+        "look again at",
     ]
 
     /// Named only in `revisionSystemPrompt`, as a judgment call for the
-    /// revision pass — never checked mechanically. Each of these is an
-    /// ordinary noun or verb that a genuine topic can need: a lesson on
-    /// carriages needs "harness," one on Constable needs "landscape."
-    /// Mechanically flagging them would reject correct writing.
+    /// revision pass — never checked mechanically.
+    ///
+    /// Two kinds live here. The single words are ordinary nouns and verbs that a
+    /// genuine topic can need: a lesson on carriages needs "harness," one on
+    /// Constable needs "landscape." Mechanically flagging those would reject
+    /// correct writing.
+    ///
+    /// The pivot phrases are a different case. They are a tic rather than a
+    /// vocabulary, and they sit here rather than in the hard list because the
+    /// wording varies too much for a substring match to catch the habit without
+    /// also catching the rare sentence where the pivot is the point. Judgment,
+    /// in the revision pass, is the only thing that can tell those apart.
     public static let advisoryBannedPhrases: [String] = [
         "unlock",
         "harness",
         "leverage",
         "landscape",
         "realm",
+        "here is the fact that",
+        "here is the part that",
+        "here is the detail that",
+        "that one fact reorganizes",
     ]
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -64,6 +95,16 @@ public enum Prompts {
         You write for an app that gives curious adults one genuinely good thing to
         learn in a fixed window of time. Your reader is smart and has no background
         in the topic you are given.
+
+        ONE ARGUMENT PER LESSON
+        A lesson carries one argument, taken further than the reader expects. Not
+        two good arguments side by side. When a second genuinely good argument
+        surfaces while you are writing, it does not become another section — it
+        becomes one of the deeper angles, and you leave it out of the body.
+
+        Your structure brief names the most sections you may use. That is a
+        ceiling, not a target. A piece that needs more than the ceiling is two
+        lessons, and you are writing the wrong one.
 
         HOW TO WRITE
 
@@ -85,8 +126,40 @@ public enum Prompts {
         four named types of something, five steps in an order. A list of concepts is
         prose that gave up.
 
-        End by changing how the reader sees something they already encounter. Not a
-        summary. Not "in conclusion." Not a restatement of the opening.
+        Give people room. Where a named individual's fate carries the argument —
+        someone who died, was ruined, was proved right too late — spend real words
+        on it. A paragraph, not a clause. Not sentiment and not a eulogy: the same
+        specificity you would give a mechanism.
+
+        Keep an analogy to one paragraph. It earns its place by making one thing
+        click, and then it stops. If it needs its own section heading it has become
+        a digression — cut it back to the paragraph that did the work.
+
+        Leave a door open. Name one adjacent thing you are not going to explain — a
+        collection, a rival method, a case that went the other way — and move on
+        without explaining it. In passing, in the middle of the piece. Never as the
+        closing line, and never flagged as a teaser: no "more on that another time."
+
+        State findings as prose, not as displayed arithmetic. Numbers are welcome.
+        Sums the reader is expected to follow are not: no line that is mostly an
+        equation, no chain of multiplications, no "divide by twelve, then multiply
+        by 0.7." Do the arithmetic yourself and write down what it shows.
+
+        End by changing how the reader sees something. Vary how you do it — reframe
+        a familiar object, land a consequence, leave a question standing, or stop on
+        the strongest concrete detail. NEVER open the closing paragraph with "Next
+        time", "So the next time", or "Look again at". That construction is banned.
+        Not a summary. Not "in conclusion." Not a restatement of the opening.
+
+        TITLES AND SUBTITLES
+        Titles in sentence case, and specific enough that a stranger choosing
+        between five of them can tell what they would be reading. A pun that names
+        nothing is not a title.
+
+        The subtitle may not contain the surprising claim. Its job is to make the
+        reader want the answer, not to supply it — if someone could read the
+        subtitle, skip the piece, and still know the reveal, the subtitle has taken
+        the lesson's payload. One line, not two sentences.
 
         FORMATTING
         bodyMarkdown uses markdown. Sectioned formats get "## " headings, one per
@@ -98,7 +171,8 @@ public enum Prompts {
         NEVER USE
         delve, moreover, furthermore, "it's important to note", "in today's world",
         "at its core", tapestry, "navigate the complexities", "game-changer", "the
-        fascinating world of", "let's dive in", "hopefully this helps".
+        fascinating world of", "let's dive in", "hopefully this helps", "next time
+        you", "so the next time".
 
         NEVER DO
         - Congratulate the reader or comment on the topic's quality.
@@ -119,8 +193,13 @@ public enum Prompts {
 
         READER CONTEXT
         You may be told what the reader works on, what interests them, and what
-        they have said they don't understand. Use it to choose examples and
-        calibrate depth. Never mention it back to them.
+        they have said they don't understand. Use it to calibrate depth and
+        register. Never mention it back to them.
+
+        Use the reader's work only where the topic genuinely calls for it — at most
+        one lesson in four. Most lessons should reach for whatever analogy fits the
+        subject, from anywhere. Never build the central analogy from the reader's
+        own field twice in a row.
         """
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -147,18 +226,42 @@ public enum Prompts {
         8. Any list that should be prose? Convert it.
         9. Any invented-sounding statistic or study? Remove the specific figure.
         10. Is it within the stated word budget? Cut rather than pad.
+        11. Is this one argument or two? If a second complete argument has grown
+            inside the body, cut it out and make it a deeper angle instead.
+        12. Count the "## " sections. Over the ceiling in the brief? Merge or cut
+            until it is under.
+        13. Does the closing paragraph open with "Next time", "So the next time",
+            or "Look again at"? Rewrite it. That construction is banned.
+        14. Is there displayed arithmetic — a line that is mostly an equation, or a
+            chain of sums the reader is expected to follow? State the finding in
+            prose and keep the numbers.
+        15. Does an analogy run past one paragraph, or carry its own heading? Cut
+            it back to the paragraph that did the work.
+        16. Does the subtitle state the surprising claim? Rewrite it so it makes
+            the reader want the answer. Is the title sentence case, and specific
+            enough to choose between five of them?
+        17. Is a named person's fate given a clause where it needs a paragraph?
+            Give it the room. Not sentiment — space.
+        18. Is one adjacent thing named and left unexplained, in passing and not in
+            the closing line? If not, add one.
 
         BANNED WORDS AND PHRASES
         Remove entirely: delve, moreover, furthermore, "it's important to note",
         "in today's world", "at its core", tapestry, "navigate the complexities",
         "game-changer", "the fascinating world of", "let's dive in", "hopefully
-        this helps".
+        this helps", "next time you", "so the next time".
 
         Reconsider, do not remove automatically: unlock, harness, leverage,
         landscape, realm. These are ordinary nouns and verbs a genuine topic can
         need — a lesson on carriages needs "harness," one on Constable needs
         "landscape." Cut one only where it's standing in for real thought, keep
         it where the topic calls for it.
+
+        Reconsider these pivots too: "here is the fact that", "here is the part
+        that", "here is the detail that", "that one fact reorganizes". They are
+        almost never doing work — the sentence is usually stronger stating the
+        fact and trusting it. Keep one only where the pivot is genuinely the
+        point.
 
         Revise in place, front to back. Do not reorder sections or chapters: the
         reader is already being shown your output as it arrives, so the opening

@@ -16,17 +16,40 @@ public enum LessonFormat: String, Codable, Sendable, CaseIterable {
         }
     }
 
+    /// The most "## " sections one unit of this format may carry.
+    ///
+    /// A ceiling, not a target: the first batch showed the failure this exists
+    /// to catch, which is a lesson quietly becoming two. A second good argument
+    /// arrives, gets its own heading, and the reader finishes tired instead of
+    /// wanting another one. Both the prompt and `LessonQualityCheck` read this
+    /// number, so they cannot disagree about what the limit is.
+    ///
+    /// For a mini-course the cap is *per chapter*. The chapter headings
+    /// themselves are the course's structure and are counted separately.
+    public var maxSections: Int {
+        switch self {
+        case .oneThing: return 0
+        case .explainer: return 3
+        case .lesson: return 5
+        case .miniCourse: return 3
+        }
+    }
+
     /// Structural instruction handed to the model.
+    ///
+    /// Interpolates `maxSections` rather than restating it, so the number the
+    /// model is told and the number the quality check enforces are the same
+    /// number.
     public var structureBrief: String {
         switch self {
         case .oneThing:
-            return "A single idea, explained properly. No sections. One concrete hook, one mechanism, one reason it matters."
+            return "A single idea, explained properly. No sections and no headings at all. One concrete hook, one mechanism, one reason it matters."
         case .explainer:
-            return "Three sections. One analogy that actually maps. One genuinely surprising detail."
+            return "At most \(maxSections) sections — a ceiling, not a target. One analogy that actually maps, one paragraph long. One genuinely surprising detail."
         case .lesson:
-            return "Four to five sections, including one worked example or case walked through in detail."
+            return "At most \(maxSections) sections — a ceiling, not a target — including one worked example or case walked through in detail."
         case .miniCourse:
-            return "Three to four chapters, each building on the last, each ending with a single reflection prompt."
+            return "\(chapterCount) chapters, each building on the last, at most \(maxSections) sections inside any one chapter, each ending with a single reflection prompt."
         }
     }
 
