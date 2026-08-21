@@ -252,6 +252,7 @@ public struct MockProvider: LessonProvider {
                 targetWords: perChapterTarget,
                 maximumWords: window.chapterWordBudget.upperBound,
                 sectioned: window.format != .oneThing,
+                maxSections: window.format.maxSections,
                 chapterNumber: chapterCount > 1 ? index + 1 : nil,
                 paragraphOffset: index * 3,
                 trailingReflection: window.format == .miniCourse
@@ -266,6 +267,7 @@ public struct MockProvider: LessonProvider {
         targetWords: Int,
         maximumWords: Int? = nil,
         sectioned: Bool,
+        maxSections: Int,
         chapterNumber: Int?,
         paragraphOffset: Int,
         trailingReflection: Bool
@@ -277,10 +279,27 @@ public struct MockProvider: LessonProvider {
         var sectionIndex = 0
 
         if let chapterNumber {
-            let heading = "## Chapter \(chapterNumber): \(sectionTitles[(chapterNumber - 1) % sectionTitles.count])"
+            let heading = LessonFormat.chapterHeading(
+                number: chapterNumber,
+                text: sectionTitles[(chapterNumber - 1) % sectionTitles.count]
+            )
             parts.append(heading)
             words += heading.lessonWordCount
         }
+
+        // Section breaks are spaced to land exactly `maxSections` headings in
+        // the finished body rather than one every fourth paragraph. The old
+        // rule produced eight headings in a 10-minute fixture, which is over
+        // the format's own ceiling -- so the fixtures would have failed the
+        // section-cap check while the prose they stand in for passed it.
+        let averageParagraphWords = max(
+            1,
+            fixtureParagraphs.reduce(0) { $0 + $1.lessonWordCount } / fixtureParagraphs.count
+        )
+        let expectedParagraphs = max(1, targetWords / averageParagraphWords)
+        let sectionInterval = maxSections > 0
+            ? max(1, Int((Double(expectedParagraphs) / Double(maxSections)).rounded(.up)))
+            : Int.max
 
         // Whole paragraphs only, so prose never ends mid-sentence -- which
         // means the fill has to stop *before* it would cross the ceiling
@@ -296,7 +315,8 @@ public struct MockProvider: LessonProvider {
         while words < targetWords {
             // A section break every fourth paragraph for sectioned, unchaptered
             // formats.
-            if sectioned, chapterNumber == nil, paragraphIndex % 4 == 0 {
+            if sectioned, chapterNumber == nil, sectionIndex < maxSections,
+               paragraphIndex % sectionInterval == 0 {
                 let heading = "## \(sectionTitles[sectionIndex % sectionTitles.count])"
                 parts.append(heading)
                 words += heading.lessonWordCount
@@ -359,7 +379,10 @@ public struct MockProvider: LessonProvider {
             "So the repair was not the expensive one. It was a handful of components, a small fraction of the total cost, doing their work invisibly to everyone who benefits from them.",
             "There is a bargain hidden in that. Something rigid enough never to move at all would be ruinously expensive and, under a real shock, brittle. The working answer is to accept motion and manage it, keeping it under the threshold where anyone files a complaint.",
             "Once you know the pattern you find it everywhere. The glass that rings at one pitch. The trolley that wobbles at exactly one speed. The shudder at 110 and not at 100. Each is a system with a preference meeting a push that happens to match it.",
-            "Next time \(subject) comes up, the interesting question is not what the effect is. It is what is quietly absorbing the energy, and what would happen to everything around it if that thing stopped.",
+            // Was "Next time \(subject) comes up..." -- the exact closing
+            // construction now banned outright, which would have made every
+            // fixture fail its own quality check.
+            "The interesting question about \(subject) is not what the effect is. It is what quietly absorbs the energy, and what would happen to everything around it if that thing stopped.",
         ]
     }
 

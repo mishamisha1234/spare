@@ -71,10 +71,105 @@ final class PromptsTests: XCTestCase {
         }
     }
 
+    /// The six structural notes from the first batch, each as a rule the model
+    /// is actually told. Matched against the prompt with newlines collapsed,
+    /// for the same reason the formatting test does it: these are source-wrapped
+    /// paragraphs, so a phrase can straddle a line break that reads as a plain
+    /// space to anything reading the rendered prompt.
+    func testEditorialPromptCarriesTheRulesFromTheFirstBatch() {
+        let prompt = Prompts.editorialSystemPrompt.replacingOccurrences(of: "\n", with: " ")
+        for required in [
+            // One argument per lesson
+            "ONE ARGUMENT PER LESSON",
+            "it does not become another section",
+            "becomes one of the deeper angles",
+            "ceiling, not a target",
+            // Give people room
+            "Give people room",
+            "A paragraph, not a clause",
+            // Analogies capped at a paragraph
+            "Keep an analogy to one paragraph",
+            "it has become a digression",
+            // Leave a door open
+            "Leave a door open",
+            "never flagged as a teaser",
+            // No displayed arithmetic
+            "not as displayed arithmetic",
+            "no line that is mostly an equation",
+            // Endings
+            "Vary how you do it",
+            "That construction is banned",
+            // Titles and subtitles
+            "TITLES AND SUBTITLES",
+            "Titles in sentence case",
+            "The subtitle may not contain the surprising claim",
+            // Reader context
+            "at most one lesson in four",
+            "twice in a row",
+        ] {
+            XCTAssertTrue(prompt.contains(required), "editorial prompt lost: \(required)")
+        }
+    }
+
+    /// Every banned closing opener has to be named in the prompt as well as
+    /// checked afterwards. A rule the model is never told is a rule it can only
+    /// fail.
+    func testEditorialPromptNamesEveryBannedClosingOpener() {
+        let prompt = Prompts.editorialSystemPrompt
+            .replacingOccurrences(of: "\n", with: " ")
+            .lowercased()
+        for opener in Prompts.bannedClosingOpeners {
+            XCTAssertTrue(prompt.contains(opener), "closing opener not named in the prompt: \(opener)")
+        }
+    }
+
+    func testRevisionPromptCarriesTheSameStructuralRules() {
+        let prompt = Prompts.revisionSystemPrompt.replacingOccurrences(of: "\n", with: " ")
+        for required in [
+            "Is this one argument or two?",
+            "Count the \"## \" sections",
+            "That construction is banned",
+            "displayed arithmetic",
+            "Does an analogy run past one paragraph",
+            "Does the subtitle state the surprising claim?",
+            "needs a paragraph",
+            "one adjacent thing named and left unexplained",
+        ] {
+            XCTAssertTrue(prompt.contains(required), "revision prompt lost: \(required)")
+        }
+    }
+
+    /// The section ceiling reaches the model through the structure brief and
+    /// reaches `LessonQualityCheck` through `maxSections`. They are the same
+    /// number because the brief interpolates it; this fails if anyone writes
+    /// the number out by hand again.
+    func testStructureBriefStatesTheSameCeilingTheCheckerEnforces() {
+        for window in TimeWindow.allCases {
+            let brief = window.format.structureBrief
+            let cap = window.format.maxSections
+            if cap == 0 {
+                XCTAssertTrue(
+                    brief.contains("No sections and no headings at all"),
+                    "\(window): a zero ceiling has to be stated as no headings"
+                )
+            } else {
+                XCTAssertTrue(
+                    brief.contains("\(cap) sections"),
+                    "\(window): brief does not state the \(cap)-section ceiling"
+                )
+            }
+        }
+    }
+
     func testEditorialPromptNamesEveryHardBannedPhrase() {
         let prompt = Prompts.editorialSystemPrompt.lowercased()
         for phrase in ["delve", "moreover", "furthermore", "tapestry", "game-changer"] {
             XCTAssertTrue(prompt.contains(phrase), "hard-banned phrase list lost: \(phrase)")
+        }
+        // Source-wrapped inside the list, so collapse before matching.
+        let unwrapped = prompt.replacingOccurrences(of: "\n", with: " ")
+        for phrase in ["next time you", "so the next time"] {
+            XCTAssertTrue(unwrapped.contains(phrase), "closing tic not in NEVER USE: \(phrase)")
         }
     }
 
@@ -114,9 +209,9 @@ final class PromptsTests: XCTestCase {
         }
     }
 
-    func testRevisionPromptListsAllTenChecksAndForbidsReordering() {
+    func testRevisionPromptListsEveryCheckAndForbidsReordering() {
         let prompt = Prompts.revisionSystemPrompt
-        for number in 1...10 {
+        for number in 1...18 {
             XCTAssertTrue(prompt.contains("\(number)."), "revision check \(number) missing")
         }
         XCTAssertTrue(prompt.contains("Do not explain your edits"))

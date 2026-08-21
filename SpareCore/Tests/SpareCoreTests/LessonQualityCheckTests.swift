@@ -38,6 +38,197 @@ final class LessonQualityCheckTests: XCTestCase {
         }
     }
 
+    // MARK: - Closing construction
+
+    /// The tic the first batch produced twelve times out of twelve, eight of
+    /// them with this exact opener.
+    func testFlagsTheClosingConstructionTheBatchKeptReachingFor() {
+        let body = "In 1954 the ward ran out of the drug and the patient died.\n\n"
+            + filler(words: 480)
+            + "\n\nNext time you pass one of those towers, the question is what it cost."
+        let findings = LessonQualityCheck.findings(for: lesson(body: body), window: .three)
+        XCTAssertTrue(findings.contains(.bannedClosingConstruction("next time")))
+    }
+
+    func testFlagsSoTheNextTimeAsItsOwnPhraseNotTheShorterOneInsideIt() {
+        let body = "In 1954 the ward ran out of the drug and the patient died.\n\n"
+            + filler(words: 480)
+            + "\n\nSo the next time a lamp flickers, you know what is behind it."
+        let findings = LessonQualityCheck.findings(for: lesson(body: body), window: .three)
+        XCTAssertTrue(findings.contains(.bannedClosingConstruction("so the next time")))
+    }
+
+    /// "Look again at" is banned in the closing position and nowhere else — a
+    /// perfectly good mid-argument sentence must survive.
+    func testDoesNotFlagABannedOpenerAwayFromTheClosingParagraph() {
+        let body = "In 1954 the ward ran out of the drug and the patient died.\n\n"
+            + "Look again at the 1693 tables and the error is obvious.\n\n"
+            + filler(words: 460)
+            + "\n\nThe machinery outlived the men who wound it, which is the whole story."
+        let findings = LessonQualityCheck.findings(for: lesson(body: body), window: .three)
+        XCTAssertFalse(findings.contains { finding in
+            if case .bannedClosingConstruction = finding { return true }
+            return false
+        })
+    }
+
+    /// The phrase is on the hard list as well, so it fails wherever it appears
+    /// — the closing check is about the construction, this is about the words.
+    func testNextTimeYouIsHardBannedAnywhereInTheBody() {
+        let body = "In 1954 the ward ran out. Next time you weigh flour, the ratio matters.\n\n"
+            + filler(words: 500)
+        let findings = LessonQualityCheck.findings(for: lesson(body: body), window: .three)
+        XCTAssertTrue(findings.contains(.bannedPhrase("next time you")))
+    }
+
+    // MARK: - Displayed arithmetic
+
+    func testFlagsASymbolicEquation() {
+        let body = "In 1954 someone measured it properly for the first time.\n\n"
+            + "\u{03C0} \u{00D7} (15 cm)\u{00B2} \u{00D7} 25 cm\n\n"
+            + filler(words: 480)
+        let findings = LessonQualityCheck.findings(for: lesson(body: body), window: .three)
+        XCTAssertTrue(findings.contains { finding in
+            if case .displayedArithmetic = finding { return true }
+            return false
+        })
+    }
+
+    func testFlagsArithmeticWrittenOutInWords() {
+        let body = "In 1954 someone measured it properly for the first time.\n\n"
+            + "Take 41,250 square degrees, divided by twelve, times 0.7.\n\n"
+            + filler(words: 480)
+        let findings = LessonQualityCheck.findings(for: lesson(body: body), window: .three)
+        XCTAssertTrue(findings.contains { finding in
+            if case .displayedArithmetic = finding { return true }
+            return false
+        })
+    }
+
+    /// A multiplier suffix is a fact, not a sum. One symbol is never enough.
+    func testAMultiplierIsNotDisplayedArithmetic() {
+        XCTAssertFalse(
+            LessonQualityCheck.isDisplayedArithmetic(
+                "The lamp was 2,400\u{00D7} brighter on the same 1 gallon of oil."
+            )
+        )
+    }
+
+    /// Two arithmetic words and no digits is ordinary prose. The digit
+    /// requirement is what stops the word forms firing on it.
+    func testTimesAndPlusInProseAreNotArithmetic() {
+        XCTAssertFalse(
+            LessonQualityCheck.isDisplayedArithmetic(
+                "He took it three times a day, plus a fourth dose in winter."
+            )
+        )
+    }
+
+    func testACountedFigureIsNotArithmetic() {
+        XCTAssertFalse(
+            LessonQualityCheck.isDisplayedArithmetic(
+                "In 1953, 1,836 people died in a single night."
+            )
+        )
+    }
+
+    // MARK: - Section ceiling
+
+    private func sectioned(_ count: Int, wordsEach: Int) -> String {
+        (0..<count)
+            .map { "## Section \($0) says something\n\n" + filler(words: wordsEach) }
+            .joined(separator: "\n\n")
+    }
+
+    func testFlagsMoreSectionsThanTheFormatAllows() {
+        let findings = LessonQualityCheck.findings(
+            for: lesson(body: sectioned(4, wordsEach: 440)), window: .ten
+        )
+        XCTAssertTrue(findings.contains(.tooManySections(count: 4, cap: 3, perChapter: false)))
+    }
+
+    func testThreeSectionsAtTenMinutesIsTheCeilingNotAViolation() {
+        let findings = LessonQualityCheck.findings(
+            for: lesson(body: sectioned(3, wordsEach: 590)), window: .ten
+        )
+        XCTAssertFalse(findings.contains { finding in
+            if case .tooManySections = finding { return true }
+            return false
+        })
+    }
+
+    /// The 3-minute format is allowed no headings at all, which is the same
+    /// rule expressed as a ceiling of zero.
+    func testAnySectionAtThreeMinutesIsOverTheCeiling() {
+        let findings = LessonQualityCheck.findings(
+            for: lesson(body: sectioned(1, wordsEach: 520)), window: .three
+        )
+        XCTAssertTrue(findings.contains(.tooManySections(count: 1, cap: 0, perChapter: false)))
+    }
+
+    private func course(chapters: Int, sectionsEach: Int) -> String {
+        (1...chapters)
+            .map { number in
+                LessonFormat.chapterHeading(number: number, text: "What it establishes")
+                    + "\n\n" + sectioned(sectionsEach, wordsEach: 400)
+            }
+            .joined(separator: "\n\n")
+    }
+
+    /// A course's chapter headings are its structure, not its sections —
+    /// counting them against the same ceiling would flag every course.
+    func testChapterHeadingsDoNotCountTowardsACoursesSectionCeiling() {
+        let findings = LessonQualityCheck.findings(
+            for: lesson(body: course(chapters: 4, sectionsEach: 3)), window: .thirty
+        )
+        XCTAssertFalse(findings.contains { finding in
+            if case .tooManySections = finding { return true }
+            return false
+        })
+    }
+
+    func testFlagsAChapterThatCarriesTooManySections() {
+        let body = course(chapters: 3, sectionsEach: 2)
+            + "\n\n" + LessonFormat.chapterHeading(number: 4, text: "The last one")
+            + "\n\n" + sectioned(5, wordsEach: 300)
+        let findings = LessonQualityCheck.findings(for: lesson(body: body), window: .thirty)
+        XCTAssertTrue(findings.contains(.tooManySections(count: 5, cap: 3, perChapter: true)))
+    }
+
+    // MARK: - Subtitle
+
+    /// Compared on stems, because the giveaway is a restatement rather than a
+    /// quotation: "they failed at geometry" and "the failure was geometric"
+    /// share no whole word at all.
+    func testFlagsASubtitleThatRestatesTheClaimInOtherWords() {
+        XCTAssertTrue(
+            LessonQualityCheck.subtitleGivesAwayClaim(
+                subtitle: "Gothic builders never came close to crushing their stone. They failed at geometry instead",
+                claim: "Their failure was geometric, never material: the stone was never near crushing"
+            )
+        )
+    }
+
+    func testASubtitleThatOnlyTeasesTheClaimSurvives() {
+        XCTAssertFalse(
+            LessonQualityCheck.subtitleGivesAwayClaim(
+                subtitle: "A jar of flour and water that has outlived several countries",
+                claim: "What a starter inherits is the arrangement of roles, not the organisms filling them"
+            )
+        )
+    }
+
+    /// Every fixture subtitle is a window label ("A 10-minute explainer"), too
+    /// short to compare against anything. Guarding the floor explicitly so a
+    /// future short subtitle cannot start failing on two coincidental stems.
+    func testAShortSubtitleIsNeverJudged() {
+        XCTAssertFalse(
+            LessonQualityCheck.subtitleGivesAwayClaim(
+                subtitle: "A 10-minute explainer", claim: "The correction is the cause"
+            )
+        )
+    }
+
     // MARK: - Banned phrases
 
     func testDetectsBannedPhrase() {

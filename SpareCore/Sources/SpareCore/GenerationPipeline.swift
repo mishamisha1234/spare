@@ -392,7 +392,7 @@ public struct GenerationPipeline: LessonProvider {
         // The heading has to reach the reader before the body it heads, and
         // it only exists once its own JSON field closes — so body deltas are
         // held until then, then flushed.
-        let headerPrefix = "## Chapter \(index + 1): "
+        let headerPrefix = "\(LessonFormat.chapterHeadingPrefix)\(index + 1): "
         var headingExtractor = StreamingJSONFieldExtractor(field: "heading")
         var pendingBody = ""
         var headerEmitted = false

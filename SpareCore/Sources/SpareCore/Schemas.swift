@@ -223,6 +223,7 @@ public struct ChapterResponse: Codable, Sendable, Equatable {
 
     /// Markdown with the chapter number applied.
     public func markdown(chapterNumber: Int) -> String {
-        "## Chapter \(chapterNumber): \(heading)\n\n\(bodyMarkdown)"
+        LessonFormat.chapterHeading(number: chapterNumber, text: heading)
+            + "\n\n\(bodyMarkdown)"
     }
 }

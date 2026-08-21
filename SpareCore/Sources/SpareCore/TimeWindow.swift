@@ -63,6 +63,20 @@ public enum LessonFormat: String, Codable, Sendable, CaseIterable {
     }
 
     public var isChaptered: Bool { chapterCount > 1 }
+
+    /// The literal prefix every chapter heading carries in an assembled course
+    /// body.
+    ///
+    /// Shared rather than written out at each site: `GenerationPipeline` emits
+    /// it, `MockProvider` mimics it, and `LessonQualityCheck` splits a course on
+    /// it to count sections per chapter. Three copies of the same string is
+    /// three chances for the section cap to start counting chapter headings as
+    /// sections.
+    public static let chapterHeadingPrefix = "## Chapter "
+
+    public static func chapterHeading(number: Int, text: String) -> String {
+        "\(chapterHeadingPrefix)\(number): \(text)"
+    }
 }
 
 /// Time is the input. Everything else in the app hangs off this choice.

@@ -16,6 +16,10 @@ public enum LessonQualityCheck {
         case closingRestatesOpening
         case wrongDeeperAngleCount(Int)
         case uniformSentenceLength(mean: Int)
+        case bannedClosingConstruction(String)
+        case displayedArithmetic(String)
+        case tooManySections(count: Int, cap: Int, perChapter: Bool)
+        case subtitleGivesAwayClaim
 
         public var description: String {
             switch self {
@@ -27,6 +31,15 @@ public enum LessonQualityCheck {
             case .closingRestatesOpening: return "closing paragraph echoes the opening"
             case .wrongDeeperAngleCount(let count): return "\(count) deeper angles, expected 3"
             case .uniformSentenceLength(let mean): return "sentence lengths uniform around \(mean) words"
+            case .bannedClosingConstruction(let opener):
+                return "closing paragraph opens with \"\(opener)\""
+            case .displayedArithmetic(let line):
+                return "displayed arithmetic: \"\(line.prefix(60))\""
+            case .tooManySections(let count, let cap, let perChapter):
+                let unit = perChapter ? " in one chapter" : ""
+                return "\(count) sections\(unit), ceiling is \(cap)"
+            case .subtitleGivesAwayClaim:
+                return "subtitle gives away the surprising claim"
             }
         }
     }
@@ -79,10 +92,148 @@ public enum LessonQualityCheck {
             findings.append(.uniformSentenceLength(mean: mean))
         }
 
+        if let opener = bannedClosingOpener(in: body) {
+            findings.append(.bannedClosingConstruction(opener))
+        }
+
+        if let line = displayedArithmetic(in: body) {
+            findings.append(.displayedArithmetic(line))
+        }
+
+        let cap = window.format.maxSections
+        let perChapter = window.format.isChaptered
+        if let worst = sectionCounts(in: body, chaptered: perChapter).max(), worst > cap {
+            findings.append(.tooManySections(count: worst, cap: cap, perChapter: perChapter))
+        }
+
+        if subtitleGivesAwayClaim(subtitle: lesson.subtitle, claim: lesson.surprisingClaim) {
+            findings.append(.subtitleGivesAwayClaim)
+        }
+
         return findings
     }
 
+    // MARK: - Closing construction
+
+    /// The one closing opener the whole batch reached for.
+    ///
+    /// Checked on the last prose paragraph only. `Prompts.bannedClosingOpeners`
+    /// includes "look again at", which is a perfectly good mid-argument
+    /// sentence — banning it everywhere would reject correct writing, which is
+    /// the same line the advisory list is drawn on.
+    static func bannedClosingOpener(in body: String) -> String? {
+        guard let last = proseParagraphs(body).last else { return nil }
+        let lowered = last.lowercased()
+        // Longest first, so a match reports the phrase actually written rather
+        // than a shorter one nested inside it.
+        return Prompts.bannedClosingOpeners
+            .sorted { $0.count > $1.count }
+            .first { lowered.hasPrefix($0) }
+    }
+
+    // MARK: - Displayed arithmetic
+
+    static let arithmeticSymbols: Set<Character> = ["\u{00D7}", "\u{00F7}", "=", "*", "^"]
+
+    /// Deliberately excludes "/" and "-": dates, ranges, and hyphenated words
+    /// would make them fire on ordinary prose.
+    static let arithmeticConnectives = [
+        " divided by ", " multiplied by ", " times ", " plus ", " minus ",
+        " squared", " cubed", " square root ",
+    ]
+
+    static func displayedArithmetic(in body: String) -> String? {
+        body
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty && !$0.hasPrefix("#") && isDisplayedArithmetic($0) }
+    }
+
+    /// "A line that is mostly an equation."
+    ///
+    /// Two digit runs are required before anything else is considered, and that
+    /// requirement is what keeps the word forms honest: "three times a day,
+    /// plus a fourth in winter" has two connectives and no digits, so it is
+    /// prose. "41,250 square degrees, divided by twelve, times 0.7" has both.
+    ///
+    /// A multiplier suffix is not an equation — "2,400x brighter" carries one
+    /// symbol and stays, which is why a single symbol is not enough on its own.
+    static func isDisplayedArithmetic(_ line: String) -> Bool {
+        guard numberRuns(in: line) >= 2 else { return false }
+        if line.contains("=") { return true }
+        if line.filter({ arithmeticSymbols.contains($0) }).count >= 2 { return true }
+        let padded = " " + line.lowercased() + " "
+        return arithmeticConnectives.filter { padded.contains($0) }.count >= 2
+    }
+
+    static func numberRuns(in text: String) -> Int {
+        var runs = 0
+        var inRun = false
+        for character in text {
+            if character.isNumber {
+                if !inRun { runs += 1 }
+                inRun = true
+            } else if character != "," && character != "." {
+                // A comma or a decimal point inside a figure keeps the run
+                // going, so 41,250 counts once rather than twice.
+                inRun = false
+            }
+        }
+        return runs
+    }
+
+    // MARK: - Section count
+
+    /// Sections per unit. One element for an unchaptered lesson; one per
+    /// chapter, plus a leading element for anything before the first chapter
+    /// heading, for a course.
+    ///
+    /// A course is counted per chapter because its chapter headings *are* its
+    /// structure — counting them against the same ceiling as body sections
+    /// would flag every course ever generated.
+    static func sectionCounts(in body: String, chaptered: Bool) -> [Int] {
+        var counts = [0]
+        for rawLine in body.split(separator: "\n") {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if chaptered, line.hasPrefix(LessonFormat.chapterHeadingPrefix) {
+                counts.append(0)
+            } else if line.hasPrefix("## ") {
+                counts[counts.count - 1] += 1
+            }
+        }
+        return counts
+    }
+
+    // MARK: - Subtitle
+
+    /// True when the subtitle has already told the reader the reveal.
+    ///
+    /// Compared on four-character stems rather than whole words, because the
+    /// giveaway is almost never a quotation: a claim about "the failure was
+    /// geometric" gets a subtitle saying "they failed at geometry instead", and
+    /// exact-word overlap sees nothing at all. Four is short enough to catch
+    /// failed/failure and geometry/geometric, long enough that the 0.5 ratio
+    /// still means something.
+    static func subtitleGivesAwayClaim(subtitle: String, claim: String) -> Bool {
+        let subtitleStems = stems(subtitle)
+        let claimStems = stems(claim)
+        guard subtitleStems.count >= 3, claimStems.count >= 3 else { return false }
+        let overlap = subtitleStems.intersection(claimStems).count
+        return Double(overlap) / Double(min(subtitleStems.count, claimStems.count)) > 0.5
+    }
+
+    static func stems(_ text: String) -> Set<String> {
+        Set(contentWords(text).map { String($0.prefix(4)) })
+    }
+
     // MARK: Helpers
+
+    static func proseParagraphs(_ body: String) -> [String] {
+        body
+            .components(separatedBy: "\n\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+    }
 
     static func firstSentence(of text: String) -> String? {
         let prose = text
@@ -124,10 +275,7 @@ public enum LessonQualityCheck {
     }
 
     static func closingRestatesOpening(_ body: String) -> Bool {
-        let paragraphs = body
-            .components(separatedBy: "\n\n")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+        let paragraphs = proseParagraphs(body)
         guard paragraphs.count >= 3,
               let first = paragraphs.first,
               let last = paragraphs.last else { return false }
