@@ -11,6 +11,7 @@ import {
   sseLesson,
   subscriptionStatus,
 } from "./fixtures";
+import { MAX_REQUESTS_PER_LESSON } from "../src/limits";
 import { NOW, call, callRaw, modelRequest, premiumReceipt, testEnv } from "./harness";
 
 /** Reads a device's counters straight out of its Durable Object. */
@@ -218,6 +219,41 @@ describe("one lesson is one charge, however many requests it takes", () => {
     });
     expect(other.status).toBe(402);
     expect(await other.json()).toMatchObject({ error: { code: "dailyLimitReached" } });
+  });
+
+  it("stops a device repeating one charged lesson forever", async () => {
+    // The bound on the fix above. Once a lesson is paid for its later requests
+    // are free, so without a ceiling a free device could send the same topic
+    // all day and generate every time — cheaper abuse than clearing the device
+    // id, which at least costs a reinstall.
+    const routes = [];
+    for (let index = 0; index < 20; index += 1) {
+      routes.push(anthropicStreaming(sseLesson(`Pass ${index}.`)));
+    }
+    const fetcher = fixtureFetch(routes);
+    const device = "repeat-forever-device";
+    const body = {
+      window: "three",
+      format: "oneThing",
+      topic: "The same lesson over and over",
+      request: modelRequest(),
+    };
+
+    let refusedAt = 0;
+    for (let attempt = 1; attempt <= 20; attempt += 1) {
+      const response = await call({ fetcher, device, body });
+      if (response.status !== 200) {
+        expect(await response.json()).toMatchObject({ error: { code: "dailyLimitReached" } });
+        refusedAt = attempt;
+        break;
+      }
+    }
+
+    // Generous enough that no honest client reaches it — a course is nine
+    // requests and the client retries three times — and finite.
+    expect(refusedAt, "a charged lesson must not be repeatable without limit").toBe(
+      MAX_REQUESTS_PER_LESSON + 1,
+    );
   });
 
   it("counts a whole course as one course, not one per chapter call", async () => {

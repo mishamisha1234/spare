@@ -26,6 +26,12 @@ export type DenialReason =
   | "courseCapReached"
   | "spendCeilingReached";
 
+export interface ChargedLesson {
+  key: string;
+  /** HTTP requests served under this charge, including retries. */
+  requests: number;
+}
+
 export interface UsageState {
   /** UTC day key, e.g. "2026-08-17". */
   day: string;
@@ -34,7 +40,7 @@ export interface UsageState {
   month: string;
   coursesThisMonth: number;
   /**
-   * Lesson keys already charged for today.
+   * Lessons charged for today, and how many requests each has been allowed.
    *
    * One lesson is several HTTP requests: a draft and a revision, and for a
    * course an outline plus four chapters twice over. Counting requests charged
@@ -46,8 +52,14 @@ export interface UsageState {
    * the key is already derived from window, format, and topic — facts the proxy
    * needs anyway — and a client-supplied "this is only the revision" flag would
    * be a free-generation switch for anyone who read the request.
+   *
+   * The count is what stops the fix becoming a worse hole than the bug. Once a
+   * lesson is paid for, its later requests are free — so without a bound, a free
+   * device could send the same topic all day and generate every time. Spoofing
+   * the device id already resets the allowance, but that costs a reinstall;
+   * repeating a request costs nothing.
    */
-  chargedKeys: string[];
+  chargedKeys: ChargedLesson[];
 }
 
 /**
@@ -72,14 +84,30 @@ export const SEEN_HISTORY_LIMIT = 400;
  */
 export const CHARGED_HISTORY_LIMIT = 100;
 
+/**
+ * How many requests one charged lesson may cover.
+ *
+ * A single lesson is two: a draft and a revision. A 30-minute course is nine: an
+ * outline plus four chapters twice over. Sixteen leaves room for the client's
+ * retry policy — three attempts per call — to burn a few extra on a flaky
+ * chapter without the reader losing the course.
+ *
+ * Past it, the lesson is refused as if it were a new one. That is not a limit
+ * any honest client can reach; it is the ceiling on what a dishonest one gets
+ * for a single day's allowance.
+ */
+export const MAX_REQUESTS_PER_LESSON = 16;
+
 /** Keeps the most recent `SEEN_HISTORY_LIMIT` entries, dropping the oldest. */
 function trimSeen(keys: string[]): string[] {
   return keys.length <= SEEN_HISTORY_LIMIT ? keys : keys.slice(-SEEN_HISTORY_LIMIT);
 }
 
-/** Same, for the day's charged keys. */
-function trimCharged(keys: string[]): string[] {
-  return keys.length <= CHARGED_HISTORY_LIMIT ? keys : keys.slice(-CHARGED_HISTORY_LIMIT);
+/** Same, for the day's charged lessons. */
+function trimCharged(charged: ChargedLesson[]): ChargedLesson[] {
+  return charged.length <= CHARGED_HISTORY_LIMIT
+    ? charged
+    : charged.slice(-CHARGED_HISTORY_LIMIT);
 }
 
 export function dayKey(now: number): string {
@@ -188,7 +216,20 @@ export class UsageCounter implements DurableObject {
     // one lesson to the reader and have to be one unit here. Allowed without a
     // tier check as well as without a charge: refusing the revision pass of a
     // lesson whose draft was allowed would leave the reader with half a lesson.
-    if (key && usage.chargedKeys.includes(key)) {
+    //
+    // Up to a point. See MAX_REQUESTS_PER_LESSON: an unbounded free repeat is a
+    // generate-forever loop for anyone who noticed it.
+    const charged = key ? usage.chargedKeys.find((entry) => entry.key === key) : undefined;
+    if (charged) {
+      if (charged.requests >= MAX_REQUESTS_PER_LESSON) {
+        return { allow: false, reason: "dailyLimitReached" };
+      }
+      await this.state.storage.put<UsageState>("usage", {
+        ...usage,
+        chargedKeys: usage.chargedKeys.map((entry) =>
+          entry.key === key ? { key, requests: entry.requests + 1 } : entry,
+        ),
+      });
       return { allow: true, servedFromCache: false };
     }
 
@@ -207,7 +248,9 @@ export class UsageCounter implements DurableObject {
       ...usage,
       lessonsToday: isPremium ? usage.lessonsToday : usage.lessonsToday + 1,
       coursesThisMonth: isChaptered ? usage.coursesThisMonth + 1 : usage.coursesThisMonth,
-      chargedKeys: key ? trimCharged([...usage.chargedKeys, key]) : usage.chargedKeys,
+      chargedKeys: key
+        ? trimCharged([...usage.chargedKeys, { key, requests: 1 }])
+        : usage.chargedKeys,
     });
 
     return { allow: true, servedFromCache: false };

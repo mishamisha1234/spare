@@ -114,6 +114,15 @@ say "this is only the revision, don't charge it". That is a free-generation
 switch for anyone who reads one request. Deriving the unit from facts the proxy
 needs anyway is the only version that does not depend on the client being honest.
 
+The charge covers a bounded number of requests — sixteen — and not an unlimited
+number, which is the part that stops the fix being worse than the bug it fixes.
+Once a lesson is paid for its later requests are free, so without a ceiling a
+free device could send one topic all day and generate every time. Spoofing the
+device id already resets the allowance, but that costs a reinstall; repeating a
+request costs nothing. Sixteen is out of reach for an honest client — a course is
+nine requests and the retry policy allows three attempts a call — and finite for
+a dishonest one.
+
 ### The outline needs its own endpoint
 
 `applyPolicy` sets `stream` from the endpoint and never from what the client
