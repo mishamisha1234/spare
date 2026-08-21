@@ -263,7 +263,7 @@ func run() async throws {
                 }
             } catch {
                 print(prefix + "  FAILED  " + describe(error))
-                if isFatal(error) {
+                if isFatal(error, producedAnything: !rows.isEmpty) {
                     print("")
                     print("Stopping: nothing further will succeed.")
                     printSummary(rows: rows, plan: plan, cost: runningCost, directory: options.outputDirectory)
@@ -278,7 +278,15 @@ func run() async throws {
 
 /// A refusal that means the rest of the run is pointless, rather than one lesson
 /// that happened not to work.
-func isFatal(_ error: Error) -> Bool {
+///
+/// `producedAnything` is the discriminator for the structural failures. A 502 is
+/// the proxy saying Anthropic refused what it built, and a 404 is an endpoint
+/// the deployed Worker does not have — neither is about the topic, so if the
+/// very first lesson hits one, the other seven will too. Today's run proved the
+/// point by spending eight topics and twenty-four attempts to say the same
+/// thing eight times. After something has succeeded, the same status is treated
+/// as one bad lesson and the run continues.
+func isFatal(_ error: Error, producedAnything: Bool) -> Bool {
     guard let providerError = error as? LessonProviderError else { return false }
     switch providerError {
     case .limited(let limit, _):
@@ -287,6 +295,8 @@ func isFatal(_ error: Error) -> Bool {
         return limit == .dailyLesson || limit == .lockedWindow || limit == .spendCeiling
     case .missingAPIKey:
         return true
+    case .httpStatus(let code, _):
+        return !producedAnything && (code == 502 || code == 404)
     default:
         return false
     }
