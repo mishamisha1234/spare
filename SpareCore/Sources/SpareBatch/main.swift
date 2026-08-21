@@ -292,6 +292,14 @@ func isFatal(_ error: Error) -> Bool {
     }
 }
 
+/// The reader-facing copy is the wrong thing to print here.
+///
+/// The first batch lost five lessons to "Anthropic is having trouble", which is
+/// what `ProviderErrorCopy` says for any status at or above 500 — and the proxy
+/// answers 502 both when Anthropic is down and when Anthropic refused what the
+/// proxy sent. One of those is worth retrying and the other is a bug, and the
+/// log could not tell them apart. It took reading the routing table to find out
+/// which it had been.
 func describe(_ error: Error) -> String {
     guard let providerError = error as? LessonProviderError else { return "\(error)" }
     switch providerError {
@@ -299,6 +307,17 @@ func describe(_ error: Error) -> String {
         return "the operator token was not accepted — check ADMIN_TOKEN on the Worker matches --token, and that it has been redeployed"
     case .limited(.spendCeiling, let message):
         return "spend ceiling reached — \(message)"
+    case .limited(let limit, let message):
+        return "refused: \(limit.rawValue) — \(message)"
+    case .httpStatus(let code, let message):
+        let detail = message.isEmpty ? ProviderErrorCopy.presentation(for: providerError).title : message
+        return "HTTP \(code) — \(detail)"
+    case .network(let message):
+        return "network — \(message)"
+    case .decoding(let message):
+        return "could not decode the response — \(message)"
+    case .malformedStream(let message):
+        return "malformed stream — \(message)"
     default:
         return ProviderErrorCopy.presentation(for: providerError).title
             + " — " + ProviderErrorCopy.presentation(for: providerError).message
