@@ -395,9 +395,47 @@ final class PromptsTests: XCTestCase {
     }
 
     func testRevisionTaskPromptCarriesBudgetAndDraft() {
-        let prompt = Prompts.revisionTaskPrompt(window: .ten, draftJSON: #"{"title":"x"}"#)
+        let prompt = Prompts.revisionTaskPrompt(
+            wordBudget: TimeWindow.ten.wordBudget, draftJSON: #"{"title":"x"}"#
+        )
         XCTAssertTrue(prompt.contains("1600"))
         XCTAssertTrue(prompt.contains(#"{"title":"x"}"#))
+    }
+
+    /// The bug that made every 30-minute course fail.
+    ///
+    /// A chapter's revision pass used to be handed `window.wordBudget` — the
+    /// whole course, 6,000 to 6,400 words — to revise a 1,550-word chapter
+    /// with. The revision prompt's tenth check is "is it within the stated word
+    /// budget?", so the model tried to write a course into a chapter and ran
+    /// past `max_tokens` every time.
+    ///
+    /// Asserted on the numbers rather than on which argument was passed,
+    /// because passing the wrong one is exactly the mistake.
+    func testAChapterRevisionIsGivenTheChaptersBudgetNotTheCourses() {
+        let window = TimeWindow.thirty
+        let prompt = Prompts.revisionTaskPrompt(
+            wordBudget: window.chapterWordBudget, draftJSON: "{}"
+        )
+        XCTAssertTrue(
+            prompt.contains("\(window.chapterWordBudget.upperBound)"),
+            "a chapter revision must state the chapter's budget"
+        )
+        XCTAssertFalse(
+            prompt.contains("\(window.wordBudget.upperBound)"),
+            "a chapter revision must never state the whole course's budget"
+        )
+    }
+
+    /// The other half: a whole lesson still gets the whole window.
+    func testALessonRevisionIsGivenTheWholeWindowsBudget() {
+        for window in TimeWindow.allCases where !window.format.isChaptered {
+            let prompt = Prompts.revisionTaskPrompt(
+                wordBudget: window.wordBudget, draftJSON: "{}"
+            )
+            XCTAssertTrue(prompt.contains("\(window.wordBudget.lowerBound)"), "\(window)")
+            XCTAssertTrue(prompt.contains("\(window.wordBudget.upperBound)"), "\(window)")
+        }
     }
 
     // MARK: - Placeholder hygiene
@@ -412,7 +450,12 @@ final class PromptsTests: XCTestCase {
                 topic: TopicSuggestion(title: "T", hook: "", domainTag: "D"),
                 window: .three, profile: .empty
             ),
-            "revision": Prompts.revisionTaskPrompt(window: .ten, draftJSON: "{}"),
+            "revision": Prompts.revisionTaskPrompt(
+                wordBudget: TimeWindow.ten.wordBudget, draftJSON: "{}"
+            ),
+            "chapterRevision": Prompts.revisionTaskPrompt(
+                wordBudget: TimeWindow.thirty.chapterWordBudget, draftJSON: "{}"
+            ),
             "outline": Prompts.outlineTaskPrompt(topic: topic, window: .thirty, profile: profile),
             "chapterFirst": Prompts.chapterTaskPrompt(
                 topic: topic, window: .thirty, profile: profile,

@@ -514,9 +514,28 @@ public enum Prompts {
         return PromptTemplate.render(lessonTaskTemplate, values)
     }
 
-    public static func revisionTaskPrompt(window: TimeWindow, draftJSON: String) -> String {
+    /// Takes the budget for the thing being revised, not the window.
+    ///
+    /// It used to take a `TimeWindow` and derive `window.wordBudget`, which is
+    /// right for a lesson and wrong for a chapter. A 30-minute course is four
+    /// chapters of 1,500 words; the revision pass for one of them was handed a
+    /// 1,550-word draft and told to target 6,000 to 6,400 words. The revision
+    /// prompt's tenth check is "is it within the stated word budget?", so the
+    /// model did as it was told and tried to write a whole course into a
+    /// chapter, ran past `max_tokens`, and the stream was cut off mid-sentence.
+    ///
+    /// Every 30-minute course failed this way. It was invisible for as long as
+    /// it was: the outline was being routed to a streaming endpoint, so nothing
+    /// ever reached a chapter to find out.
+    ///
+    /// A range rather than a window, so the caller has to say which budget it
+    /// means and cannot pick the wrong one by default.
+    public static func revisionTaskPrompt(
+        wordBudget: ClosedRange<Int>,
+        draftJSON: String
+    ) -> String {
         PromptTemplate.render(revisionTaskTemplate, [
-            "wordBudget": budgetPhrase(window.wordBudget),
+            "wordBudget": budgetPhrase(wordBudget),
             "draft": draftJSON,
         ])
     }

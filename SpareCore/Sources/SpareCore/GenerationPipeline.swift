@@ -380,8 +380,10 @@ public struct GenerationPipeline: LessonProvider {
             model: configuration.model,
             maxTokens: AnthropicAPI.maxTokens(for: window),
             system: Prompts.revisionSystemPrompt,
+            // The chapter's budget, not the course's. See the note on
+            // `revisionTaskPrompt`.
             messages: [.user(Prompts.revisionTaskPrompt(
-                window: window, draftJSON: draftJSON
+                wordBudget: window.chapterWordBudget, draftJSON: draftJSON
             ))],
             stream: true,
             effort: configuration.effort,
@@ -456,7 +458,10 @@ public struct GenerationPipeline: LessonProvider {
             model: configuration.model,
             maxTokens: AnthropicAPI.maxTokens(for: window),
             system: Prompts.revisionSystemPrompt,
-            messages: [.user(Prompts.revisionTaskPrompt(window: window, draftJSON: draftJSON))],
+            // A whole lesson, so the whole window's budget.
+            messages: [.user(Prompts.revisionTaskPrompt(
+                wordBudget: window.wordBudget, draftJSON: draftJSON
+            ))],
             stream: stream,
             effort: configuration.effort,
             outputSchema: Schemas.lesson,
