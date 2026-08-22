@@ -275,6 +275,41 @@ intended behaviour rather than a bug to work around.
 Roughly $3 and half an hour for all eight. Two passes per lesson doubles the
 obvious cost, and a course is an outline plus four chapters twice over.
 
+### Comparing models blind
+
+Naming more than one model runs the same topics through each of them and blinds
+the output:
+
+```
+gh workflow run "Lesson batch" -f confirm=spend   -f model=claude-opus-5,claude-sonnet-5,claude-haiku-4-5-20251001   -f per_window=1
+```
+
+That is four topics, one per length, through three models — twelve lessons for
+roughly $3.
+
+The lesson files are named by a random six-character id and carry no model, no
+cost, and no timing. Runs are shuffled and the log names lessons by id too,
+because watching the run is the normal way to use this and a log grouped by
+model gives the answer away before a file is opened. Everything withheld is in
+`KEY-open-after-reading.md`, alongside a per-model summary.
+
+Cost and elapsed time are withheld rather than dropped for a specific reason:
+they identify a model on sight. Haiku is a twentieth of Opus per token and
+several times faster, so one glance at a cost figure ends the blind. The
+markdown keeps words against budget and the quality findings, which is what
+there is to judge.
+
+The blind is enforced by a scatter of conditionals in the writer and cannot be
+unit-tested — `spare-batch` is an executable target, so none of it is
+importable. Instead the tool reads its own output back at the end of a run and
+says so loudly if any lesson file names a model.
+
+One caveat the key file repeats: Claude 4.7 and later use a newer tokenizer that
+produces roughly 30% more tokens for the same text. The dollar figures are exact,
+because each model is priced at its own published rate against its own reported
+usage, but token *counts* compared across models are not comparing like with
+like.
+
 ### What the first batch changed
 
 Twelve lessons, read as a commissioning editor would read them. The prose was
