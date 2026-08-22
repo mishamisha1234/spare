@@ -390,12 +390,26 @@ func run() async throws {
                 print("        - \(finding.description)")
             }
         } catch {
-            // Elapsed time on the failure line, not just the success line. A
-            // timeout reported without a duration is most of a diagnosis
-            // missing: "failed after 300s" names the wall it hit.
+            // Elapsed time and the calls that did complete, not just the error.
+            //
+            // A 30-minute course is nine calls and this printed one line for the
+            // whole lesson, so three separate investigations into a failing
+            // course each began by not knowing which of the nine broke. The
+            // ledger already records every call that succeeded; listing them
+            // says exactly how far the course got.
             let seconds = Date().timeIntervalSince(started)
+            let done = await ledger.events
             print(prefix + "  FAILED after " + String(format: "%.0f", seconds) + "s  "
                   + describe(error))
+            if done.isEmpty {
+                print("        no call completed — it failed on the first one")
+            } else {
+                let completed = done.map { $0.kind.rawValue }.joined(separator: ", ")
+                print("        \(done.count) call\(done.count == 1 ? "" : "s") completed: \(completed)")
+                let spent = done.reduce(0) { $0 + $1.estimatedCostUSD }
+                runningCost += spent
+                print("        spent \(CostEstimator.formatted(spent)) before it broke")
+            }
             if isFatal(error, producedAnything: !rows.isEmpty) {
                 print("")
                 print("Stopping: nothing further will succeed.")
