@@ -39,8 +39,9 @@ export const ALLOWED_MODELS = new Set([
  * for, with no headroom added — headroom here is money someone else can spend.
  *
  * 24,000 is `AnthropicAPI.maxTokens(for: .fifteen)`, the largest legitimate
- * single request. The 30-minute course asks for 16,000 per chapter and is
- * capped by the course limit, not by this.
+ * single request, and now also what a 30-minute course asks for per chapter —
+ * raised from 16,000 after the first course to get past the outline came back
+ * truncated. A course's total spend is capped by the course limit, not by this.
  */
 export const TOKEN_CEILINGS: Record<string, number> = {
   "/v1/suggestions": 4_000,

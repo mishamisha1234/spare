@@ -12,6 +12,16 @@ final class AnthropicWireTests: XCTestCase {
         XCTAssertEqual(AnthropicAPI.messagesURL?.absoluteString, "https://api.anthropic.com/v1/messages")
     }
 
+    /// Necessary, and nowhere near sufficient.
+    ///
+    /// This passed comfortably while a 30-minute chapter was truncating in
+    /// production: 1,600 words needs ~2,240 tokens of prose and the ceiling was
+    /// 16,000, so the assertion had seven times the headroom it was looking
+    /// for. What it cannot see is thinking, which does not scale with the prose
+    /// budget and is most of what a large call spends. A floor derived from
+    /// word count can only catch a ceiling that is absurdly low; the batch tool
+    /// against the live API is the only thing that catches one that is merely
+    /// too low.
     func testMaxTokensLeavesRoomForEveryBudget() {
         for window in TimeWindow.allCases {
             // Roughly 1.4 tokens per word, plus thinking headroom.

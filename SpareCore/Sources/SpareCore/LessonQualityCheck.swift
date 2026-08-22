@@ -133,7 +133,24 @@ public enum LessonQualityCheck {
 
     // MARK: - Displayed arithmetic
 
-    static let arithmeticSymbols: Set<Character> = ["\u{00D7}", "\u{00F7}", "=", "*", "^"]
+    /// Deliberately excludes "*".
+    ///
+    /// It is the multiplication sign in code and the italic marker in markdown,
+    /// and the editorial prompt tells the model to use italics — so every "*"
+    /// this will ever see is emphasis. It cost a false positive on its first
+    /// live run: a 200-word paragraph about Pacioli's *Summa* with two ordinary
+    /// figures in it was reported as displayed arithmetic. Multiplication in
+    /// prose is "\u{00D7}" anyway.
+    static let arithmeticSymbols: Set<Character> = ["\u{00D7}", "\u{00F7}", "=", "^"]
+
+    /// Longest a line can be and still be a *displayed* sum.
+    ///
+    /// The rule is "a line that is mostly an equation", and markdown puts a
+    /// whole paragraph on one line — so without a length guard, "mostly" was
+    /// measured across two hundred words of prose. A displayed calculation sits
+    /// on a line of its own: the two the editorial report objected to were eight
+    /// words and six.
+    static let displayedArithmeticWordLimit = 25
 
     /// Deliberately excludes "/" and "-": dates, ranges, and hyphenated words
     /// would make them fire on ordinary prose.
@@ -160,8 +177,17 @@ public enum LessonQualityCheck {
     /// symbol and stays, which is why a single symbol is not enough on its own.
     static func isDisplayedArithmetic(_ line: String) -> Bool {
         guard numberRuns(in: line) >= 2 else { return false }
+
+        // A chain of operators, or an equals sign, is a sum wherever it sits.
+        // Neither survives in ordinary prose.
         if line.contains("=") { return true }
         if line.filter({ arithmeticSymbols.contains($0) }).count >= 2 { return true }
+
+        // The written-out forms only count on a short line. In a long paragraph
+        // "times" and "plus" are ordinary English and two of them are a
+        // coincidence; on a line of its own, next to two figures, they are a
+        // calculation the reader is being asked to follow.
+        guard line.lessonWordCount <= displayedArithmeticWordLimit else { return false }
         let padded = " " + line.lowercased() + " "
         return arithmeticConnectives.filter { padded.contains($0) }.count >= 2
     }

@@ -17,7 +17,20 @@ public enum AnthropicAPI {
         case .three: return 8_000
         case .ten: return 16_000
         case .fifteen: return 24_000
-        case .thirty: return 16_000 // per chapter, generated one at a time
+        // Per chapter, generated one at a time. Raised from 16,000 after the
+        // first 30-minute course to get past the outline came back truncated
+        // mid-chapter: `stop_reason` was `max_tokens`.
+        //
+        // A chapter's prose is only ~1,550 words, which looks like it should fit
+        // in far less. Thinking is what does not scale down — it costs roughly
+        // the same per call whether the call writes 1,500 words or 3,000, so a
+        // smaller prose budget means thinking takes a larger share of the
+        // ceiling, not a smaller one. A 15-minute lesson writes nearly twice the
+        // words within 24,000 and is fine.
+        //
+        // Costs nothing to raise: max_tokens is a ceiling, not a reservation.
+        // Output is billed on what comes back.
+        case .thirty: return 24_000
         }
     }
 

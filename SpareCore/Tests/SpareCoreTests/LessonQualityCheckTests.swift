@@ -124,6 +124,42 @@ final class LessonQualityCheckTests: XCTestCase {
         )
     }
 
+    /// The first false positive this check produced against live prose.
+    ///
+    /// Markdown puts a whole paragraph on one line, and "*" is its italic
+    /// marker — so a 200-word paragraph mentioning Pacioli's *Summa*, with two
+    /// ordinary figures somewhere in it, read as two multiplication signs and
+    /// two numbers.
+    func testItalicsInALongParagraphAreNotAnEquation() {
+        let paragraph = "Datini died in 1410 and left roughly 150,000 letters and some 500"
+            + " account books, printed in Venice in the *Summa* and read ever since as"
+            + " the founding description of the method, though almost none of it is"
+            + " arithmetic and the parts that are read as bookkeeping rather than"
+            + " calculation, which is the distinction the whole chapter turns on and"
+            + " the reason the practice spread the way it did among merchants."
+        XCTAssertFalse(LessonQualityCheck.isDisplayedArithmetic(paragraph))
+    }
+
+    /// The other half of that fix: word arithmetic still has to be caught when
+    /// it is actually displayed, which means on a short line.
+    func testWordArithmeticOnAShortLineIsStillCaught() {
+        XCTAssertTrue(
+            LessonQualityCheck.isDisplayedArithmetic(
+                "Take 41,250 square degrees, divided by twelve, times 0.7."
+            )
+        )
+    }
+
+    /// And a symbolic sum is a sum wherever it sits, because neither a chain of
+    /// multiplication signs nor an equals sign survives in ordinary prose.
+    func testASymbolicSumIsCaughtEvenInsideALongLine() {
+        let paragraph = "The derivation runs \u{03C0} \u{00D7} (15 cm)\u{00B2} \u{00D7} 25 cm for"
+            + " the cylinder and then again for the cone, which is the point at which"
+            + " a reader on a bus stops reading and starts skimming, and the finding"
+            + " survives perfectly well stated as prose instead of as a derivation."
+        XCTAssertTrue(LessonQualityCheck.isDisplayedArithmetic(paragraph))
+    }
+
     func testACountedFigureIsNotArithmetic() {
         XCTAssertFalse(
             LessonQualityCheck.isDisplayedArithmetic(
