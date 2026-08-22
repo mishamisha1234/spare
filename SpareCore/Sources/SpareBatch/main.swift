@@ -300,14 +300,18 @@ func run() async throws {
     print("Spare lesson batch — real prompts, real pipeline")
     print("  proxy:  \(options.baseURL.absoluteString)")
     print("  output: \(options.outputDirectory.path)")
-    print("  \(total) lessons, two passes each; a 30-minute course is an outline plus 4 chapters x 2")
-    print("  reader: \(profile.work)")
+    let topicCount = runs.count / max(1, options.models.count)
     if options.isBlind {
-        print("  \(options.models.count) models, blinded — this log names lessons by id only")
-        print("  the mapping is in \(keyFilename), which is the file not to open first")
+        print("  plan:   \(topicCount) topics x \(options.models.count) models = \(total) lessons")
+        print("          every topic through every model, so the model is the only variable")
+        print("  blinded — this log names lessons by id only, and the mapping is in")
+        print("          \(keyFilename), which is the file not to open first")
     } else {
+        print("  plan:   \(total) lessons")
         print("  model:  \(options.models[0])")
     }
+    print("  two passes each; a 30-minute course is an outline plus 4 chapters x 2")
+    print("  reader: \(profile.work)")
     print("")
 
     var rows: [Row] = []
@@ -660,11 +664,52 @@ func printSummary(
     }
     print("")
 
+    if blind {
+        printBalance(rows: rows, models: options.models)
+    }
+
     writeCSV(rows: rows, blind: blind, directory: directory)
     if blind {
         verifyBlind(rows: rows, models: options.models, directory: directory)
         writeKey(rows: rows, options: options, cost: cost, directory: directory)
     }
+}
+
+/// How many versions of each topic survived.
+///
+/// A comparison needs the same subject from every model; a topic missing one is
+/// not comparable, and a topic down to a single version is not a comparison at
+/// all. A partly-failed run still writes a directory of perfectly readable
+/// lessons, and nothing about reading them says they are not the set that was
+/// asked for — the first run of this mode returned three lessons on three
+/// subjects that all happened to come from one model, and looked fine.
+///
+/// Says nothing about *which* model is missing: that would unblind by
+/// elimination. Only how many versions each topic has.
+func printBalance(rows: [Row], models: [String]) {
+    var versions: [String: Int] = [:]
+    for row in rows {
+        versions[row.topic, default: 0] += 1
+    }
+    let complete = versions.values.filter { $0 == models.count }.count
+
+    print("")
+    if !versions.isEmpty, complete == versions.count {
+        print("Comparable: all \(complete) topics have a version from each of the"
+              + " \(models.count) models.")
+        return
+    }
+
+    print("INCOMPLETE COMPARISON")
+    print("")
+    print("  \(complete) of \(versions.count) topics have all \(models.count) versions.")
+    for (topic, count) in versions.sorted(by: { $0.key < $1.key }) where count < models.count {
+        print("    \(count)/\(models.count)  \(topic)")
+    }
+    print("")
+    print("  A topic missing a version cannot be compared: any difference between")
+    print("  the versions that did arrive is the subject, not the model. Fix the")
+    print("  failures above and re-run before reading these as a comparison.")
 }
 
 /// Reads the blinded files back and checks that none of them names a model.
@@ -724,6 +769,27 @@ func writeCSV(rows: [Row], blind: Bool, directory: URL) {
     )
 }
 
+/// One line at the top of the key file about whether the set is comparable.
+///
+/// Repeated there rather than left in the run log, because the log scrolls past
+/// and the artifact is what gets read a week later.
+func balanceNote(rows: [Row], models: [String]) -> String {
+    var versions: [String: Int] = [:]
+    for row in rows {
+        versions[row.topic, default: 0] += 1
+    }
+    let incomplete = versions.filter { $0.value < models.count }
+    guard !incomplete.isEmpty else {
+        return "All \(versions.count) topics have a version from each of the "
+            + "\(models.count) models, so every difference below is the model."
+    }
+    let names = incomplete.keys.sorted().map { "*\($0)*" }.joined(separator: ", ")
+    return "**This set is not a complete comparison.** \(incomplete.count) of "
+        + "\(versions.count) topics are missing at least one model's version: \(names). "
+        + "Any difference read between the versions that did arrive is the subject, "
+        + "not the model."
+}
+
 /// The mapping, plus everything the blinded output had to withhold.
 func writeKey(rows: [Row], options: Options, cost: Double, directory: URL) {
     var out = """
@@ -738,6 +804,8 @@ func writeKey(rows: [Row], options: Options, cost: Double, directory: URL) {
     blind test.
 
     Reader profile: \(profile.work).
+
+    \(balanceNote(rows: rows, models: options.models))
 
     ## By lesson
 
