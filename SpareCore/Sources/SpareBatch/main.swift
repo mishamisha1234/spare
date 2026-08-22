@@ -281,6 +281,54 @@ struct Row {
     }
 }
 
+// MARK: - Preflight
+
+/// Checks the proxy will accept every model before generating anything.
+///
+/// The first comparison run spent an hour discovering that eight of its twelve
+/// lessons used models the deployed proxy did not allow. Nothing was wrong with
+/// the run: the allowlist lives on the server, the client cannot see it, and the
+/// only way to find out was to send a real request. So send a tiny one first.
+///
+/// One token, to an unmetered endpoint, per model. It costs a hundredth of a
+/// penny and it turns an hour and several dollars into thirty seconds.
+func preflight(models: [String], options: Options) async throws {
+    let transport = FoundationHTTPTransport()
+    let route = ProxyRoute(
+        baseURL: options.baseURL,
+        deviceID: options.deviceID,
+        operatorToken: options.token
+    )
+
+    for model in models {
+        let probe = MessagesRequest(
+            model: model,
+            maxTokens: 1,
+            messages: [.user("ok")],
+            stream: false,
+            effort: nil,
+            cacheSystemPrompt: false
+        )
+        let request = try await route.httpRequest(
+            for: probe, kind: .recallQuestion, context: .plain(window: .three)
+        )
+        let response = try await transport.send(request)
+        guard response.isSuccess else {
+            let error = HTTPTransportMapper.providerError(
+                status: response.statusCode, body: response.body
+            )
+            throw Failure(
+                "the proxy will not accept \"\(model)\": \(describe(error))\n"
+                + "         nothing has been generated. If this is modelNotAllowed, the\n"
+                + "         deployed Worker predates the model reaching ALLOWED_MODELS —\n"
+                + "         redeploy it with `cd server; npx wrangler deploy`."
+            )
+        }
+        print("  ok      \(model)")
+    }
+    print("")
+}
+
 // MARK: - Run
 
 func run() async throws {
@@ -313,6 +361,8 @@ func run() async throws {
     print("  two passes each; a 30-minute course is an outline plus 4 chapters x 2")
     print("  reader: \(profile.work)")
     print("")
+
+    try await preflight(models: options.models, options: options)
 
     var rows: [Row] = []
     var runningCost = 0.0
@@ -448,7 +498,11 @@ func isFatal(_ error: Error, producedAnything: Bool) -> Bool {
     case .missingAPIKey:
         return true
     case .httpStatus(let code, _):
-        return !producedAnything && (code == 502 || code == 404)
+        // 400 joins these: the proxy rebuilds every request from an allowlist,
+        // so a 400 is it refusing the shape of what it was handed — a model it
+        // will not pay for, a body over the size limit. None of that is about
+        // the topic, so the next topic will fail identically.
+        return !producedAnything && (code == 400 || code == 404 || code == 502)
     default:
         return false
     }
