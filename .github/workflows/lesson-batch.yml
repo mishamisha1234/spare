@@ -2,6 +2,12 @@ name: Lesson batch
 
 # Manual only, and never on push.
 #
+# Naming more than one model in `model` turns this into a blind comparison: the
+# same topics go through each model, the lesson files are named by a random id
+# with no model, cost, or timing in them, and the mapping lands in a separate
+# KEY- file. The run log is blinded too, since watching the run is the normal
+# way to use this.
+#
 # This is the one workflow in the repo that makes real API calls and spends real
 # money. It is deliberately a separate file from ci.yml so that "CI never makes
 # real API calls" stays true of CI, and so nothing here can be triggered by a
@@ -25,6 +31,14 @@ on:
           - ten
           - fifteen
           - thirty
+      model:
+        description: 'Model(s), comma separated. Two or more blinds the output.'
+        required: false
+        default: ''
+      per_window:
+        description: 'Topics per length (blank = all of them)'
+        required: false
+        default: ''
 
 jobs:
   batch:
@@ -79,6 +93,12 @@ jobs:
           args="--out $GITHUB_WORKSPACE/lessons"
           if [ -n "${{ inputs.only }}" ]; then
             args="$args --only ${{ inputs.only }}"
+          fi
+          if [ -n "${{ inputs.model }}" ]; then
+            args="$args --model ${{ inputs.model }}"
+          fi
+          if [ -n "${{ inputs.per_window }}" ]; then
+            args="$args --per-window ${{ inputs.per_window }}"
           fi
           swift run --package-path SpareCore -c release spare-batch $args | tee "$GITHUB_WORKSPACE/batch-log.txt"
 

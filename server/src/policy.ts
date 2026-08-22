@@ -18,8 +18,21 @@
  * means a field the proxy has never heard of cannot reach Anthropic at all.
  */
 
-/** Models the proxy will pay for. Mirrors `AnthropicAPI.model` in SpareCore. */
-export const ALLOWED_MODELS = new Set(["claude-opus-5"]);
+/**
+ * Models the proxy will pay for.
+ *
+ * The app only ever asks for `AnthropicAPI.model`. The other two are here for
+ * the batch tool, which runs one set of topics through several models to
+ * compare them, and they are safe to allow for the reason the allowlist exists
+ * in the first place: both are cheaper than the model already on the list, so
+ * nothing a spoofed client can name here costs more than what it could already
+ * ask for.
+ */
+export const ALLOWED_MODELS = new Set([
+  "claude-opus-5",
+  "claude-sonnet-5",
+  "claude-haiku-4-5-20251001",
+]);
 
 /**
  * Per-endpoint `max_tokens` ceilings, taken from what the app actually asks

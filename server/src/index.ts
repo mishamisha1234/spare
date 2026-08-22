@@ -301,7 +301,11 @@ async function handleUnmetered(
   if (!upstream.ok) return passUpstreamError(upstream);
 
   const text = await upstream.text();
-  recordSpendFromBody(text, env, ctx, hooks, now);
+  recordSpendFromBody(
+      text,
+      typeof modelRequest.model === "string" ? modelRequest.model : undefined,
+      env, ctx, hooks, now,
+    );
   return new Response(text, { status: 200, headers: JSON_HEADERS });
 }
 
@@ -411,7 +415,11 @@ async function handleGeneration(
 
   if (!streaming) {
     const text = await upstream.text();
-    recordSpendFromBody(text, env, ctx, hooks, now);
+    recordSpendFromBody(
+      text,
+      typeof modelRequest.model === "string" ? modelRequest.model : undefined,
+      env, ctx, hooks, now,
+    );
     return new Response(text, { status: 200, headers: JSON_HEADERS });
   }
 
@@ -421,7 +429,11 @@ async function handleGeneration(
     upstream,
     async (fullBody) => {
       const parsed = parseCompletedStream(fullBody);
-      const cost = estimateCostUSD(parsed.inputTokens, parsed.outputTokens);
+      const cost = estimateCostUSD(
+        parsed.inputTokens,
+        parsed.outputTokens,
+        typeof modelRequest.model === "string" ? modelRequest.model : undefined,
+      );
       await recordSpend(env, cost, hooks, now);
 
       // Only cache a stream that actually finished. Caching a truncated one
@@ -587,6 +599,7 @@ async function recordSpend(env: Env, usd: number, hooks: Hooks, now: number): Pr
 /** Non-streaming responses carry usage in the body. */
 function recordSpendFromBody(
   text: string,
+  model: string | undefined,
   env: Env,
   ctx: ExecutionContext,
   hooks: Hooks,
@@ -599,6 +612,7 @@ function recordSpendFromBody(
         const cost = estimateCostUSD(
           Number(parsed.usage?.input_tokens ?? 0),
           Number(parsed.usage?.output_tokens ?? 0),
+          model,
         );
         await recordSpend(env, cost, hooks, now);
       } catch {

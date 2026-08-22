@@ -95,6 +95,89 @@ final class CostEstimatorTests: XCTestCase {
         )
     }
 
+    // MARK: - Per-model pricing
+
+    /// Published list prices, checked against the numbers rather than against
+    /// each other, so a transcription slip is visible.
+    func testEachModelIsPricedAtItsPublishedRate() {
+        let expected: [String: (input: Double, output: Double)] = [
+            "claude-opus-5": (5, 25),
+            "claude-sonnet-5": (2, 10),
+            "claude-haiku-4-5-20251001": (1, 5),
+        ]
+        for (model, prices) in expected {
+            let pricing = CostEstimator.pricing(for: model)
+            XCTAssertEqual(pricing.inputPerMillion, prices.input, "\(model) input")
+            XCTAssertEqual(pricing.outputPerMillion, prices.output, "\(model) output")
+        }
+        XCTAssertEqual(CostEstimator.modelPricing.count, expected.count)
+    }
+
+    func testAMillionTokensCostsTheListedAmount() {
+        let usage = TokenUsage(inputTokens: 1_000_000, outputTokens: 1_000_000)
+        XCTAssertEqual(CostEstimator.cost(of: usage, model: "claude-opus-5"), 30, accuracy: 0.0001)
+        XCTAssertEqual(CostEstimator.cost(of: usage, model: "claude-sonnet-5"), 12, accuracy: 0.0001)
+        XCTAssertEqual(
+            CostEstimator.cost(of: usage, model: "claude-haiku-4-5-20251001"), 6, accuracy: 0.0001
+        )
+    }
+
+    /// The point of the table. The comparison run reports a cost per lesson, and
+    /// pricing every model at the app's model's rate would make the cheap ones
+    /// look five times more expensive than they are.
+    func testTheSameTokensCostDifferentAmountsOnDifferentModels() {
+        let usage = TokenUsage(inputTokens: 40_000, outputTokens: 8_000)
+        let opus = CostEstimator.cost(of: usage, model: "claude-opus-5")
+        let sonnet = CostEstimator.cost(of: usage, model: "claude-sonnet-5")
+        let haiku = CostEstimator.cost(of: usage, model: "claude-haiku-4-5-20251001")
+        XCTAssertGreaterThan(opus, sonnet)
+        XCTAssertGreaterThan(sonnet, haiku)
+        XCTAssertEqual(opus / haiku, 5, accuracy: 0.0001)
+    }
+
+    /// Over-estimating a bill is recoverable; under-estimating it is what the
+    /// spend ceiling exists to prevent.
+    func testAnUnknownModelIsPricedAtTheMostExpensiveKnownRate() {
+        let usage = TokenUsage(inputTokens: 10_000, outputTokens: 2_000)
+        XCTAssertEqual(
+            CostEstimator.cost(of: usage, model: "some-model-nobody-has-priced"),
+            CostEstimator.cost(of: usage, model: AnthropicAPI.model)
+        )
+        for pricing in CostEstimator.modelPricing.values {
+            XCTAssertLessThanOrEqual(
+                pricing.outputPerMillion,
+                CostEstimator.pricing(for: AnthropicAPI.model).outputPerMillion,
+                "the fallback must not be cheaper than a real model"
+            )
+        }
+    }
+
+    /// A usage event has carried a model since it was written. It used to price
+    /// itself at the app's model regardless, which is invisible with one model
+    /// and wrong with three.
+    func testAUsageEventPricesItselfAtItsOwnModel() {
+        let usage = TokenUsage(inputTokens: 100_000, outputTokens: 20_000)
+        let opus = UsageEvent(
+            kind: .lessonDraft, model: "claude-opus-5", usage: usage, occurredAt: Date()
+        )
+        let haiku = UsageEvent(
+            kind: .lessonDraft, model: "claude-haiku-4-5-20251001", usage: usage, occurredAt: Date()
+        )
+        XCTAssertEqual(opus.estimatedCostUSD / haiku.estimatedCostUSD, 5, accuracy: 0.0001)
+    }
+
+    func testCacheMultipliersApplyToTheModelsOwnInputRate() {
+        let cached = TokenUsage(inputTokens: 0, outputTokens: 0, cacheReadInputTokens: 1_000_000)
+        // A cache read is a tenth of that model's input price: $0.50 on Opus,
+        // $0.10 on Haiku.
+        XCTAssertEqual(
+            CostEstimator.cost(of: cached, model: "claude-opus-5"), 0.5, accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            CostEstimator.cost(of: cached, model: "claude-haiku-4-5-20251001"), 0.1, accuracy: 0.0001
+        )
+    }
+
     func testFormattingShowsSubCentValuesWithoutRoundingToZero() {
         XCTAssertEqual(CostEstimator.formatted(0.004), "$0.004")
         XCTAssertEqual(CostEstimator.formatted(0.42), "$0.42")

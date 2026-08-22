@@ -49,7 +49,11 @@ public struct UsageEvent: Sendable, Codable, Equatable {
         self.model = model
         self.usage = usage
         self.occurredAt = occurredAt
-        self.estimatedCostUSD = estimatedCostUSD ?? CostEstimator.cost(of: usage)
+        // Priced at the model that produced it. The event has carried a model
+        // since it was written; the cost ignored it and used the app's model's
+        // prices, which is invisible while there is only one model and wrong
+        // the moment there is more than one.
+        self.estimatedCostUSD = estimatedCostUSD ?? CostEstimator.cost(of: usage, model: model)
     }
 }
 

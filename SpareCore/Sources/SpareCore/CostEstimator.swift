@@ -5,12 +5,49 @@ import Foundation
 /// characters rather than tokenized, and the two-pass pipeline doubles output.
 public enum CostEstimator {
 
+    /// What one model's tokens cost.
+    public struct ModelPricing: Sendable, Equatable {
+        public var inputPerMillion: Double
+        public var outputPerMillion: Double
+
+        public init(inputPerMillion: Double, outputPerMillion: Double) {
+            self.inputPerMillion = inputPerMillion
+            self.outputPerMillion = outputPerMillion
+        }
+    }
+
+    /// Published list prices, per million tokens.
+    ///
+    /// Only the base input and output rates differ between models; the cache
+    /// multipliers below are the same 1.25x and 0.1x for all of them, so they
+    /// stay separate rather than being repeated three times.
+    ///
+    /// This table exists because the batch tool can run one set of topics
+    /// through several models to compare them, and a comparison whose cost
+    /// column is computed at one model's prices is worse than no cost column.
+    public static let modelPricing: [String: ModelPricing] = [
+        "claude-opus-5": ModelPricing(inputPerMillion: 5, outputPerMillion: 25),
+        "claude-sonnet-5": ModelPricing(inputPerMillion: 2, outputPerMillion: 10),
+        "claude-haiku-4-5-20251001": ModelPricing(inputPerMillion: 1, outputPerMillion: 5),
+    ]
+
+    /// Falls back to the generation model's prices for anything unlisted.
+    ///
+    /// That is the most expensive entry in the table, which keeps the old
+    /// behaviour of over-estimating rather than under-estimating a bill. It is
+    /// the right default for the app, where the only model in play is the one
+    /// it ships with; the batch tool names its models explicitly and never
+    /// relies on it.
+    public static func pricing(for model: String) -> ModelPricing {
+        modelPricing[model] ?? modelPricing[AnthropicAPI.model]!
+    }
+
     /// USD per million tokens for the generation model (claude-opus-5).
-    public static let inputPricePerMillion = 5.00
-    public static let outputPricePerMillion = 25.00
-    /// Cached input reads bill at roughly a tenth of the input rate.
+    public static var inputPricePerMillion: Double { pricing(for: AnthropicAPI.model).inputPerMillion }
+    public static var outputPricePerMillion: Double { pricing(for: AnthropicAPI.model).outputPerMillion }
+    /// Cached input reads bill at a tenth of the input rate.
     public static let cacheReadMultiplier = 0.1
-    /// Cache writes bill at roughly 1.25x the input rate.
+    /// Five-minute cache writes bill at 1.25x the input rate.
     public static let cacheWriteMultiplier = 1.25
 
     /// Characters per token for English prose. Deliberately conservative:
@@ -27,13 +64,14 @@ public enum CostEstimator {
         estimatedTokens(forCharacters: Int(Double(words) * 5.7))
     }
 
-    public static func cost(of usage: TokenUsage) -> Double {
-        let input = Double(usage.inputTokens) / 1_000_000 * inputPricePerMillion
-        let output = Double(usage.outputTokens) / 1_000_000 * outputPricePerMillion
+    public static func cost(of usage: TokenUsage, model: String = AnthropicAPI.model) -> Double {
+        let prices = pricing(for: model)
+        let input = Double(usage.inputTokens) / 1_000_000 * prices.inputPerMillion
+        let output = Double(usage.outputTokens) / 1_000_000 * prices.outputPerMillion
         let cacheWrite = Double(usage.cacheCreationInputTokens) / 1_000_000
-            * inputPricePerMillion * cacheWriteMultiplier
+            * prices.inputPerMillion * cacheWriteMultiplier
         let cacheRead = Double(usage.cacheReadInputTokens) / 1_000_000
-            * inputPricePerMillion * cacheReadMultiplier
+            * prices.inputPerMillion * cacheReadMultiplier
         return input + output + cacheWrite + cacheRead
     }
 

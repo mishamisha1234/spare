@@ -133,13 +133,32 @@ export function parseCompletedStream(body: string): { text: string; inputTokens:
 }
 
 /**
- * Cost estimate, mirroring `CostEstimator` in SpareCore so the server's
+ * Cost estimate, mirroring `CostEstimator.pricing` in SpareCore so the server's
  * ceiling and the app's usage ledger agree about what a call cost.
+ *
+ * Per-model since the batch tool started comparing models: charging Haiku's
+ * tokens at Opus's rates overstates the ledger fivefold, and the ledger is what
+ * the monthly ceiling reads.
  */
-export const PRICE_PER_MTOK_INPUT = 5;
-export const PRICE_PER_MTOK_OUTPUT = 25;
+export const MODEL_PRICES: Record<string, { input: number; output: number }> = {
+  "claude-opus-5": { input: 5, output: 25 },
+  "claude-sonnet-5": { input: 2, output: 10 },
+  "claude-haiku-4-5-20251001": { input: 1, output: 5 },
+};
 
-export function estimateCostUSD(inputTokens: number, outputTokens: number): number {
-  return (inputTokens / 1_000_000) * PRICE_PER_MTOK_INPUT
-    + (outputTokens / 1_000_000) * PRICE_PER_MTOK_OUTPUT;
+/** The generation model's prices, and the fallback for anything unlisted. */
+export const PRICE_PER_MTOK_INPUT = MODEL_PRICES["claude-opus-5"].input;
+export const PRICE_PER_MTOK_OUTPUT = MODEL_PRICES["claude-opus-5"].output;
+
+export function estimateCostUSD(
+  inputTokens: number,
+  outputTokens: number,
+  model?: string,
+): number {
+  // Unlisted models fall back to the most expensive entry, so an unknown model
+  // can never make the ceiling read low.
+  const prices = (model !== undefined ? MODEL_PRICES[model] : undefined)
+    ?? { input: PRICE_PER_MTOK_INPUT, output: PRICE_PER_MTOK_OUTPUT };
+  return (inputTokens / 1_000_000) * prices.input
+    + (outputTokens / 1_000_000) * prices.output;
 }
