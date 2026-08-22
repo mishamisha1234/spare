@@ -45,10 +45,16 @@ jobs:
     name: Generate lessons
     runs-on: ubuntu-latest
     container: swift:6.1
-    # Eight lessons at two passes each, and a course is an outline plus four
-    # chapters twice over. Sequential, because the point is readable output and
-    # a truthful per-lesson cost, not speed.
-    timeout-minutes: 90
+    # Sequential, because the point is readable output and a truthful per-lesson
+    # cost, not speed. That makes the ceiling a function of the largest run this
+    # is used for rather than the usual one.
+    #
+    # Measured: a 30-minute course is about 28 minutes on Opus, a 15-minute
+    # lesson about 5, and the shorter ones a minute or two. A full comparison —
+    # eight topics through three models — is roughly two and a half hours, and
+    # the old 90-minute ceiling would have killed it two thirds of the way in
+    # after spending the money.
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
 

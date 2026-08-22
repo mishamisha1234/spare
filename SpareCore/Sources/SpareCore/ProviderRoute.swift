@@ -88,7 +88,8 @@ public struct DirectRoute: ProviderRoute {
         return HTTPRequest(
             url: url,
             headers: MessagesRequest.headers(apiKey: key),
-            body: try request.encodedBody()
+            body: try request.encodedBody(),
+            timeout: AnthropicAPI.timeout(for: kind)
         )
     }
 }
@@ -219,7 +220,8 @@ public struct ProxyRoute: ProviderRoute {
         return HTTPRequest(
             url: url,
             headers: headers,
-            body: try Self.encode(JSONValue.object(envelope))
+            body: try Self.encode(JSONValue.object(envelope)),
+            timeout: AnthropicAPI.timeout(for: kind)
         )
     }
 

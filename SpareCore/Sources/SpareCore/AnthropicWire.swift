@@ -37,6 +37,36 @@ public enum AnthropicAPI {
     public static var messagesURL: URL? {
         URL(string: baseURL + messagesPath)
     }
+
+    /// How long one call may take before it is abandoned.
+    ///
+    /// Two values rather than one, because the calls are not the same size. A
+    /// recall question is a few hundred tokens and hanging for a quarter of an
+    /// hour would only ever be a fault; a chapter of a 30-minute course is
+    /// 24,000 tokens of thinking and prose and legitimately takes minutes.
+    ///
+    /// The generation figure is set from a failure rather than a guess. Raising
+    /// the 30-minute ceiling from 16,000 stopped the chapters truncating and
+    /// started them timing out instead — the same call, given room to finish,
+    /// ran past the flat 300 seconds every request used to get. A ceiling that
+    /// cuts off a call which is still streaming correctly throws away the whole
+    /// chapter, so it wants to be generous: this only ever bounds a call that
+    /// has genuinely stopped.
+    ///
+    /// Worth knowing when reading it: `URLRequest.timeoutInterval` is an idle
+    /// timer on Darwin — reset every time bytes arrive — and swift-corelibs on
+    /// Linux is stricter, which is where the batch tool runs. The value has to
+    /// be big enough to survive the stricter reading, so it is the whole
+    /// duration of the longest legitimate call, not the longest legitimate gap.
+    public static func timeout(for kind: UsageKind) -> TimeInterval {
+        switch kind {
+        case .suggestions, .recallQuestion, .postLessonTest, .courseOutline:
+            return 180
+        case .lessonDraft, .lessonRevision, .chapterDraft, .chapterRevision,
+             .goDeeperDraft, .goDeeperRevision:
+            return 900
+        }
+    }
 }
 
 /// Effort level for `output_config`.

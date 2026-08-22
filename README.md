@@ -284,8 +284,10 @@ the output:
 gh workflow run "Lesson batch" -f confirm=spend   -f model=claude-opus-5,claude-sonnet-5,claude-haiku-4-5-20251001   -f per_window=1
 ```
 
-That is four topics, one per length, through three models — twelve lessons for
-roughly $3.
+Leave `per_window` blank for the full set: eight topics through three models is
+twenty-four lessons, roughly $11 and about two and a half hours. `-f
+per_window=1` cuts it to one topic per length — twelve lessons, roughly $3 — for
+a cheaper look.
 
 The lesson files are named by a random six-character id and carry no model, no
 cost, and no timing. Runs are shuffled and the log names lessons by id too,

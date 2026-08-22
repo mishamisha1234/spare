@@ -12,6 +12,46 @@ final class AnthropicWireTests: XCTestCase {
         XCTAssertEqual(AnthropicAPI.messagesURL?.absoluteString, "https://api.anthropic.com/v1/messages")
     }
 
+    // MARK: - Timeouts
+
+    /// Set from a failure, not a guess: raising the 30-minute ceiling stopped
+    /// the chapters truncating and started them timing out at the flat 300
+    /// seconds every request used to get.
+    func testGenerationCallsGetLongerThanTheSmallOnes() {
+        let generation: [UsageKind] = [
+            .lessonDraft, .lessonRevision, .chapterDraft, .chapterRevision,
+            .goDeeperDraft, .goDeeperRevision,
+        ]
+        let small: [UsageKind] = [.suggestions, .recallQuestion, .postLessonTest, .courseOutline]
+
+        for kind in generation {
+            XCTAssertGreaterThanOrEqual(AnthropicAPI.timeout(for: kind), 900, "\(kind)")
+        }
+        for kind in small {
+            XCTAssertLessThanOrEqual(AnthropicAPI.timeout(for: kind), 300, "\(kind)")
+        }
+    }
+
+    /// A call cut off while it is still streaming correctly loses the whole
+    /// chapter, so the ceiling has to clear the slowest honest call. 24,000
+    /// tokens at a pessimistic 40 a second is ten minutes.
+    func testTheGenerationTimeoutClearsTheSlowestHonestCall() {
+        let slowestTokensPerSecond = 40.0
+        for window in TimeWindow.allCases {
+            let worstCase = Double(AnthropicAPI.maxTokens(for: window)) / slowestTokensPerSecond
+            XCTAssertGreaterThanOrEqual(
+                AnthropicAPI.timeout(for: .chapterDraft), worstCase,
+                "\(window) could stream for longer than the timeout allows"
+            )
+        }
+    }
+
+    func testEveryKindHasATimeout() {
+        for kind in UsageKind.allCases {
+            XCTAssertGreaterThan(AnthropicAPI.timeout(for: kind), 0, "\(kind)")
+        }
+    }
+
     /// Necessary, and nowhere near sufficient.
     ///
     /// This passed comfortably while a 30-minute chapter was truncating in

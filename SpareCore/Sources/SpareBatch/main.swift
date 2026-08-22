@@ -348,8 +348,8 @@ func run() async throws {
             operatorToken: options.token
         )
 
+        let started = Date()
         do {
-            let started = Date()
             let lesson = try await provider.generateLesson(
                 topic: run.suggestion, window: window, profile: profile
             )
@@ -390,7 +390,12 @@ func run() async throws {
                 print("        - \(finding.description)")
             }
         } catch {
-            print(prefix + "  FAILED  " + describe(error))
+            // Elapsed time on the failure line, not just the success line. A
+            // timeout reported without a duration is most of a diagnosis
+            // missing: "failed after 300s" names the wall it hit.
+            let seconds = Date().timeIntervalSince(started)
+            print(prefix + "  FAILED after " + String(format: "%.0f", seconds) + "s  "
+                  + describe(error))
             if isFatal(error, producedAnything: !rows.isEmpty) {
                 print("")
                 print("Stopping: nothing further will succeed.")
