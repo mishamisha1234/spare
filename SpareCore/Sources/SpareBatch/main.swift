@@ -283,16 +283,31 @@ struct Row {
 
 // MARK: - Preflight
 
-/// Checks the proxy will accept every model before generating anything.
+/// What a model turned out to accept, and the effort setting to use for it.
+struct ModelSupport {
+    let model: String
+    /// Nil where the model rejects `output_config.effort`, so the pipeline must
+    /// go without it.
+    let effort: Effort?
+    /// True when the model accepted the exact shape a generation call sends.
+    let usableAsIs: Bool
+}
+
+/// Checks the proxy and the model will accept a real request before generating
+/// anything.
 ///
 /// The first comparison run spent an hour discovering that eight of its twelve
-/// lessons used models the deployed proxy did not allow. Nothing was wrong with
-/// the run: the allowlist lives on the server, the client cannot see it, and the
-/// only way to find out was to send a real request. So send a tiny one first.
+/// lessons named models the deployed proxy did not allow. The second spent forty
+/// minutes discovering that one of the three rejected the request shape: the
+/// first version of this check sent a bare message with no `output_config`, so
+/// it proved the allowlist and nothing else, and every real call carries an
+/// effort setting and a JSON schema in exactly that field.
 ///
-/// One token, to an unmetered endpoint, per model. It costs a hundredth of a
-/// penny and it turns an hour and several dollars into thirty seconds.
-func preflight(models: [String], options: Options) async throws {
+/// So the probes are progressive, and the last one is the real shape. Four
+/// sixteen-token calls per model to an unmetered endpoint: it costs a fraction
+/// of a penny and it names the field rather than leaving "invalid_request_error"
+/// to be guessed at.
+func preflight(models: [String], options: Options) async throws -> [ModelSupport] {
     let transport = FoundationHTTPTransport()
     let route = ProxyRoute(
         baseURL: options.baseURL,
@@ -300,33 +315,101 @@ func preflight(models: [String], options: Options) async throws {
         operatorToken: options.token
     )
 
-    for model in models {
-        let probe = MessagesRequest(
+    let trivialSchema = JSONValue.object([
+        "type": .string("object"),
+        "properties": .object(["ok": .object(["type": .string("string")])]),
+        "required": .array([.string("ok")]),
+        "additionalProperties": .bool(false),
+    ])
+
+    func accepts(_ request: MessagesRequest) async -> String? {
+        do {
+            let http = try await route.httpRequest(
+                for: request, kind: .recallQuestion, context: .plain(window: .three)
+            )
+            let response = try await transport.send(http)
+            guard response.isSuccess else {
+                return describe(HTTPTransportMapper.providerError(
+                    status: response.statusCode, body: response.body
+                ))
+            }
+            return nil
+        } catch {
+            return describe(error)
+        }
+    }
+
+    func probe(_ model: String, effort: Effort?, schema: JSONValue?) -> MessagesRequest {
+        MessagesRequest(
             model: model,
-            maxTokens: 1,
-            messages: [.user("ok")],
+            maxTokens: schema == nil ? 16 : 64,
+            messages: [.user("Reply with ok.")],
             stream: false,
-            effort: nil,
+            effort: effort,
+            outputSchema: schema,
             cacheSystemPrompt: false
         )
-        let request = try await route.httpRequest(
-            for: probe, kind: .recallQuestion, context: .plain(window: .three)
-        )
-        let response = try await transport.send(request)
-        guard response.isSuccess else {
-            let error = HTTPTransportMapper.providerError(
-                status: response.statusCode, body: response.body
-            )
+    }
+
+    var support: [ModelSupport] = []
+
+    for model in models {
+        // The real shape first. When it works — the usual case — that is one
+        // call and the rest are never sent.
+        if await accepts(probe(model, effort: .high, schema: trivialSchema)) == nil {
+            print("  ok        \(model)")
+            support.append(ModelSupport(model: model, effort: .high, usableAsIs: true))
+            continue
+        }
+
+        // It did not. Take the shape apart to say which half is the problem,
+        // rather than reporting "invalid_request_error" and leaving it there.
+        let plain = await accepts(probe(model, effort: nil, schema: nil))
+        let withEffort = await accepts(probe(model, effort: .high, schema: nil))
+        let withSchema = await accepts(probe(model, effort: nil, schema: trivialSchema))
+
+        if let plain {
             throw Failure(
-                "the proxy will not accept \"\(model)\": \(describe(error))\n"
-                + "         nothing has been generated. If this is modelNotAllowed, the\n"
+                "\(model) refuses even a plain request: \(plain)\n"
+                + "         Nothing has been generated. If this says modelNotAllowed, the\n"
                 + "         deployed Worker predates the model reaching ALLOWED_MODELS —\n"
-                + "         redeploy it with `cd server; npx wrangler deploy`."
+                + "         redeploy with `cd server; npx wrangler deploy`."
             )
         }
-        print("  ok      \(model)")
+
+        if let withSchema {
+            throw Failure(
+                "\(model) rejects structured output: \(withSchema)\n"
+                + "         The pipeline parses every response against a schema, so this\n"
+                + "         model cannot be used at all. Drop it from --model."
+            )
+        }
+
+        guard withEffort != nil else {
+            throw Failure(
+                "\(model) accepts effort and schema separately but not together.\n"
+                + "         Nothing has been generated; this needs looking at by hand."
+            )
+        }
+
+        // Effort is the odd one out, and it is the one the pipeline can do
+        // without. Reported loudly, because a model generating without effort
+        // control is not running the same experiment as the others — that is
+        // the reader's call to make, not something to bury.
+        print("  ok        \(model) — WITHOUT effort control")
+        print("            it rejects output_config.effort: \(withEffort ?? "")")
+        support.append(ModelSupport(model: model, effort: nil, usableAsIs: false))
+    }
+
+    let adapted = support.filter { !$0.usableAsIs }
+    if !adapted.isEmpty {
+        print("")
+        print("  NOTE: \(adapted.count) of \(support.count) models are generating without")
+        print("        effort control, so they are not running quite the same request as")
+        print("        the others. The key file records which.")
     }
     print("")
+    return support
 }
 
 // MARK: - Run
@@ -362,7 +445,10 @@ func run() async throws {
     print("  reader: \(profile.work)")
     print("")
 
-    try await preflight(models: options.models, options: options)
+    let support = try await preflight(models: options.models, options: options)
+    let effortByModel = Dictionary(
+        uniqueKeysWithValues: support.map { ($0.model, $0.effort) }
+    )
 
     var rows: [Row] = []
     var runningCost = 0.0
@@ -388,13 +474,27 @@ func run() async throws {
         // A ledger per lesson, so the cost reported is this lesson's and not a
         // share of the run. Every call the pipeline makes lands here, which is
         // also how the call count is honest for chaptered formats.
+        // Nil where preflight found the model rejects output_config.effort.
+        // Written out rather than coalesced, because the dictionary's values are
+        // themselves optional and `?? .high` on a double optional is a good way
+        // to turn a deliberate nil back into .high without noticing.
+        let modelEffort: Effort?
+        if let probed = effortByModel[run.model] {
+            modelEffort = probed
+        } else {
+            modelEffort = .high
+        }
+
         let ledger = InMemoryUsageLedger()
         let provider = ProxyProvider(
             transport: FoundationHTTPTransport(),
             baseURL: options.baseURL,
             deviceID: options.deviceID,
             ledger: ledger,
-            configuration: ProxyProvider.Configuration(model: run.model),
+            configuration: ProxyProvider.Configuration(
+                model: run.model,
+                effort: modelEffort
+            ),
             operatorToken: options.token
         )
 
@@ -465,7 +565,8 @@ func run() async throws {
                 print("Stopping: nothing further will succeed.")
                 printSummary(
                     rows: rows, plan: plan, cost: runningCost,
-                    options: options, directory: options.outputDirectory
+                    options: options, support: support,
+                    directory: options.outputDirectory
                 )
                 return
             }
@@ -474,7 +575,7 @@ func run() async throws {
 
     printSummary(
         rows: rows, plan: plan, cost: runningCost,
-        options: options, directory: options.outputDirectory
+        options: options, support: support, directory: options.outputDirectory
     )
 }
 
@@ -648,6 +749,7 @@ func printSummary(
     plan: [TimeWindow],
     cost: Double,
     options: Options,
+    support: [ModelSupport],
     directory: URL
 ) {
     let blind = options.isBlind
@@ -744,7 +846,10 @@ func printSummary(
     writeCSV(rows: rows, blind: blind, directory: directory)
     if blind {
         verifyBlind(rows: rows, models: options.models, directory: directory)
-        writeKey(rows: rows, options: options, cost: cost, directory: directory)
+        writeKey(
+            rows: rows, options: options, support: support,
+            cost: cost, directory: directory
+        )
     }
 }
 
@@ -864,7 +969,13 @@ func balanceNote(rows: [Row], models: [String]) -> String {
 }
 
 /// The mapping, plus everything the blinded output had to withhold.
-func writeKey(rows: [Row], options: Options, cost: Double, directory: URL) {
+func writeKey(
+    rows: [Row],
+    options: Options,
+    support: [ModelSupport],
+    cost: Double,
+    directory: URL
+) {
     var out = """
     # Which model wrote which
 
@@ -891,6 +1002,14 @@ func writeKey(rows: [Row], options: Options, cost: Double, directory: URL) {
         out += "| `\(row.id)` | \(row.model) | \(row.window.label) | \(row.topic) |"
             + " \(row.words) | \(row.verdict) | \(row.findings.count) |"
             + " \(CostEstimator.formatted(row.costUSD)) | \(Int(row.seconds)) |\n"
+    }
+
+    let adapted = support.filter { !$0.usableAsIs }.map(\.model)
+    if !adapted.isEmpty {
+        out += "\n> **Not quite the same request.** \(adapted.joined(separator: ", ")) "
+        out += "rejects `output_config.effort`, so it generated without effort control "
+        out += "while the others used `high`. Any difference you read may be that, not "
+        out += "the model.\n"
     }
 
     out += "\n## By model\n\n"
