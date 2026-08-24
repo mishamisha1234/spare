@@ -89,8 +89,9 @@ export const STREAMING_ENDPOINTS = new Set(["/v1/lesson", "/v1/chapter"]);
  * course's floor would refuse every chapter ever written.
  */
 export const WORD_FLOORS: Record<string, number> = {
+  one: 180,
   three: 500,
-  ten: 1600,
+  seven: 1100,
   fifteen: 2400,
   thirty: 6000,
 };

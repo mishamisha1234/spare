@@ -356,21 +356,21 @@ final class PromptsTests: XCTestCase {
     }
 
     func testLessonTaskPromptInjectsReaderContext() {
-        let prompt = Prompts.lessonTaskPrompt(topic: topic, window: .ten, profile: profile)
+        let prompt = Prompts.lessonTaskPrompt(topic: topic, window: .seven, profile: profile)
         XCTAssertTrue(prompt.contains("physiotherapist"))
         XCTAssertTrue(prompt.contains("economic history"))
         XCTAssertTrue(prompt.contains("how interest rates actually work"))
     }
 
     func testEmptyProfileFieldsRenderAsUnstated() {
-        let prompt = Prompts.lessonTaskPrompt(topic: topic, window: .ten, profile: .empty)
+        let prompt = Prompts.lessonTaskPrompt(topic: topic, window: .seven, profile: .empty)
         XCTAssertTrue(prompt.contains("Works in: unstated"))
         XCTAssertTrue(prompt.contains("Interested in: unstated"))
     }
 
     func testLessonTaskPromptOmitsAngleWhenThereIsNoHook() {
         let bare = TopicSuggestion(title: "Bare", hook: "", domainTag: "D")
-        let prompt = Prompts.lessonTaskPrompt(topic: bare, window: .ten, profile: profile)
+        let prompt = Prompts.lessonTaskPrompt(topic: bare, window: .seven, profile: profile)
         XCTAssertFalse(prompt.contains("Angle to take:"))
     }
 
@@ -412,14 +412,14 @@ final class PromptsTests: XCTestCase {
                 completedAt: Date().addingTimeInterval(TimeInterval(-$0 * 60))
             )
         }
-        let prompt = Prompts.suggestionTaskPrompt(window: .ten, profile: profile, history: history)
+        let prompt = Prompts.suggestionTaskPrompt(window: .seven, profile: profile, history: history)
         XCTAssertTrue(prompt.contains("Lesson 0"))
         XCTAssertTrue(prompt.contains("Lesson 29"))
         XCTAssertFalse(prompt.contains("Lesson 30"), "history window is the last 30 lessons")
     }
 
     func testEmptyHistoryIsStatedExplicitly() {
-        let prompt = Prompts.suggestionTaskPrompt(window: .ten, profile: profile, history: [])
+        let prompt = Prompts.suggestionTaskPrompt(window: .seven, profile: profile, history: [])
         XCTAssertTrue(prompt.contains(Prompts.noHistoryPlaceholder))
     }
 
@@ -447,7 +447,7 @@ final class PromptsTests: XCTestCase {
 
     func testGoDeeperTaskPromptNamesParentAndForbidsRepetition() {
         let prompt = Prompts.goDeeperTaskPrompt(
-            window: .ten, profile: profile, parentTitle: "Why bridges hum",
+            window: .seven, profile: profile, parentTitle: "Why bridges hum",
             angle: DeeperAngle(text: "How a tuned mass damper works")
         )
         XCTAssertTrue(prompt.contains("Why bridges hum"))
@@ -458,7 +458,7 @@ final class PromptsTests: XCTestCase {
 
     func testRevisionTaskPromptCarriesBudgetAndDraft() {
         let prompt = Prompts.revisionTaskPrompt(
-            wordBudget: TimeWindow.ten.wordBudget, draftJSON: #"{"title":"x"}"#
+            wordBudget: TimeWindow.seven.wordBudget, draftJSON: #"{"title":"x"}"#
         )
         XCTAssertTrue(prompt.contains("1600"))
         XCTAssertTrue(prompt.contains(#"{"title":"x"}"#))
@@ -507,13 +507,13 @@ final class PromptsTests: XCTestCase {
     func testNoRenderedPromptLeaksAPlaceholder() {
         let lesson = MockProvider.fixtureLesson(topic: topic, window: .three)
         let rendered: [String: String] = [
-            "lesson": Prompts.lessonTaskPrompt(topic: topic, window: .ten, profile: profile),
+            "lesson": Prompts.lessonTaskPrompt(topic: topic, window: .seven, profile: profile),
             "lessonNoHook": Prompts.lessonTaskPrompt(
                 topic: TopicSuggestion(title: "T", hook: "", domainTag: "D"),
                 window: .three, profile: .empty
             ),
             "revision": Prompts.revisionTaskPrompt(
-                wordBudget: TimeWindow.ten.wordBudget, draftJSON: "{}"
+                wordBudget: TimeWindow.seven.wordBudget, draftJSON: "{}"
             ),
             "chapterRevision": Prompts.revisionTaskPrompt(
                 wordBudget: TimeWindow.thirty.chapterWordBudget, draftJSON: "{}"
@@ -528,12 +528,12 @@ final class PromptsTests: XCTestCase {
                 chapterNumber: 4, heading: "H", previousHeadings: ["a", "b", "c"]
             ),
             "suggestion": Prompts.suggestionTaskPrompt(
-                window: .ten, profile: profile, history: []
+                window: .seven, profile: profile, history: []
             ),
             "recall": Prompts.recallTaskPrompt(lesson: lesson),
             "postLessonTest": Prompts.postLessonTestTaskPrompt(lesson: lesson),
             "goDeeper": Prompts.goDeeperTaskPrompt(
-                window: .ten, profile: profile, parentTitle: "P", angle: DeeperAngle(text: "A")
+                window: .seven, profile: profile, parentTitle: "P", angle: DeeperAngle(text: "A")
             ),
         ]
 

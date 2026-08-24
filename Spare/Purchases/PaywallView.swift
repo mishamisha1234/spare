@@ -27,7 +27,7 @@ struct PaywallView: View {
         let lessons = EntitlementRules.freeLessonsPerDay == 1
             ? "one lesson a day"
             : "\(EntitlementRules.freeLessonsPerDay) lessons a day"
-        return "Free gives you the 3- and 10-minute lengths, \(lessons), and your last \(EntitlementRules.freeLibraryLimit) library entries."
+        return "Free gives you the 3- and 7-minute lengths, \(lessons), and your last \(EntitlementRules.freeLibraryLimit) library entries."
     }
 
     let trigger: PaywallTrigger

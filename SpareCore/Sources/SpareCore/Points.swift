@@ -10,12 +10,18 @@ import Foundation
 /// worth rewarding.
 public enum Points {
 
-    /// 10 / 20 / 30 / 60 by window length — the same ascending order as the
-    /// four durations themselves.
+    /// 5 / 10 / 15 / 30 / 60 by window length — the same ascending order as the
+    /// five durations themselves.
+    ///
+    /// Deliberately sublinear at the top and generous at the bottom. A minute
+    /// is worth half a three-minute lesson rather than a third of it, because
+    /// the thing being rewarded is coming back, and the 1-minute length is what
+    /// somebody reaches for on a day they would otherwise read nothing.
     public static func forCompleting(_ window: TimeWindow) -> Int {
         switch window {
+        case .one: return 5
         case .three: return 10
-        case .ten: return 20
+        case .seven: return 15
         case .fifteen: return 30
         case .thirty: return 60
         }

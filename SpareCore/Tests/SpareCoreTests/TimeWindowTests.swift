@@ -3,27 +3,33 @@ import XCTest
 
 final class TimeWindowTests: XCTestCase {
 
-    func testAllFourWindowsInOrder() {
-        XCTAssertEqual(TimeWindow.allCases, [.three, .ten, .fifteen, .thirty])
+    /// Ascending, and the order is load-bearing: `allCases` is what Home lays
+    /// out and what the batch tool iterates.
+    func testAllFiveWindowsInAscendingOrder() {
+        XCTAssertEqual(TimeWindow.allCases, [.one, .three, .seven, .fifteen, .thirty])
     }
 
     func testMinutes() {
+        XCTAssertEqual(TimeWindow.one.minutes, 1)
         XCTAssertEqual(TimeWindow.three.minutes, 3)
-        XCTAssertEqual(TimeWindow.ten.minutes, 10)
+        XCTAssertEqual(TimeWindow.seven.minutes, 7)
         XCTAssertEqual(TimeWindow.fifteen.minutes, 15)
         XCTAssertEqual(TimeWindow.thirty.minutes, 30)
     }
 
     func testWordBudgetsMatchSpec() {
+        XCTAssertEqual(TimeWindow.one.wordBudget, 180...240)
         XCTAssertEqual(TimeWindow.three.wordBudget, 500...650)
-        XCTAssertEqual(TimeWindow.ten.wordBudget, 1600...2000)
+        XCTAssertEqual(TimeWindow.seven.wordBudget, 1100...1400)
         XCTAssertEqual(TimeWindow.fifteen.wordBudget, 2400...3000)
         XCTAssertEqual(TimeWindow.thirty.wordBudget, 6000...6400)
     }
 
     func testFormatsMatchSpec() {
+        // One minute and three minutes are the same shape at different depths.
+        XCTAssertEqual(TimeWindow.one.format, .oneThing)
         XCTAssertEqual(TimeWindow.three.format, .oneThing)
-        XCTAssertEqual(TimeWindow.ten.format, .explainer)
+        XCTAssertEqual(TimeWindow.seven.format, .explainer)
         XCTAssertEqual(TimeWindow.fifteen.format, .lesson)
         XCTAssertEqual(TimeWindow.thirty.format, .miniCourse)
     }
@@ -51,7 +57,7 @@ final class TimeWindowTests: XCTestCase {
     }
 
     func testSingleSittingCirclesKeepTheirDurationAndCarryNoSubtitle() {
-        for window in [TimeWindow.three, .ten, .fifteen] {
+        for window in [TimeWindow.one, .three, .seven, .fifteen] {
             XCTAssertEqual(window.circleTitle, window.label)
             XCTAssertNil(window.circleSubtitle, "\(window) is one sitting; its title already says so")
         }
@@ -73,6 +79,19 @@ final class TimeWindowTests: XCTestCase {
         XCTAssertEqual(TimeWindow.stored(rawValue: "fortyFive"), .thirty)
     }
 
+    /// And the same for the explainer, which was ten minutes and is now seven.
+    ///
+    /// This is the one the spec asked for by name, because the failure mode has
+    /// nearly shipped here before: a removed case decodes to nil, the call
+    /// site's `?? .three` turns it into a 3-minute One Thing, and a reader's
+    /// saved explainer quietly becomes something else. Nothing crashes and
+    /// nothing logs.
+    func testLegacyTenRawValueMapsToTheExplainerThatReplacedIt() {
+        XCTAssertEqual(TimeWindow.stored(rawValue: "ten"), .seven)
+        XCTAssertEqual(TimeWindow.stored(rawValue: "ten")?.format, .explainer,
+                       "a migrated explainer must still be an explainer")
+    }
+
     func testStoredDecodesEveryCurrentRawValue() {
         for window in TimeWindow.allCases {
             XCTAssertEqual(TimeWindow.stored(rawValue: window.rawValue), window)
@@ -85,14 +104,22 @@ final class TimeWindowTests: XCTestCase {
     }
 
     /// Budgets are calibrated to roughly 200 wpm minus absorption overhead. The
-    /// 3-minute window sits slightly above that (650 words is ~217 wpm) because
-    /// a One Thing needs a floor of substance to be worth reading — so this
-    /// asserts a sane band rather than a hard 200 ceiling.
+    /// short windows sit above that because a One Thing needs a floor of
+    /// substance to be worth reading — so this asserts a sane band rather than a
+    /// hard 200 ceiling.
+    ///
+    /// The band widens below three minutes rather than being widened for
+    /// everyone. The overhead of arriving at a piece and leaving it does not
+    /// shrink with the piece: at fifteen minutes it is noise, at one minute it
+    /// is most of the difference between 200 words and 240. Holding the
+    /// 1-minute window to the same 220 as the 30-minute one would be arithmetic
+    /// pretending to be a reading model.
     func testBudgetsImplyAPlausibleReadingRate() {
         for window in TimeWindow.allCases {
             let fastest = Double(window.wordBudget.upperBound) / Double(window.minutes)
             let slowest = Double(window.wordBudget.lowerBound) / Double(window.minutes)
-            XCTAssertLessThanOrEqual(fastest, 220, "\(window) demands an implausible reading rate")
+            let ceiling: Double = window.minutes < 3 ? 250 : 220
+            XCTAssertLessThanOrEqual(fastest, ceiling, "\(window) demands an implausible reading rate")
             XCTAssertGreaterThanOrEqual(slowest, 150, "\(window) wastes the time the reader gave it")
         }
     }
@@ -104,9 +131,13 @@ final class TimeWindowTests: XCTestCase {
         }
     }
 
-    func testFreeTierCoversOnlyShortWindows() {
+    /// Not the two shortest: the 1-minute length is premium, and that is the
+    /// point of it. "The shortest one is the paid one" is counterintuitive
+    /// enough to make a free reader stop and look.
+    func testFreeTierCoversTheTwoMiddleWindows() {
+        XCTAssertFalse(TimeWindow.one.isFreeTierEligible)
         XCTAssertTrue(TimeWindow.three.isFreeTierEligible)
-        XCTAssertTrue(TimeWindow.ten.isFreeTierEligible)
+        XCTAssertTrue(TimeWindow.seven.isFreeTierEligible)
         XCTAssertFalse(TimeWindow.fifteen.isFreeTierEligible)
         XCTAssertFalse(TimeWindow.thirty.isFreeTierEligible)
     }
@@ -121,7 +152,7 @@ final class TimeWindowTests: XCTestCase {
     }
 
     func testUnchapteredWindowsUseWholeBudgetPerChapter() {
-        for window in [TimeWindow.three, .ten, .fifteen] {
+        for window in [TimeWindow.one, .three, .seven, .fifteen] {
             XCTAssertEqual(window.chapterWordBudget, window.wordBudget)
         }
     }
@@ -135,8 +166,9 @@ final class TimeWindowTests: XCTestCase {
 
     func testRawValuesAreStableAcrossReleases() {
         // Persisted in SwiftData; renaming a case would orphan stored rows.
+        XCTAssertEqual(TimeWindow.one.rawValue, "one")
         XCTAssertEqual(TimeWindow.three.rawValue, "three")
-        XCTAssertEqual(TimeWindow.ten.rawValue, "ten")
+        XCTAssertEqual(TimeWindow.seven.rawValue, "seven")
         XCTAssertEqual(TimeWindow.fifteen.rawValue, "fifteen")
         XCTAssertEqual(TimeWindow.thirty.rawValue, "thirty")
     }

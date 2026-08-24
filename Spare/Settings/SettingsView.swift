@@ -103,7 +103,7 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("settings.miniCourseAllowance")
             } else {
-                Text("Free covers the 3- and 10-minute lengths, one lesson a day, and your last \(EntitlementRules.freeLibraryLimit) library entries.")
+                Text("Free covers the 3- and 7-minute lengths, one lesson a day, and your last \(EntitlementRules.freeLibraryLimit) library entries.")
                     .font(Theme.Font.caption.font)
                     .foregroundStyle(palette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)

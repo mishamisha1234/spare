@@ -34,7 +34,7 @@ final class MockProviderTests: XCTestCase {
     }
 
     func testSuggestionsHaveUniqueIdentities() async throws {
-        let suggestions = try await provider.suggestTopics(window: .ten, profile: profile, history: [])
+        let suggestions = try await provider.suggestTopics(window: .seven, profile: profile, history: [])
         XCTAssertEqual(Set(suggestions.map(\.id)).count, suggestions.count)
     }
 
@@ -53,13 +53,13 @@ final class MockProviderTests: XCTestCase {
     }
 
     func testLessonCarriesExactlyThreeDeeperAngles() async throws {
-        let lesson = try await provider.generateLesson(topic: topic(for: .ten), window: .ten, profile: profile)
+        let lesson = try await provider.generateLesson(topic: topic(for: .seven), window: .seven, profile: profile)
         XCTAssertEqual(lesson.deeperAngles.count, 3)
     }
 
     func testLessonMetadataIsPopulated() async throws {
-        let source = topic(for: .ten)
-        let lesson = try await provider.generateLesson(topic: source, window: .ten, profile: profile)
+        let source = topic(for: .seven)
+        let lesson = try await provider.generateLesson(topic: source, window: .seven, profile: profile)
         XCTAssertEqual(lesson.title, source.title)
         XCTAssertEqual(lesson.domainTag, source.domainTag)
         XCTAssertFalse(lesson.subtitle.isEmpty)
@@ -103,21 +103,21 @@ final class MockProviderTests: XCTestCase {
     }
 
     func testSectionedFormatsHaveHeadings() async throws {
-        for window in [TimeWindow.ten, .fifteen] {
+        for window in [TimeWindow.seven, .fifteen] {
             let lesson = try await provider.generateLesson(topic: topic(for: window), window: window, profile: profile)
             XCTAssertTrue(lesson.bodyMarkdown.contains("## "), "\(window) should be sectioned")
         }
     }
 
     func testSingleChapterWindowsProduceOneBody() {
-        for window in [TimeWindow.three, .ten, .fifteen] {
+        for window in [TimeWindow.three, .seven, .fifteen] {
             XCTAssertEqual(MockProvider.fixtureChapterBodies(topic: topic(for: window), window: window).count, 1)
         }
     }
 
     func testFixturesAreDeterministic() async throws {
-        let first = try await provider.generateLesson(topic: topic(for: .ten), window: .ten, profile: profile)
-        let second = try await provider.generateLesson(topic: topic(for: .ten), window: .ten, profile: profile)
+        let first = try await provider.generateLesson(topic: topic(for: .seven), window: .seven, profile: profile)
+        let second = try await provider.generateLesson(topic: topic(for: .seven), window: .seven, profile: profile)
         XCTAssertEqual(first, second)
     }
 
@@ -276,14 +276,14 @@ final class MockProviderTests: XCTestCase {
     // MARK: - Go deeper
 
     func testGoDeeperStaysInBudgetAndReferencesTheParent() async throws {
-        let lesson = try await provider.generateLesson(topic: topic(for: .ten), window: .ten, profile: profile)
+        let lesson = try await provider.generateLesson(topic: topic(for: .seven), window: .seven, profile: profile)
         let deeper = try await provider.goDeeper(
             from: lesson,
             angle: DeeperAngle(text: lesson.deeperAngles[0]),
-            window: .ten,
+            window: .seven,
             profile: profile
         )
-        XCTAssertTrue(TimeWindow.ten.wordBudget.contains(deeper.wordCount))
+        XCTAssertTrue(TimeWindow.seven.wordBudget.contains(deeper.wordCount))
         XCTAssertTrue(deeper.subtitle.contains(lesson.title))
         XCTAssertEqual(deeper.title, lesson.deeperAngles[0])
     }

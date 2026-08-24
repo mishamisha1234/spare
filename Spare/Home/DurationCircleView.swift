@@ -11,8 +11,8 @@ struct DurationCircleView: View {
     var window: TimeWindow
     /// Whether this *length* is behind Premium. Deliberately not "can't start
     /// a lesson right now": a free reader who has used today's lesson still
-    /// owns the 3- and 10-minute lengths, and marking all four circles
-    /// because of a daily limit would say something false about the plan.
+    /// owns the 3- and 7-minute lengths, and marking every circle because of a
+    /// daily limit would say something false about the plan.
     var isLocked: Bool = false
     /// Zero-based chapter a part-read course is waiting at. Non-nil turns the
     /// circle into a resume affordance: the label becomes the position rather

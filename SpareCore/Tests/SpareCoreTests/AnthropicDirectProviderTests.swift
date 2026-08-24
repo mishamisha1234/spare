@@ -57,7 +57,7 @@ final class AnthropicDirectProviderTests: XCTestCase {
         let provider = makeProvider(transport, key: nil)
 
         do {
-            _ = try await provider.suggestTopics(window: .ten, profile: profile, history: [])
+            _ = try await provider.suggestTopics(window: .seven, profile: profile, history: [])
             XCTFail("expected missingAPIKey")
         } catch {
             XCTAssertEqual(error as? LessonProviderError, .missingAPIKey)
@@ -69,7 +69,7 @@ final class AnthropicDirectProviderTests: XCTestCase {
         let transport = FixtureTransport([])
         let provider = makeProvider(transport, key: "")
         do {
-            _ = try await provider.suggestTopics(window: .ten, profile: profile, history: [])
+            _ = try await provider.suggestTopics(window: .seven, profile: profile, history: [])
             XCTFail("expected missingAPIKey")
         } catch {
             XCTAssertEqual(error as? LessonProviderError, .missingAPIKey)
@@ -83,7 +83,7 @@ final class AnthropicDirectProviderTests: XCTestCase {
             status: 200, text: HTTPFixtures.messageBody(json: HTTPFixtures.suggestionsJSON)
         ))
         let provider = makeProvider(transport)
-        _ = try await provider.suggestTopics(window: .ten, profile: profile, history: [])
+        _ = try await provider.suggestTopics(window: .seven, profile: profile, history: [])
 
         let request = try XCTUnwrap(transport.requests.first)
         XCTAssertEqual(request.headers["x-api-key"], "sk-ant-fixture")
@@ -111,7 +111,7 @@ final class AnthropicDirectProviderTests: XCTestCase {
         ])
         let provider = makeProvider(transport)
         _ = try await collect(provider.streamLesson(
-            topic: topic, window: .ten, profile: profile, demand: .eager()
+            topic: topic, window: .seven, profile: profile, demand: .eager()
         ))
 
         let body = try JSONDecoder().decode(
@@ -137,7 +137,7 @@ final class AnthropicDirectProviderTests: XCTestCase {
         let provider = makeProvider(transport)
 
         let events = try await collect(provider.streamLesson(
-            topic: topic, window: .ten, profile: profile, demand: .eager()
+            topic: topic, window: .seven, profile: profile, demand: .eager()
         ))
 
         XCTAssertEqual(transport.requestCount, 2, "two passes, two calls")
@@ -159,10 +159,10 @@ final class AnthropicDirectProviderTests: XCTestCase {
         ])
         let provider = makeProvider(transport)
 
-        var gate = RevisionGate(window: .ten)
+        var gate = RevisionGate(window: .seven)
         var previous = ""
         for try await event in provider.streamLesson(
-            topic: topic, window: .ten, profile: profile, demand: .eager()
+            topic: topic, window: .seven, profile: profile, demand: .eager()
         ) {
             gate.apply(event)
             XCTAssertFalse(gate.displayText.contains("DRAFTWORD"), "draft text reached the reader")
@@ -185,7 +185,7 @@ final class AnthropicDirectProviderTests: XCTestCase {
         let provider = makeProvider(transport, sleeper: sleeper)
 
         let events = try await collect(provider.streamLesson(
-            topic: topic, window: .ten, profile: profile, demand: .eager()
+            topic: topic, window: .seven, profile: profile, demand: .eager()
         ))
 
         XCTAssertEqual(transport.requestCount, 3, "the truncated draft is retried")
@@ -203,7 +203,7 @@ final class AnthropicDirectProviderTests: XCTestCase {
         let provider = makeProvider(transport)
 
         let events = try await collect(provider.streamLesson(
-            topic: topic, window: .ten, profile: profile, demand: .eager()
+            topic: topic, window: .seven, profile: profile, demand: .eager()
         ))
         XCTAssertEqual(transport.requestCount, 3)
         XCTAssertEqual(revisedText(events), "Second attempt revision.")
@@ -219,7 +219,7 @@ final class AnthropicDirectProviderTests: XCTestCase {
         let provider = makeProvider(transport, sleeper: sleeper)
 
         let suggestions = try await provider.suggestTopics(
-            window: .ten, profile: profile, history: []
+            window: .seven, profile: profile, history: []
         )
         XCTAssertEqual(suggestions.count, 5)
         XCTAssertEqual(transport.requestCount, 3)
@@ -237,7 +237,7 @@ final class AnthropicDirectProviderTests: XCTestCase {
         let provider = makeProvider(transport, retry: RetryPolicy(maxAttempts: 3))
 
         do {
-            _ = try await provider.suggestTopics(window: .ten, profile: profile, history: [])
+            _ = try await provider.suggestTopics(window: .seven, profile: profile, history: [])
             XCTFail("expected the rate limit to surface")
         } catch {
             XCTAssertEqual(
@@ -281,7 +281,7 @@ final class AnthropicDirectProviderTests: XCTestCase {
 
         do {
             _ = try await collect(provider.streamLesson(
-                topic: topic, window: .ten, profile: profile, demand: .eager()
+                topic: topic, window: .seven, profile: profile, demand: .eager()
             ))
             XCTFail("expected the dropped revision to surface")
         } catch {
@@ -302,7 +302,7 @@ final class AnthropicDirectProviderTests: XCTestCase {
 
         do {
             _ = try await collect(provider.streamLesson(
-                topic: topic, window: .ten, profile: profile, demand: .eager()
+                topic: topic, window: .seven, profile: profile, demand: .eager()
             ))
             XCTFail("expected a refusal")
         } catch {
@@ -321,7 +321,7 @@ final class AnthropicDirectProviderTests: XCTestCase {
         let provider = makeProvider(transport)
 
         do {
-            _ = try await provider.suggestTopics(window: .ten, profile: profile, history: [])
+            _ = try await provider.suggestTopics(window: .seven, profile: profile, history: [])
             XCTFail("expected missingAPIKey")
         } catch {
             XCTAssertEqual(error as? LessonProviderError, .missingAPIKey)
@@ -338,7 +338,7 @@ final class AnthropicDirectProviderTests: XCTestCase {
         let provider = makeProvider(transport)
 
         let events = try await collect(provider.streamLesson(
-            topic: topic, window: .ten, profile: profile, demand: .eager()
+            topic: topic, window: .seven, profile: profile, demand: .eager()
         ))
         XCTAssertEqual(revisedText(events), "revision")
         XCTAssertEqual(transport.requestCount, 3)
@@ -355,7 +355,7 @@ final class AnthropicDirectProviderTests: XCTestCase {
         let provider = makeProvider(transport, ledger: ledger)
 
         _ = try await collect(provider.streamLesson(
-            topic: topic, window: .ten, profile: profile, demand: .eager()
+            topic: topic, window: .seven, profile: profile, demand: .eager()
         ))
 
         let events = await ledger.events
@@ -401,7 +401,7 @@ final class AnthropicDirectProviderTests: XCTestCase {
         ))
         let provider = makeProvider(transport)
         let suggestions = try await provider.suggestTopics(
-            window: .ten, profile: profile, history: []
+            window: .seven, profile: profile, history: []
         )
         XCTAssertEqual(suggestions.count, 5)
         XCTAssertEqual(suggestions.filter(\.isWildcard).count, 1)
@@ -422,7 +422,7 @@ final class AnthropicDirectProviderTests: XCTestCase {
         let provider = makeProvider(transport)
 
         let suggestions = try await provider.suggestTopics(
-            window: .ten, profile: profile, history: []
+            window: .seven, profile: profile, history: []
         )
         XCTAssertEqual(transport.requestCount, 2)
         XCTAssertEqual(suggestions.count, 5)
@@ -439,7 +439,7 @@ final class AnthropicDirectProviderTests: XCTestCase {
         ])
         let provider = makeProvider(transport)
 
-        _ = try await provider.suggestTopics(window: .ten, profile: profile, history: [])
+        _ = try await provider.suggestTopics(window: .seven, profile: profile, history: [])
         XCTAssertEqual(transport.requestCount, 2, "must not chase a perfect set indefinitely")
     }
 
@@ -501,9 +501,9 @@ final class AnthropicDirectProviderTests: XCTestCase {
         let provider = makeProvider(transport, ledger: ledger)
 
         let lesson = try await provider.goDeeper(
-            from: MockProvider.fixtureLesson(topic: topic, window: .ten),
+            from: MockProvider.fixtureLesson(topic: topic, window: .seven),
             angle: DeeperAngle(text: "How dampers work"),
-            window: .ten,
+            window: .seven,
             profile: profile
         )
         XCTAssertEqual(lesson.bodyMarkdown, "deeper revision")

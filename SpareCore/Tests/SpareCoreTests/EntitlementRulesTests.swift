@@ -28,7 +28,7 @@ final class EntitlementRulesTests: XCTestCase {
         let spent = EntitlementSnapshot(tier: .free, freeLessonsUsedToday: 1, lastFreeLessonDate: yesterday)
         XCTAssertEqual(EntitlementRules.effectiveLessonsUsedToday(spent, now: now, calendar: calendar), 0)
         XCTAssertEqual(
-            EntitlementRules.canStartLesson(spent, window: .ten, now: now, calendar: calendar),
+            EntitlementRules.canStartLesson(spent, window: .seven, now: now, calendar: calendar),
             .allowed
         )
     }
@@ -73,7 +73,7 @@ final class EntitlementRulesTests: XCTestCase {
     }
 
     func testAvailableWindowsByTier() {
-        XCTAssertEqual(EntitlementRules.availableWindows(.free), [.three, .ten])
+        XCTAssertEqual(EntitlementRules.availableWindows(.free), [.three, .seven])
         XCTAssertEqual(EntitlementRules.availableWindows(.premium), TimeWindow.allCases)
     }
 

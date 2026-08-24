@@ -1,6 +1,6 @@
 # Spare
 
-A time-first micro-learning iOS app. You tell it how long you have — 3, 10, 15, or 30 minutes — and it finds you something worth learning. **Time is the input; topic is the output.** That inversion is the product.
+A time-first micro-learning iOS app. You tell it how long you have — 1, 3, 7, 15, or 30 minutes — and it finds you something worth learning. **Time is the input; topic is the output.** That inversion is the product.
 
 **Status: all six phases complete.** Six screens, live generation, recall and scheduling, points and stats, StoreKit purchasing, widget, export, and an accessibility pass. What remains before this could ship is listed under Known deviations and Before launch.
 
@@ -167,7 +167,7 @@ Every screen respects one aesthetic rule: no confetti, no trophy icons, no badge
 
 **A fair-use cap is not a paywall, and the types enforce that.** `AccessDecision` has three cases: `allowed`, `denied(PaywallTrigger)`, and `capped(UsageCap)`. The 12-courses-a-month limit applies to people who already pay, so it returns `capped`, and `capped.trigger` is `nil`. "Route any denial to the paywall" therefore cannot be written by accident — a subscriber at the limit gets a plain explanation and the reset date. A test asserts this specific property.
 
-**Free** is 1 lesson/day, the 3- and 10-minute lengths, the last 10 library entries, no go-deeper, no post-lesson test. **Premium** is unlimited lessons, every length, the full library, unlimited go-deeper, post-lesson tests, and 12 courses a month with the remaining count stated in Settings before it bites.
+**Free** is 1 lesson/day, the 3- and 7-minute lengths, the last 10 library entries, no go-deeper, no post-lesson test. **Premium** is unlimited lessons, every length, the full library, unlimited go-deeper, post-lesson tests, and 12 courses a month with the remaining count stated in Settings before it bites.
 
 Locked premium features render as **visibly locked rows that open the paywall**, never hidden — a feature nobody can see sells nothing. The exception is Home's duration circles, which carry no lock badge: size is the only thing allowed to mean anything on that screen, and lock glyphs on two of four would wreck it. Tapping a locked duration opens the paywall, which is where the lock gets stated.
 
@@ -284,7 +284,7 @@ the output:
 gh workflow run "Lesson batch" -f confirm=spend   -f model=claude-opus-5,claude-sonnet-5,claude-haiku-4-5-20251001   -f per_window=1
 ```
 
-Leave `per_window` blank for the full set: eight topics through three models is
+Leave `per_window` blank for the full set: ten topics through three models is
 twenty-four lessons, roughly $11 and about two and a half hours. `-f
 per_window=1` cuts it to one topic per length — twelve lessons, roughly $3 — for
 a cheaper look.

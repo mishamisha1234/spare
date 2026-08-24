@@ -14,8 +14,15 @@ public enum AnthropicAPI {
     /// thinking plus prose.
     public static func maxTokens(for window: TimeWindow) -> Int {
         switch window {
+        // Thinking is most of what a small call spends and it does not scale
+        // down with the prose budget, so a 200-word lesson does not get a
+        // 200-word ceiling. 8,000 is the same floor the 3-minute window uses.
+        case .one: return 8_000
         case .three: return 8_000
-        case .ten: return 16_000
+        // Kept at the 10-minute window's ceiling even though the prose budget
+        // came down: see above, and it costs nothing — max_tokens is a ceiling,
+        // not a reservation.
+        case .seven: return 16_000
         case .fifteen: return 24_000
         // Per chapter, generated one at a time. Raised from 16,000 after the
         // first 30-minute course to get past the outline came back truncated

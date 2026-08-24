@@ -61,11 +61,11 @@ final class WordFloorTests: XCTestCase {
     // MARK: - The happy path is untouched
 
     func testAnInBudgetLessonMakesExactlyTwoCalls() async throws {
-        // 1,700 words against the 10-minute budget of 1,600–2,000: nothing to
+        // 1,200 words against the 7-minute budget of 1,100–1,400: nothing to
         // retry, and the check must not cost a call when it passes.
-        let transport = FixtureTransport([lessonStream(words: 1_700), lessonStream(words: 1_700)])
+        let transport = FixtureTransport([lessonStream(words: 1_200), lessonStream(words: 1_200)])
         let events = try await collect(makeProvider(transport).streamLesson(
-            topic: topic, window: .ten, profile: profile, demand: .eager()
+            topic: topic, window: .seven, profile: profile, demand: .eager()
         ))
 
         XCTAssertEqual(transport.requestCount, 2, "two passes, two calls")
@@ -73,12 +73,12 @@ final class WordFloorTests: XCTestCase {
     }
 
     func testTightIsServed() async throws {
-        // 1,500 words against a 1,600 floor: under budget, over the 1,440 hard
+        // 1,050 words against a 1,100 floor: under budget, over the 990 hard
         // floor. Regenerating this would spend a whole pass to buy the reader
-        // half a minute, and the reader would wait for it.
-        let transport = FixtureTransport([lessonStream(words: 1_500), lessonStream(words: 1_500)])
+        // a handful of seconds, and the reader would wait for it.
+        let transport = FixtureTransport([lessonStream(words: 1_050), lessonStream(words: 1_050)])
         let events = try await collect(makeProvider(transport).streamLesson(
-            topic: topic, window: .ten, profile: profile, demand: .eager()
+            topic: topic, window: .seven, profile: profile, demand: .eager()
         ))
 
         XCTAssertEqual(transport.requestCount, 2)
@@ -91,11 +91,11 @@ final class WordFloorTests: XCTestCase {
         // Pass 1 is never displayed, so its retry costs a call and nothing else.
         let transport = FixtureTransport([
             lessonStream(words: 400),    // draft, short
-            lessonStream(words: 1_700),  // draft again, fine
-            lessonStream(words: 1_700),  // revision
+            lessonStream(words: 1_200),  // draft again, fine
+            lessonStream(words: 1_200),  // revision
         ])
         let events = try await collect(makeProvider(transport).streamLesson(
-            topic: topic, window: .ten, profile: profile, demand: .eager()
+            topic: topic, window: .seven, profile: profile, demand: .eager()
         ))
 
         XCTAssertEqual(transport.requestCount, 3)
@@ -110,29 +110,29 @@ final class WordFloorTests: XCTestCase {
         let transport = FixtureTransport([
             lessonStream(words: 400),    // draft, short
             lessonStream(words: 420),    // draft again, still short
-            lessonStream(words: 1_700),  // revision takes it further
+            lessonStream(words: 1_200),  // revision takes it further
         ])
         let events = try await collect(makeProvider(transport).streamLesson(
-            topic: topic, window: .ten, profile: profile, demand: .eager()
+            topic: topic, window: .seven, profile: profile, demand: .eager()
         ))
 
         XCTAssertEqual(transport.requestCount, 3)
         guard case .finished(let lesson)? = events.last else {
             return XCTFail("stream must end with .finished")
         }
-        XCTAssertEqual(lesson.wordCount, 1_700)
+        XCTAssertEqual(lesson.wordCount, 1_200)
     }
 
     // MARK: - The revision gate
 
     func testAShortRevisionIsWithdrawnAndRunAgain() async throws {
         let transport = FixtureTransport([
-            lessonStream(words: 1_700),  // draft
-            lessonStream(words: 900),    // revision, well under the 1,440 hard floor
-            lessonStream(words: 1_700),  // revision again
+            lessonStream(words: 1_200),  // draft
+            lessonStream(words: 700),    // revision, well under the 990 hard floor
+            lessonStream(words: 1_200),  // revision again
         ])
         let events = try await collect(makeProvider(transport).streamLesson(
-            topic: topic, window: .ten, profile: profile, demand: .eager()
+            topic: topic, window: .seven, profile: profile, demand: .eager()
         ))
 
         XCTAssertEqual(transport.requestCount, 3)
@@ -141,19 +141,19 @@ final class WordFloorTests: XCTestCase {
         guard case .finished(let lesson)? = events.last else {
             return XCTFail("stream must end with .finished")
         }
-        XCTAssertEqual(lesson.wordCount, 1_700)
+        XCTAssertEqual(lesson.wordCount, 1_200)
     }
 
     /// The retry has to say what was wrong with the last attempt, or it is the
     /// same request twice at the same price.
     func testTheRetryTellsTheModelWhatItProduced() async throws {
         let transport = FixtureTransport([
-            lessonStream(words: 1_700),
-            lessonStream(words: 900),
-            lessonStream(words: 1_700),
+            lessonStream(words: 1_200),
+            lessonStream(words: 700),
+            lessonStream(words: 1_200),
         ])
         _ = try await collect(makeProvider(transport).streamLesson(
-            topic: topic, window: .ten, profile: profile, demand: .eager()
+            topic: topic, window: .seven, profile: profile, demand: .eager()
         ))
 
         let bodies = try transport.requests.map { request -> String in
@@ -163,23 +163,23 @@ final class WordFloorTests: XCTestCase {
         }
         XCTAssertEqual(bodies.count, 3)
         XCTAssertFalse(bodies[1].contains("previous revision"), "the first revision has nothing to report")
-        XCTAssertTrue(bodies[2].contains("900 words"), "the retry must name the shortfall")
-        XCTAssertTrue(bodies[2].contains("1600-word floor"))
+        XCTAssertTrue(bodies[2].contains("700 words"), "the retry must name the shortfall")
+        XCTAssertTrue(bodies[2].contains("1100-word floor"))
     }
 
     /// A withdrawal is the one time displayed text may shrink, and the gate has
     /// to treat it as a rewind rather than as an append-only violation.
     func testTheGateRewindsRatherThanRecordingAViolation() async throws {
         let transport = FixtureTransport([
-            lessonStream(words: 1_700),
-            lessonStream(words: 900),
-            lessonStream(words: 1_700),
+            lessonStream(words: 1_200),
+            lessonStream(words: 700),
+            lessonStream(words: 1_200),
         ])
-        var gate = RevisionGate(window: .ten)
+        var gate = RevisionGate(window: .seven)
         var sawTextBeforeTheRestart = false
 
         for try await event in makeProvider(transport).streamLesson(
-            topic: topic, window: .ten, profile: profile, demand: .eager()
+            topic: topic, window: .seven, profile: profile, demand: .eager()
         ) {
             if case .revisionRestarted = event {
                 sawTextBeforeTheRestart = !gate.displayText.isEmpty
@@ -194,7 +194,7 @@ final class WordFloorTests: XCTestCase {
         XCTAssertTrue(sawTextBeforeTheRestart, "the test proves nothing if nothing was shown")
         XCTAssertEqual(gate.revisionRestarts, 1)
         XCTAssertEqual(gate.appendOnlyViolations, 0, "a rewind is not a violation")
-        XCTAssertEqual(gate.finalLesson?.wordCount, 1_700)
+        XCTAssertEqual(gate.finalLesson?.wordCount, 1_200)
         XCTAssertFalse(gate.displayText.isEmpty)
     }
 
@@ -204,14 +204,14 @@ final class WordFloorTests: XCTestCase {
         // Both revision attempts come back short. Serving the better of two bad
         // answers is the failure this whole check exists to stop.
         let transport = FixtureTransport([
-            lessonStream(words: 1_700),
-            lessonStream(words: 900),
+            lessonStream(words: 1_200),
+            lessonStream(words: 700),
             lessonStream(words: 950),
         ])
 
         do {
             _ = try await collect(makeProvider(transport).streamLesson(
-                topic: topic, window: .ten, profile: profile, demand: .eager()
+                topic: topic, window: .seven, profile: profile, demand: .eager()
             ))
             XCTFail("a lesson two-thirds the length it was sold as must not be served")
         } catch let error as LessonProviderError {
@@ -219,7 +219,7 @@ final class WordFloorTests: XCTestCase {
                 return XCTFail("wrong error: \(error)")
             }
             XCTAssertEqual(words, 950)
-            XCTAssertEqual(floor, 1_600)
+            XCTAssertEqual(floor, 1_100)
             XCTAssertFalse(error.isRetryable, "the pipeline has already spent its retries")
         }
     }
@@ -227,11 +227,11 @@ final class WordFloorTests: XCTestCase {
     func testTheRetryBudgetIsRespected() async throws {
         // Zero retries: one short revision and it is over. The bound matters —
         // each attempt is a full pass at full price, and the server counts them.
-        let transport = FixtureTransport([lessonStream(words: 1_700), lessonStream(words: 900)])
+        let transport = FixtureTransport([lessonStream(words: 1_200), lessonStream(words: 700)])
 
         do {
             _ = try await collect(makeProvider(transport, retries: 0).streamLesson(
-                topic: topic, window: .ten, profile: profile, demand: .eager()
+                topic: topic, window: .seven, profile: profile, demand: .eager()
             ))
             XCTFail("expected a refusal")
         } catch let error as LessonProviderError {

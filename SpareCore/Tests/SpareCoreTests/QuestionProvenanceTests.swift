@@ -29,7 +29,7 @@ final class QuestionProvenanceTests: XCTestCase {
     )
 
     private func lesson(_ topic: TopicSuggestion) -> Lesson {
-        MockProvider.fixtureLesson(topic: topic, window: .ten)
+        MockProvider.fixtureLesson(topic: topic, window: .seven)
     }
 
     // MARK: - The claim the quiz is built on

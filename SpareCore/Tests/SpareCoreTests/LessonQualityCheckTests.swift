@@ -178,14 +178,14 @@ final class LessonQualityCheckTests: XCTestCase {
 
     func testFlagsMoreSectionsThanTheFormatAllows() {
         let findings = LessonQualityCheck.findings(
-            for: lesson(body: sectioned(4, wordsEach: 440)), window: .ten
+            for: lesson(body: sectioned(4, wordsEach: 440)), window: .seven
         )
         XCTAssertTrue(findings.contains(.tooManySections(count: 4, cap: 3, perChapter: false)))
     }
 
     func testThreeSectionsAtTenMinutesIsTheCeilingNotAViolation() {
         let findings = LessonQualityCheck.findings(
-            for: lesson(body: sectioned(3, wordsEach: 590)), window: .ten
+            for: lesson(body: sectioned(3, wordsEach: 590)), window: .seven
         )
         XCTAssertFalse(findings.contains { finding in
             if case .tooManySections = finding { return true }
@@ -396,7 +396,7 @@ final class LessonQualityCheckTests: XCTestCase {
     func testSkipsHeadingsWhenFindingTheOpeningSentence() {
         let body = "## A heading\n\nResonance is a phenomenon of systems. " + filler(words: 1_700)
         XCTAssertTrue(
-            LessonQualityCheck.findings(for: lesson(body: body), window: .ten)
+            LessonQualityCheck.findings(for: lesson(body: body), window: .seven)
                 .contains { finding in
                     if case .opensWithDefinition = finding { return true }
                     return false

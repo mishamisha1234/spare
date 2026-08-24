@@ -15,7 +15,7 @@ final class RevisionGateTests: XCTestCase {
     // MARK: - Invariant 2: initial hold
 
     func testNothingIsShownBeforeThresholdIsReached() {
-        var gate = RevisionGate(window: .ten)
+        var gate = RevisionGate(window: .seven)
         gate.apply(.revisedDelta(chapter: 0, text: words(100)))
         XCTAssertEqual(gate.phase, .holding)
         XCTAssertTrue(gate.displayText.isEmpty)
@@ -23,7 +23,7 @@ final class RevisionGateTests: XCTestCase {
     }
 
     func testRevealsOnceThresholdIsReached() {
-        var gate = RevisionGate(window: .ten)
+        var gate = RevisionGate(window: .seven)
         gate.apply(.revisedDelta(chapter: 0, text: words(200)))
         XCTAssertTrue(gate.displayText.isEmpty, "200 words is below the 250-word threshold")
         gate.apply(.revisedDelta(chapter: 0, text: " " + words(60)))
@@ -43,7 +43,7 @@ final class RevisionGateTests: XCTestCase {
     /// to apply it — leaving the withdrawn text on screen and the retry
     /// appended underneath it.
     func testAWithdrawnRevisionIsRewoundRatherThanCountedAsAViolation() {
-        var gate = RevisionGate(window: .ten)
+        var gate = RevisionGate(window: .seven)
         gate.apply(.revisedDelta(chapter: 0, text: words(400)))
         XCTAssertTrue(gate.isRevealed)
         XCTAssertEqual(gate.displayWordCount, 400)
@@ -81,7 +81,7 @@ final class RevisionGateTests: XCTestCase {
     }
 
     func testDraftAloneNeverReveals() {
-        var gate = RevisionGate(window: .ten)
+        var gate = RevisionGate(window: .seven)
         gate.apply(.draftDelta(chapter: 0, text: words(5_000)))
         gate.apply(.draftChapterFinished(chapter: 0))
         XCTAssertEqual(gate.phase, .holding)
@@ -98,7 +98,7 @@ final class RevisionGateTests: XCTestCase {
     }
 
     func testHoldProgressReportsFractionOfThreshold() {
-        var gate = RevisionGate(window: .ten)
+        var gate = RevisionGate(window: .seven)
         XCTAssertEqual(gate.holdProgress, 0, accuracy: 0.001)
         gate.apply(.revisedDelta(chapter: 0, text: words(125)))
         XCTAssertEqual(gate.holdProgress, 0.5, accuracy: 0.01)
@@ -108,7 +108,7 @@ final class RevisionGateTests: XCTestCase {
 
     func testCustomThresholdIsHonoured() {
         var gate = RevisionGate(
-            window: .ten,
+            window: .seven,
             configuration: .init(initialRevealWords: 10, minimumLeadWords: 5)
         )
         gate.apply(.revisedDelta(chapter: 0, text: words(12)))
@@ -118,7 +118,7 @@ final class RevisionGateTests: XCTestCase {
     // MARK: - Invariant 4: append-only display
 
     func testDisplayTextOnlyGrowsAndOnlyByAppending() {
-        var gate = RevisionGate(window: .ten)
+        var gate = RevisionGate(window: .seven)
         var snapshots: [String] = []
 
         for _ in 0..<20 {
@@ -170,7 +170,7 @@ final class RevisionGateTests: XCTestCase {
     // MARK: - Invariant 1: revision stays ahead of the reader
 
     func testPacingReportsLeadInWords() {
-        var gate = RevisionGate(window: .ten)
+        var gate = RevisionGate(window: .seven)
         gate.apply(.revisedDelta(chapter: 0, text: words(600)))
         gate.updateReaderWordOffset(100)
         XCTAssertEqual(gate.pacing, .ahead(words: 500))
@@ -178,7 +178,7 @@ final class RevisionGateTests: XCTestCase {
     }
 
     func testPacingGoesTightInsideMinimumLead() {
-        var gate = RevisionGate(window: .ten)
+        var gate = RevisionGate(window: .seven)
         gate.apply(.revisedDelta(chapter: 0, text: words(300)))
         gate.updateReaderWordOffset(250)
         XCTAssertEqual(gate.pacing, .tight(words: 50))
@@ -186,7 +186,7 @@ final class RevisionGateTests: XCTestCase {
     }
 
     func testPacingStarvesWhenReaderCatchesUp() {
-        var gate = RevisionGate(window: .ten)
+        var gate = RevisionGate(window: .seven)
         gate.apply(.revisedDelta(chapter: 0, text: words(300)))
         gate.updateReaderWordOffset(300)
         XCTAssertEqual(gate.pacing, .starved)
@@ -194,7 +194,7 @@ final class RevisionGateTests: XCTestCase {
     }
 
     func testPacingIsCompleteOnceEverythingIsRevised() {
-        var gate = RevisionGate(window: .ten)
+        var gate = RevisionGate(window: .seven)
         gate.apply(.revisedDelta(chapter: 0, text: words(300)))
         gate.apply(.revisedChapterFinished(chapter: 0))
         gate.updateReaderWordOffset(300)
@@ -203,7 +203,7 @@ final class RevisionGateTests: XCTestCase {
     }
 
     func testReaderOffsetIsMonotonic() {
-        var gate = RevisionGate(window: .ten)
+        var gate = RevisionGate(window: .seven)
         gate.updateReaderWordOffset(400)
         gate.updateReaderWordOffset(100)
         XCTAssertEqual(gate.readerWordOffset, 400, "scrolling back must not lower the high-water mark")
@@ -212,7 +212,7 @@ final class RevisionGateTests: XCTestCase {
     }
 
     func testProgressDrivenOffsetTracksDisplayLength() {
-        var gate = RevisionGate(window: .ten)
+        var gate = RevisionGate(window: .seven)
         gate.apply(.revisedDelta(chapter: 0, text: words(400)))
         gate.updateReaderProgress(0.5)
         XCTAssertEqual(gate.readerWordOffset, 200)
@@ -282,7 +282,7 @@ final class RevisionGateTests: XCTestCase {
     }
 
     func testSingleChapterWindowsReportOneChapter() {
-        for window in [TimeWindow.three, .ten, .fifteen] {
+        for window in [TimeWindow.three, .seven, .fifteen] {
             XCTAssertEqual(RevisionGate(window: window).chapterCount, 1)
         }
     }
@@ -356,11 +356,11 @@ final class RevisionGateTests: XCTestCase {
 
     func testMockStreamKeepsRevisionAheadOfASteadyReader() async throws {
         let provider = MockProvider(simulateLatency: false)
-        let topic = MockProvider.fixtureSuggestions(for: .ten)[0]
-        var gate = RevisionGate(window: .ten)
+        let topic = MockProvider.fixtureSuggestions(for: .seven)[0]
+        var gate = RevisionGate(window: .seven)
         var starvedWhileIncomplete = false
 
-        for try await event in provider.streamLesson(topic: topic, window: .ten, profile: .empty) {
+        for try await event in provider.streamLesson(topic: topic, window: .seven, profile: .empty) {
             gate.apply(event)
             guard gate.isRevealed else { continue }
             // A reader who has consumed everything shown minus a page of runway.

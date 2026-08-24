@@ -171,7 +171,7 @@ final class CourseProgressTests: XCTestCase {
     /// Resuming is a course affordance. A half-read 10-minute explainer is
     /// not offered as "Chapter 2 of 4" on Home.
     func testSingleSittingWindowsAreNeverResumable() {
-        for window in [TimeWindow.three, .ten, .fifteen] {
+        for window in [TimeWindow.three, .seven, .fifteen] {
             XCTAssertFalse(
                 CourseProgress.isResumable(window: window, scrollProgress: 0.5, completedAt: nil),
                 "\(window) is one sitting"

@@ -372,8 +372,14 @@ enum Theme {
         // 15 -> 30 was a 1.21x step for a 2x duration difference, so size
         // had stopped carrying the meaning at the top of the range and the
         // accent fill was doing it instead.
+        //
+        // `one` is not part of that progression. It sits above the grid as its
+        // own element rather than as a fifth size, so it is sized to read as a
+        // different kind of thing -- small enough that nobody mistakes it for
+        // the bottom of a scale.
+        static let one: CGFloat = 56
         static let three: CGFloat = 76
-        static let ten: CGFloat = 112
+        static let seven: CGFloat = 104
         static let fifteen: CGFloat = 132
         static let thirty: CGFloat = 172
 
@@ -384,8 +390,9 @@ enum Theme {
         /// mapping is allowed to exist.
         static func diameter(for window: TimeWindow) -> CGFloat {
             switch window {
+            case .one: one
             case .three: three
-            case .ten: ten
+            case .seven: seven
             case .fifteen: fifteen
             case .thirty: thirty
             }

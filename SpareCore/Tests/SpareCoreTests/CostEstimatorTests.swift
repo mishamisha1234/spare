@@ -54,7 +54,7 @@ final class CostEstimatorTests: XCTestCase {
     /// The two-pass pipeline is the main cost driver; the estimate must reflect
     /// that rather than pricing a single pass.
     func testTwoPassEstimateExceedsASinglePass() {
-        let window = TimeWindow.ten
+        let window = TimeWindow.seven
         let bodyWords = (window.wordBudget.lowerBound + window.wordBudget.upperBound) / 2
         let singlePass = CostEstimator.cost(of: TokenUsage(
             inputTokens: CostEstimator.estimatedTokens(forWords: 700),
@@ -64,7 +64,7 @@ final class CostEstimatorTests: XCTestCase {
     }
 
     func testSessionCostIncludesSuggestionsLessonAndRecall() {
-        let window = TimeWindow.ten
+        let window = TimeWindow.seven
         let session = CostEstimator.estimatedSessionCost(window: window)
         XCTAssertEqual(
             session,

@@ -69,7 +69,7 @@ struct Options {
         var only: TimeWindow?
         if let raw = values["only"] {
             guard let window = TimeWindow(rawValue: raw) else {
-                throw Failure("--only must be three, ten, fifteen, or thirty")
+                throw Failure("--only must be one, three, seven, fifteen, or thirty")
             }
             only = window
         }
@@ -151,11 +151,15 @@ struct Failure: Error, CustomStringConvertible {
 /// person whose fate is load-bearing, which is what "give people room" has to
 /// spend words on. And two are quantitative enough to tempt a displayed sum.
 let topics: [TimeWindow: [(title: String, hook: String, domain: String)]] = [
+    .one: [
+        ("Why ships are measured in tons of water", "A tonnage figure that is a volume, not a weight.", "History"),
+        ("Why airport runways are renumbered", "Magnetic north drifts, and the paint has to follow it.", "Engineering"),
+    ],
     .three: [
         ("Why paper cuts hurt so much", "A shallow wound the body treats as an emergency.", "Biology"),
         ("Why tunnels are dug from both ends", "Meeting in the middle is a surveying problem, not a digging one.", "Engineering"),
     ],
-    .ten: [
+    .seven: [
         ("How standard time was imposed", "Railways needed one clock, and towns fought back.", "History"),
         ("Why insulin stayed cheap for decades", "A patent sold for a dollar, and what happened after.", "Medicine"),
     ],
@@ -1090,7 +1094,7 @@ do {
     FileHandle.standardError.write(Data("""
 
     usage: spare-batch --base-url <https://...> --token <admin token>
-                       [--only three|ten|fifteen|thirty]
+                       [--only one|three|seven|fifteen|thirty]
                        [--model <id>[,<id>...]]
                        [--per-window <n>]
                        [--out <dir>]

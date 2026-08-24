@@ -40,18 +40,18 @@ final class PersistenceConversionTests: XCTestCase {
 
     func testLessonRoundTrip() {
         let lesson = MockProvider.fixtureLesson(
-            topic: MockProvider.fixtureSuggestions(for: .ten)[0],
-            window: .ten
+            topic: MockProvider.fixtureSuggestions(for: .seven)[0],
+            window: .seven
         )
-        let stored = StoredLesson(lesson: lesson, window: .ten)
+        let stored = StoredLesson(lesson: lesson, window: .seven)
         XCTAssertEqual(stored.lesson, lesson)
-        XCTAssertEqual(stored.window, .ten)
+        XCTAssertEqual(stored.window, .seven)
         XCTAssertEqual(stored.angles.count, 3)
     }
 
     func testUnknownWindowFallsBackToShortest() {
         let stored = StoredLesson(
-            title: "t", subtitle: "s", topicTag: "d", window: .ten,
+            title: "t", subtitle: "s", topicTag: "d", window: .seven,
             bodyMarkdown: "body", surprisingClaim: "c", deeperAngles: []
         )
         stored.windowRaw = "ninety"
@@ -85,7 +85,7 @@ final class PersistenceConversionTests: XCTestCase {
 
     func testMinutesRemainingUsesCoreReadingTimeMath() {
         let body = Array(repeating: "word", count: 1_800).joined(separator: " ")
-        let stored = StoredLesson(title: "t", subtitle: "s", topicTag: "d", window: .ten, bodyMarkdown: body)
+        let stored = StoredLesson(title: "t", subtitle: "s", topicTag: "d", window: .seven, bodyMarkdown: body)
         XCTAssertEqual(stored.wordCount, 1_800)
         XCTAssertEqual(stored.minutesRemaining, ReadingTime.minutesRemaining(totalWordCount: 1_800, progress: 0))
         stored.scrollProgress = 1

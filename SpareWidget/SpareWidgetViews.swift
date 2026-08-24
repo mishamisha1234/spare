@@ -115,7 +115,7 @@ struct DurationWidgetView: View {
                 VStack(spacing: 6) {
                     HStack(spacing: 6) {
                         durationChip(.three)
-                        durationChip(.ten)
+                        durationChip(.seven)
                     }
                     HStack(spacing: 6) {
                         durationChip(.fifteen)
@@ -168,7 +168,7 @@ struct DurationWidgetView: View {
 
     private var unlockedWindows: [TimeWindow] {
         let open = TimeWindow.allCases.filter { !lockedWindows.contains($0) }
-        return open.isEmpty ? [.three, .ten] : open
+        return open.isEmpty ? [.three, .seven] : open
     }
 
     /// A locked length routes to the paywall rather than to suggestions: a
@@ -224,7 +224,7 @@ struct LibraryCountWidgetView: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .widgetURL(WidgetDeepLink.suggestions(.ten).url)
+        .widgetURL(WidgetDeepLink.suggestions(.seven).url)
         .accessibilityLabel(
             snapshot.isStorageReachable
                 ? "\(snapshot.thingsKnown) lessons finished"

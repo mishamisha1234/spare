@@ -21,7 +21,7 @@ final class PointsLedgerTests: XCTestCase {
 
     func testLessonCompletionPointsAscendWithWindowLength() {
         XCTAssertEqual(Points.forCompleting(.three), 10)
-        XCTAssertEqual(Points.forCompleting(.ten), 20)
+        XCTAssertEqual(Points.forCompleting(.seven), 20)
         XCTAssertEqual(Points.forCompleting(.fifteen), 30)
         XCTAssertEqual(Points.forCompleting(.thirty), 60)
     }

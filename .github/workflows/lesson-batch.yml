@@ -21,14 +21,15 @@ on:
         required: true
         default: ''
       only:
-        description: 'One length only (leave blank for all 8 lessons)'
+        description: 'One length only (leave blank for every length)'
         required: false
         default: ''
         type: choice
         options:
           - ''
+          - one
           - three
-          - ten
+          - seven
           - fifteen
           - thirty
       model:

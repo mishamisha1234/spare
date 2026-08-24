@@ -25,10 +25,22 @@ final class PaywallCopyTests: XCTestCase {
     /// The two lengths named must be exactly the ones the server allows. If a
     /// window is ever added to or removed from the free tier, this fails rather
     /// than leaving the sheet describing a product that no longer exists.
+    ///
+    /// It has done its job once already: the free lengths moved from 3-and-10
+    /// to 3-and-7 and this is what said so.
     func testDisclosureNamesTheFreeWindows() {
         let free = TimeWindow.allCases.filter(\.isFreeTierEligible)
-        XCTAssertEqual(free, [.three, .ten], "free windows changed; the paywall sentence has not")
-        XCTAssertTrue(PaywallView.freeTierDisclosure.contains("3- and 10-minute"))
+        XCTAssertEqual(free, [.three, .seven], "free windows changed; the paywall sentence has not")
+        XCTAssertTrue(PaywallView.freeTierDisclosure.contains("3- and 7-minute"))
+    }
+
+    /// The 1-minute length is premium, and the sentence must not imply
+    /// otherwise by describing free as "the short ones".
+    func testDisclosureDoesNotImplyTheShortestLengthIsFree() {
+        XCTAssertFalse(TimeWindow.one.isFreeTierEligible)
+        let copy = PaywallView.freeTierDisclosure.lowercased()
+        XCTAssertFalse(copy.contains("1-minute"), copy)
+        XCTAssertFalse(copy.contains("shortest"), copy)
     }
 
     /// No hedging. A disclosure that says "usually" or "up to" is one that has

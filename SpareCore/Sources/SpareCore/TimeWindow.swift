@@ -81,8 +81,11 @@ public enum LessonFormat: String, Codable, Sendable, CaseIterable {
 
 /// Time is the input. Everything else in the app hangs off this choice.
 public enum TimeWindow: String, Codable, CaseIterable, Sendable, Identifiable, Hashable {
+    // Declaration order is ascending, and it is load-bearing: `allCases` is
+    // what Home lays out and what the batch tool iterates.
+    case one
     case three
-    case ten
+    case seven
     case fifteen
     case thirty
 
@@ -90,8 +93,9 @@ public enum TimeWindow: String, Codable, CaseIterable, Sendable, Identifiable, H
 
     public var minutes: Int {
         switch self {
+        case .one: return 1
         case .three: return 3
-        case .ten: return 10
+        case .seven: return 7
         case .fifteen: return 15
         case .thirty: return 30
         }
@@ -108,8 +112,13 @@ public enum TimeWindow: String, Codable, CaseIterable, Sendable, Identifiable, H
     /// Word budgets calibrated to ~200 wpm minus absorption overhead.
     public var wordBudget: ClosedRange<Int> {
         switch self {
+        // A minute is a target, not a fixed length. 200 words is the middle of
+        // this; the band is wide because at one minute the difference between
+        // 180 and 240 words is a sentence either way, and a hard number would
+        // fail lessons over punctuation.
+        case .one: return 180...240
         case .three: return 500...650
-        case .ten: return 1600...2000
+        case .seven: return 1100...1400
         case .fifteen: return 2400...3000
         // 6,000-6,400 divides cleanly by 4 chapters into 1,500-1,600 words
         // each. Four rather than three deliberately: three chapters collapse
@@ -121,8 +130,10 @@ public enum TimeWindow: String, Codable, CaseIterable, Sendable, Identifiable, H
 
     public var format: LessonFormat {
         switch self {
-        case .three: return .oneThing
-        case .ten: return .explainer
+        // A minute and three minutes are the same shape at different depths:
+        // one idea, no headings. What changes is how far it is taken.
+        case .one, .three: return .oneThing
+        case .seven: return .explainer
         case .fifteen: return .lesson
         case .thirty: return .miniCourse
         }
@@ -150,21 +161,33 @@ public enum TimeWindow: String, Codable, CaseIterable, Sendable, Identifiable, H
     /// Decodes a persisted raw value, tolerating ones this app no longer
     /// writes.
     ///
-    /// `"fortyFive"` predates courses moving from 45 minutes to 30. A plain
-    /// `init(rawValue:)` returns nil for it, and the call site's `?? .three`
-    /// would silently turn somebody's course into a 3-minute One Thing —
-    /// so it maps to the window that actually replaced it instead.
+    /// `"fortyFive"` predates courses moving from 45 minutes to 30, and
+    /// `"ten"` predates the 10-minute explainer becoming a 7-minute one. A
+    /// plain `init(rawValue:)` returns nil for both, and the call site's
+    /// `?? .three` would silently turn somebody's course — or their explainer —
+    /// into a 3-minute One Thing. Each maps to the window that replaced it.
+    ///
+    /// This is the whole reason the function exists rather than the call sites
+    /// using `init(rawValue:)`: a renamed case that decodes to a wrong default
+    /// is invisible. Nothing crashes, nothing logs, the reader just finds a
+    /// different lesson than the one they saved.
     public static func stored(rawValue: String) -> TimeWindow? {
         if let window = TimeWindow(rawValue: rawValue) { return window }
         if rawValue == "fortyFive" { return .thirty }
+        if rawValue == "ten" { return .seven }
         return nil
     }
 
-    /// Free tier covers only the two shortest windows.
+    /// Free tier covers the two middle windows.
+    ///
+    /// Not the two shortest, which it used to be and which reads as the
+    /// obvious shape. The 1-minute length is premium on purpose: it is the
+    /// counterintuitive one, and "the shortest is the paid one" is what makes
+    /// a free reader stop and look at it.
     public var isFreeTierEligible: Bool {
         switch self {
-        case .three, .ten: return true
-        case .fifteen, .thirty: return false
+        case .three, .seven: return true
+        case .one, .fifteen, .thirty: return false
         }
     }
 

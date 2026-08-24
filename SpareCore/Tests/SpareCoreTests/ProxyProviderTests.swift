@@ -76,7 +76,7 @@ final class ProxyProviderTests: XCTestCase {
         ))
         let provider = makeProvider(transport)
 
-        _ = try await provider.suggestTopics(window: .ten, profile: profile, history: [])
+        _ = try await provider.suggestTopics(window: .seven, profile: profile, history: [])
 
         let request = try XCTUnwrap(transport.requests.first)
         XCTAssertEqual(request.headers["x-spare-device"], "device-fixture-0001")
@@ -89,7 +89,7 @@ final class ProxyProviderTests: XCTestCase {
             status: 200, text: HTTPFixtures.messageBody(json: HTTPFixtures.suggestionsJSON)
         ))
         _ = try await makeProvider(suggestions)
-            .suggestTopics(window: .ten, profile: profile, history: [])
+            .suggestTopics(window: .seven, profile: profile, history: [])
         XCTAssertEqual(suggestions.requests.first?.url.path, "/v1/suggestions")
 
         let recall = FixtureTransport(.body(
@@ -111,7 +111,7 @@ final class ProxyProviderTests: XCTestCase {
         _ = try await makeProvider(deeper).goDeeper(
             from: fixtureLesson(),
             angle: DeeperAngle(text: "How a tuned mass damper works"),
-            window: .ten,
+            window: .seven,
             profile: profile
         )
         XCTAssertEqual(deeper.requests.map(\.url.path), ["/v1/go-deeper", "/v1/go-deeper"])
@@ -128,7 +128,7 @@ final class ProxyProviderTests: XCTestCase {
         let provider = makeProvider(transport)
 
         _ = try await collect(provider.streamLesson(
-            topic: topic, window: .ten, profile: profile, demand: .eager()
+            topic: topic, window: .seven, profile: profile, demand: .eager()
         ))
 
         XCTAssertEqual(transport.requests.map(\.url.path), ["/v1/lesson", "/v1/lesson"])
@@ -215,7 +215,7 @@ final class ProxyProviderTests: XCTestCase {
         ])
 
         _ = try await collect(makeProvider(transport).streamLesson(
-            topic: topic, window: .ten, profile: profile, demand: .eager()
+            topic: topic, window: .seven, profile: profile, demand: .eager()
         ))
 
         try assertStreamModeMatchesEndpoint(transport)
@@ -226,7 +226,7 @@ final class ProxyProviderTests: XCTestCase {
             status: 200, text: HTTPFixtures.messageBody(json: HTTPFixtures.suggestionsJSON)
         ))
         _ = try await makeProvider(suggestions)
-            .suggestTopics(window: .ten, profile: profile, history: [])
+            .suggestTopics(window: .seven, profile: profile, history: [])
         try assertStreamModeMatchesEndpoint(suggestions)
 
         let recall = FixtureTransport(.body(
@@ -248,7 +248,7 @@ final class ProxyProviderTests: XCTestCase {
         _ = try await makeProvider(deeper).goDeeper(
             from: fixtureLesson(),
             angle: DeeperAngle(text: "How a tuned mass damper works"),
-            window: .ten,
+            window: .seven,
             profile: profile
         )
         try assertStreamModeMatchesEndpoint(deeper)
@@ -276,11 +276,11 @@ final class ProxyProviderTests: XCTestCase {
         let provider = makeProvider(transport)
 
         _ = try await collect(provider.streamLesson(
-            topic: topic, window: .ten, profile: profile, demand: .eager()
+            topic: topic, window: .seven, profile: profile, demand: .eager()
         ))
 
         let sent = try envelope(try XCTUnwrap(transport.requests.first))
-        XCTAssertEqual(sent["window"]?.stringValue, "ten")
+        XCTAssertEqual(sent["window"]?.stringValue, "seven")
         XCTAssertEqual(sent["format"]?.stringValue, "explainer")
         XCTAssertEqual(sent["topic"]?.stringValue, "Why bridges hum")
     }
@@ -300,7 +300,7 @@ final class ProxyProviderTests: XCTestCase {
             XCTAssertEqual(sent["format"]?.stringValue, window.format.rawValue)
         }
         // Spelled out rather than derived, so a rename has to be made here too.
-        XCTAssertEqual(TimeWindow.allCases.map(\.rawValue), ["three", "ten", "fifteen", "thirty"])
+        XCTAssertEqual(TimeWindow.allCases.map(\.rawValue), ["three", "seven", "fifteen", "thirty"])
         XCTAssertEqual(
             LessonFormat.allCases.map(\.rawValue),
             ["oneThing", "explainer", "lesson", "miniCourse"]
@@ -388,7 +388,7 @@ final class ProxyProviderTests: XCTestCase {
         let provider = makeProvider(transport)
 
         let events = try await collect(provider.streamLesson(
-            topic: topic, window: .ten, profile: profile, demand: .eager()
+            topic: topic, window: .seven, profile: profile, demand: .eager()
         ))
 
         XCTAssertTrue(events.contains { if case .metadata = $0 { true } else { false } })
@@ -404,7 +404,7 @@ final class ProxyProviderTests: XCTestCase {
             .sse(HTTPFixtures.stream(json: HTTPFixtures.lessonJSON())),
         ])
         _ = try await collect(makeProvider(transport).streamLesson(
-            topic: topic, window: .ten, profile: profile, demand: .eager()
+            topic: topic, window: .seven, profile: profile, demand: .eager()
         ))
 
         XCTAssertEqual(transport.requests.first?.headers["accept"], "text/event-stream")

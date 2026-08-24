@@ -13,7 +13,7 @@ import type { Tier } from "./appstore";
 /** Mirrors `EntitlementRules` in SpareCore. Kept in step by a shared test. */
 export const FREE_LESSONS_PER_DAY = 1;
 export const PREMIUM_COURSES_PER_MONTH = 12;
-export const FREE_WINDOWS = ["three", "ten"] as const;
+export const FREE_WINDOWS = ["three", "seven"] as const;
 export const CHAPTERED_WINDOWS = ["thirty"] as const;
 
 export type Decision =

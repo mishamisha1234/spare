@@ -31,10 +31,14 @@ struct HomeView: View {
 
     private var palette: Theme.Palette { Theme.palette(for: colorScheme) }
 
-    /// Two rows, each pairing a smaller and larger circle rather than a rigid
-    /// size-ordered grid — the pairing itself is the "not a grid" cue.
-    private static let topRow: [TimeWindow] = [.three, .ten]
-    private static let bottomRow: [TimeWindow] = [.fifteen, .thirty]
+    /// The four windows the 2x2 grid holds.
+    ///
+    /// Stated rather than taken from `TimeWindow.allCases`, which now has five
+    /// entries: the 1-minute length is a different kind of thing and does not
+    /// belong in the size progression. Iterating `allCases` here would silently
+    /// turn the 2x2 into a 2x3 the moment a window was added, which is exactly
+    /// what adding the 1-minute window would have done.
+    private static let gridWindows: [TimeWindow] = [.three, .seven, .fifteen, .thirty]
 
     var body: some View {
         // GeometryReader + a `minHeight` on the content is the standard way
@@ -125,7 +129,7 @@ struct HomeView: View {
     private var durationGrid: some View {
         if dynamicTypeSize >= .accessibility3 {
             VStack(spacing: Theme.Spacing.m) {
-                ForEach(TimeWindow.allCases) { window in
+                ForEach(Self.gridWindows) { window in
                     circle(window)
                 }
             }
@@ -139,7 +143,7 @@ struct HomeView: View {
                 GridItem(.flexible(), spacing: Theme.Spacing.m),
             ]
             LazyVGrid(columns: columns, spacing: Theme.Spacing.m) {
-                ForEach(TimeWindow.allCases) { window in
+                ForEach(Self.gridWindows) { window in
                     circle(window)
                 }
             }

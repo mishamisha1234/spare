@@ -32,6 +32,14 @@ public struct MockProvider: LessonProvider {
         // 5 suggestions, 5 domains, exactly one wildcard.
         // Titles <= 7 words, hooks <= 14 words.
         switch window {
+        case .one:
+            return [
+                TopicSuggestion(title: "Why ice is slippery", hook: "Not pressure, and not friction alone. A liquid layer nobody expected.", domainTag: "Physics"),
+                TopicSuggestion(title: "The pencil that never held lead", hook: "Graphite was misidentified for two hundred years.", domainTag: "History"),
+                TopicSuggestion(title: "Why onions make you cry", hook: "The plant is defending itself, and it works.", domainTag: "Biology"),
+                TopicSuggestion(title: "The price of a rounding error", hook: "One index recalculated, and a market moved.", domainTag: "Economics"),
+                TopicSuggestion(title: "Why maps put north up", hook: "It was a choice, and a fairly recent one.", domainTag: "Design", isWildcard: true),
+            ]
         case .three:
             return [
                 TopicSuggestion(title: "Why bridges hum", hook: "Wind makes steel sing, and engineers tune it out on purpose.", domainTag: "Engineering"),
@@ -40,7 +48,7 @@ public struct MockProvider: LessonProvider {
                 TopicSuggestion(title: "Surge pricing before computers", hook: "Fish markets solved dynamic pricing a century before anyone else.", domainTag: "Economics"),
                 TopicSuggestion(title: "Why choirs drift sharp", hook: "Group pitch rises predictably, and physics says it must.", domainTag: "Music", isWildcard: true),
             ]
-        case .ten:
+        case .seven:
             return [
                 TopicSuggestion(title: "How GPS corrects for relativity", hook: "Satellite clocks run fast; ignoring Einstein breaks navigation within hours.", domainTag: "Physics"),
                 TopicSuggestion(title: "The invention of the weekend", hook: "Two days off is younger than the lightbulb.", domainTag: "History"),

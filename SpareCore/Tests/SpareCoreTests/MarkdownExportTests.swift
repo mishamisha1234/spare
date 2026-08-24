@@ -73,7 +73,7 @@ final class MarkdownExportTests: XCTestCase {
     // MARK: - Metadata
 
     func testMetadataCarriesDomainAndLength() {
-        let line = MarkdownExport.metadataLine(for: lesson(domain: "History", window: .ten))
+        let line = MarkdownExport.metadataLine(for: lesson(domain: "History", window: .seven))
         XCTAssertEqual(line, "History · 10 min")
     }
 

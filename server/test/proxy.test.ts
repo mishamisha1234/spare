@@ -512,7 +512,7 @@ describe("premium", () => {
       const response = await call({
         fetcher,
         device,
-        body: { window: "ten", format: "explainer", topic: `Topic ${n}`, receipt: premiumReceipt, request: modelRequest() },
+        body: { window: "seven", format: "explainer", topic: `Topic ${n}`, receipt: premiumReceipt, request: modelRequest() },
       });
       expect(response.status).toBe(200);
       await response.text();
@@ -771,7 +771,7 @@ describe("the spend ceiling", () => {
       fetcher,
       env: tinyCeiling,
       device: "ceiling-premium",
-      body: { window: "ten", format: "explainer", topic: "Paid topic", receipt: premiumReceipt, request: modelRequest() },
+      body: { window: "seven", format: "explainer", topic: "Paid topic", receipt: premiumReceipt, request: modelRequest() },
     });
     expect(response.status).toBe(200);
   });

@@ -219,7 +219,7 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             // MARK: Home — the recall card (`-UITEST_RESET_STATE` seeds one
             // already-due item, so this is reachable without a multi-day
             // simulated wait).
-            try waitAndCapture(app, "06-home", scheme: colorScheme, identifier: "home.circle.ten")
+            try waitAndCapture(app, "06-home", scheme: colorScheme, identifier: "home.circle.seven")
             try tap(app, "recall.option.Wind alone", scheme: colorScheme, step: "06-home-recall")
             try waitAndCapture(app, "06a-recall-revealed", scheme: colorScheme, identifier: "recall.viewLesson")
             try tap(app, "recall.dismiss", scheme: colorScheme, step: "06a-recall-revealed")
@@ -233,7 +233,7 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             try tap(app, "paywall.close", scheme: colorScheme, step: "06c-paywall-from-duration")
             waitUntilGone(element(app, "paywall.buy"))
 
-            try tap(app, "home.circle.ten", scheme: colorScheme, step: "06-home")
+            try tap(app, "home.circle.seven", scheme: colorScheme, step: "06-home")
 
             // MARK: Suggestions
             let firstSuggestionRow = app.descendants(matching: .any)
