@@ -153,6 +153,8 @@ final class MockProviderTests: XCTestCase {
                 revisedStartedChapters.insert(chapter)
             case .revisedChapterFinished:
                 break
+            case .revisionRestarted(let chapter):
+                XCTFail("the mock has no word floor to miss; chapter \(chapter) was withdrawn")
             case .finished(let lesson):
                 finished = lesson
             }

@@ -22,7 +22,10 @@ final class AnthropicDirectProviderTests: XCTestCase {
             keyStore: StaticAPIKeyStore(key),
             ledger: ledger,
             sleeper: sleeper,
-            configuration: .init(retry: retry),
+            // The floor is exercised by `WordFloorTests`; these fixtures are
+            // stubs for the transport, not generations. See
+            // `Configuration.enforcesWordFloor`.
+            configuration: .init(retry: retry, enforcesWordFloor: false),
             now: { Date(timeIntervalSince1970: 1_750_000_000) }
         )
     }

@@ -122,6 +122,17 @@ public enum ProviderErrorCopy {
                 isRetryable: true
             )
 
+        case .underWordFloor:
+            // Says what happened without saying "word floor". The reader chose
+            // a length, and the honest thing to tell them is that the app
+            // could not produce that length -- not that a check failed.
+            return ErrorPresentation(
+                title: "Couldn't fill the time",
+                message: "This one kept coming out shorter than the length you"
+                    + " picked. Try a different topic, or a shorter length.",
+                isRetryable: false
+            )
+
         case .cancelled:
             return ErrorPresentation(
                 title: "Stopped",

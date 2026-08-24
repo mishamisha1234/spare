@@ -25,8 +25,9 @@ import {
 } from "./appstore";
 import { lessonCacheKey, readCachedLesson, replayCachedLesson, writeCachedLesson } from "./cache";
 import { SpendLedger, UsageCounter, type Decision } from "./limits";
-import { applyPolicy } from "./policy";
+import { applyPolicy, hardWordFloor } from "./policy";
 import {
+  bodyWordCount,
   callAnthropic,
   estimateCostUSD,
   forwardStream,
@@ -149,7 +150,8 @@ export default {
       case "/v1/outline":
       case "/v1/chapter":
         return handleGeneration(
-          body, modelRequest, env, entitlement, deviceId, ctx, hooks, now, isOperator,
+          body, modelRequest, url.pathname, env, entitlement, deviceId,
+          ctx, hooks, now, isOperator,
         );
 
       case "/v1/go-deeper":
@@ -315,6 +317,9 @@ async function handleUnmetered(
 async function handleGeneration(
   body: Record<string, any>,
   modelRequest: Record<string, unknown>,
+  /** Which generation endpoint this is. Decides the word floor: a chapter is
+   * measured against a chapter's budget, not the whole course's. */
+  pathname: string,
   env: Env,
   entitlement: VerifiedEntitlement,
   deviceId: string,
@@ -436,9 +441,26 @@ async function handleGeneration(
       );
       await recordSpend(env, cost, hooks, now);
 
-      // Only cache a stream that actually finished. Caching a truncated one
-      // would serve the truncation to everyone who asks next.
-      if (parsed.complete && topic) {
+      // Two admission rules, and they are the same rule.
+      //
+      // A stream that did not finish is a truncated lesson, and caching it
+      // would serve the truncation to everyone who asks next. A stream that
+      // finished but came back materially under its word floor is a lesson
+      // that is not the length it was sold as, and caching it would serve
+      // *that* to everyone who asks next. The reader who generated it may
+      // still be looking at it — the app has its own floor check and retries,
+      // and by here the response has already been forwarded — but nothing
+      // short earns a thirty-day life in the pool.
+      //
+      // `words === null` means the body could not be read at all, which is not
+      // the same as short and is not a reason to be lenient.
+      const floor = hardWordFloor(window, pathname);
+      const words = bodyWordCount(parsed.text);
+      const longEnough = floor === null
+        ? false
+        : words !== null && words >= floor;
+
+      if (parsed.complete && topic && longEnough) {
         await writeCachedLesson(env.LESSONS, cacheKey, {
           sse: fullBody,
           createdAt: now,

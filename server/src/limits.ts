@@ -88,15 +88,21 @@ export const CHARGED_HISTORY_LIMIT = 100;
  * How many requests one charged lesson may cover.
  *
  * A single lesson is two: a draft and a revision. A 30-minute course is nine: an
- * outline plus four chapters twice over. Sixteen leaves room for the client's
- * retry policy — three attempts per call — to burn a few extra on a flaky
- * chapter without the reader losing the course.
+ * outline plus four chapters twice over.
+ *
+ * Raised from sixteen when the word-floor check landed. A pass that comes back
+ * materially under its floor is now run again, once, so a course's worst
+ * honest case became an outline plus four chapters of two drafts and two
+ * revisions — seventeen, one past the old bound. A limit that a legitimate
+ * course could cross is worse than no limit: it turns a length problem into a
+ * 402 in the middle of chapter three, which reads as the app being broken.
+ * Twenty-four leaves that worst case room for the client's retry policy on top.
  *
  * Past it, the lesson is refused as if it were a new one. That is not a limit
  * any honest client can reach; it is the ceiling on what a dishonest one gets
  * for a single day's allowance.
  */
-export const MAX_REQUESTS_PER_LESSON = 16;
+export const MAX_REQUESTS_PER_LESSON = 24;
 
 /** Keeps the most recent `SEEN_HISTORY_LIMIT` entries, dropping the oldest. */
 function trimSeen(keys: string[]): string[] {

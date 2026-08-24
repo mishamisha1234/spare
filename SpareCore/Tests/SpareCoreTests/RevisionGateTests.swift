@@ -31,6 +31,55 @@ final class RevisionGateTests: XCTestCase {
         XCTAssertEqual(gate.displayWordCount, 260)
     }
 
+    // MARK: - Withdrawal
+
+    /// The one exception to invariant 4, and it must not be mistaken for a
+    /// breach of it.
+    ///
+    /// A revision that comes back under the word floor is re-run, and what it
+    /// already put on the screen has to come back off. Shown text shrinking is
+    /// exactly the shape of an append-only violation, so if the rewind went
+    /// through the ordinary path the gate would count it as one and then refuse
+    /// to apply it — leaving the withdrawn text on screen and the retry
+    /// appended underneath it.
+    func testAWithdrawnRevisionIsRewoundRatherThanCountedAsAViolation() {
+        var gate = RevisionGate(window: .ten)
+        gate.apply(.revisedDelta(chapter: 0, text: words(400)))
+        XCTAssertTrue(gate.isRevealed)
+        XCTAssertEqual(gate.displayWordCount, 400)
+
+        gate.apply(.revisionRestarted(chapter: 0))
+
+        XCTAssertEqual(gate.displayText, "", "the withdrawn attempt is still being shown")
+        XCTAssertEqual(gate.phase, .holding, "an unchaptered rewind goes back behind the curtain")
+        XCTAssertEqual(gate.revisionRestarts, 1)
+        XCTAssertEqual(gate.appendOnlyViolations, 0)
+
+        // And the retry reveals normally.
+        gate.apply(.revisedDelta(chapter: 0, text: words(300)))
+        XCTAssertTrue(gate.isRevealed)
+        XCTAssertEqual(gate.displayWordCount, 300)
+        XCTAssertEqual(gate.appendOnlyViolations, 0)
+    }
+
+    /// Rewinding chapter 2 keeps chapter 1: the reader has read it, it passed
+    /// its own check, and taking it back would be a bug rather than a policy.
+    func testRewindingAChapterKeepsTheOnesBeforeIt() {
+        var gate = RevisionGate(window: .thirty)
+        gate.apply(.revisedDelta(chapter: 0, text: words(300, tag: "first")))
+        gate.apply(.revisedChapterFinished(chapter: 0))
+        gate.apply(.revisedDelta(chapter: 1, text: words(200, tag: "second")))
+        XCTAssertEqual(gate.displayWordCount, 500)
+
+        gate.apply(.revisionRestarted(chapter: 1))
+
+        XCTAssertEqual(gate.displayWordCount, 300, "chapter 1 was taken back too")
+        XCTAssertTrue(gate.displayText.contains("first"))
+        XCTAssertFalse(gate.displayText.contains("second"))
+        XCTAssertTrue(gate.isRevealed, "the reader is mid-course, not back at the opening")
+        XCTAssertEqual(gate.appendOnlyViolations, 0)
+    }
+
     func testDraftAloneNeverReveals() {
         var gate = RevisionGate(window: .ten)
         gate.apply(.draftDelta(chapter: 0, text: words(5_000)))

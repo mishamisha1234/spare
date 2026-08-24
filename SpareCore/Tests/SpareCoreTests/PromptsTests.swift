@@ -65,10 +65,72 @@ final class PromptsTests: XCTestCase {
             "NEVER DO",
             "FACTUAL DISCIPLINE",
             "Never invent a statistic",
-            "Under-budget and tight beats on-budget and thin",
         ] {
             XCTAssertTrue(prompt.contains(required), "editorial prompt lost: \(required)")
         }
+    }
+
+    /// The word budget is a promise about the reader's time, in both directions.
+    ///
+    /// The prompt used to say "under-budget and tight beats on-budget and thin",
+    /// and the model obeyed: across the last batch one 15-minute lesson in five
+    /// reached its budget and one came in at 1,555 words against a 2,400 floor,
+    /// which is about eight minutes of reading sold as fifteen. Pinned in both
+    /// directions — the sentence has to be gone, and its replacement present —
+    /// because a rule that is merely deleted grows back.
+    func testEditorialPromptTreatsTheBudgetAsAPromiseNotACeiling() {
+        let prompt = Prompts.editorialSystemPrompt.replacingOccurrences(of: "\n", with: " ")
+
+        XCTAssertFalse(
+            prompt.contains("Under-budget and tight beats on-budget and thin"),
+            "the line that produced the undershoot is back"
+        )
+        for required in [
+            "Do not pad.",
+            "the word budget is a promise about the reader's time",
+            "not a ceiling to undershoot",
+            "materially under the floor has failed, not succeeded",
+        ] {
+            XCTAssertTrue(prompt.contains(required), "editorial prompt lost: \(required)")
+        }
+    }
+
+    /// And the same correction in the pass that was actually doing the cutting.
+    ///
+    /// Pass 1 runs under `editorialSystemPrompt`; pass 2 runs under
+    /// `revisionSystemPrompt`, whose tenth check said "cut rather than pad" with
+    /// nothing on the other side of it. Fixing only the drafting prompt would
+    /// have left the shrinking instruction in the pass that shrinks.
+    func testRevisionPromptChecksBothEndsOfTheBudget() {
+        let prompt = Prompts.revisionSystemPrompt.replacingOccurrences(of: "\n", with: " ")
+
+        XCTAssertFalse(
+            prompt.contains("Is it within the stated word budget? Cut rather than pad."),
+            "the revision check that only looked at the ceiling is back"
+        )
+        for required in [
+            "Both ends count",
+            "Under the floor: the piece is not finished",
+            "Do not pad, and do not add a second argument",
+        ] {
+            XCTAssertTrue(prompt.contains(required), "revision prompt lost: \(required)")
+        }
+    }
+
+    /// A re-run has to say what was wrong with the last one, and a first attempt
+    /// must not carry an empty placeholder into the prompt.
+    func testRevisionPromptNamesAShortfallOnlyWhenThereIsOne() {
+        let first = Prompts.revisionTaskPrompt(wordBudget: 2400...3000, draftJSON: "{}")
+        XCTAssertTrue(PromptTemplate.unresolvedPlaceholders(in: first).isEmpty, first)
+        XCTAssertFalse(first.contains("previous revision"), first)
+
+        let retry = Prompts.revisionTaskPrompt(
+            wordBudget: 2400...3000, draftJSON: "{}", shortfall: 1_555
+        )
+        XCTAssertTrue(PromptTemplate.unresolvedPlaceholders(in: retry).isEmpty, retry)
+        XCTAssertTrue(retry.contains("1555 words"), retry)
+        XCTAssertTrue(retry.contains("2400-word floor"), retry)
+        XCTAssertTrue(retry.contains("Do not pad"), retry)
     }
 
     /// The six structural notes from the first batch, each as a rule the model

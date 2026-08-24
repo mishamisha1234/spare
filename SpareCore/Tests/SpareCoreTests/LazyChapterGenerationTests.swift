@@ -59,7 +59,10 @@ final class LazyChapterGenerationTests: XCTestCase {
             transport: transport,
             keyStore: StaticAPIKeyStore("sk-ant-fixture"),
             ledger: ledger,
-            sleeper: RecordingSleeper()
+            sleeper: RecordingSleeper(),
+            // Chapter laziness, not chapter length. See
+            // `Configuration.enforcesWordFloor`.
+            configuration: .init(enforcesWordFloor: false)
         )
     }
 

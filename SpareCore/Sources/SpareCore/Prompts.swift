@@ -182,7 +182,11 @@ public enum Prompts {
           cheerleading, no "you might be wondering", no rhetorical questions
           aimed at the reader.
         - Add emoji.
-        - Pad to hit the word count. Under-budget and tight beats on-budget and thin.
+
+        LENGTH
+        Do not pad. But the word budget is a promise about the reader's time, not
+        a ceiling to undershoot — a lesson materially under the floor has failed,
+        not succeeded.
 
         FACTUAL DISCIPLINE
         Only state what you're confident is true. Where genuine scholarly or
@@ -225,7 +229,10 @@ public enum Prompts {
         7. Are sentence lengths varied, or is everything 15–25 words? Break the rhythm.
         8. Any list that should be prose? Convert it.
         9. Any invented-sounding statistic or study? Remove the specific figure.
-        10. Is it within the stated word budget? Cut rather than pad.
+        10. Is it within the stated word budget? Both ends count. Over the
+            ceiling: cut. Under the floor: the piece is not finished — take the
+            argument further, add the evidence or the scene or the consequence
+            it is missing. Do not pad, and do not add a second argument.
         11. Is this one argument or two? If a second complete argument has grown
             inside the body, cut it out and make it a deeper angle instead.
         12. Count the "## " sections. Over the ceiling in the brief? Merge or cut
@@ -388,10 +395,26 @@ public enum Prompts {
 
     public static let revisionTaskTemplate: String = """
         Target length: {{wordBudget}} words.
-
+        {{shortfall}}
         Draft to edit:
 
         {{draft}}
+        """
+
+    /// Appended to a revision that is being run again because the last one came
+    /// in short.
+    ///
+    /// A bare re-run is the same request twice and lands in the same place
+    /// often enough not to be worth the money. This names the number, which is
+    /// the one thing the model cannot see: it is not told what it produced last
+    /// time, only what to produce now.
+    public static let revisionShortfallTemplate: String = """
+
+        Your previous revision of this draft came back at {{words}} words, below
+        the {{floor}}-word floor. That is a failed revision — the reader was
+        promised that length. Go deeper on the argument already here: more
+        evidence, more of the scene, more of the consequence. Do not pad, do not
+        add a second argument, and do not exceed the section ceiling.
         """
 
     public static let outlineTaskTemplate: String = """
@@ -530,12 +553,23 @@ public enum Prompts {
     ///
     /// A range rather than a window, so the caller has to say which budget it
     /// means and cannot pick the wrong one by default.
+    /// - Parameter shortfall: the word count of a previous revision that came
+    ///   in under the floor, when this call is that revision being run again.
+    ///   Nil on a first attempt, which renders the placeholder away to nothing.
     public static func revisionTaskPrompt(
         wordBudget: ClosedRange<Int>,
-        draftJSON: String
+        draftJSON: String,
+        shortfall: Int? = nil
     ) -> String {
-        PromptTemplate.render(revisionTaskTemplate, [
+        let shortfallText = shortfall.map { words in
+            PromptTemplate.render(revisionShortfallTemplate, [
+                "words": "\(words)",
+                "floor": "\(wordBudget.lowerBound)",
+            ])
+        } ?? ""
+        return PromptTemplate.render(revisionTaskTemplate, [
             "wordBudget": budgetPhrase(wordBudget),
+            "shortfall": shortfallText,
             "draft": draftJSON,
         ])
     }
@@ -637,6 +671,9 @@ public enum Prompts {
     static let allTaskTemplates: [String: String] = [
         "lesson": lessonTaskTemplate,
         "revision": revisionTaskTemplate,
+        // A fragment rather than a whole task, but it is prompt text with
+        // placeholders in it, so it is held to the same rendering checks.
+        "revisionShortfall": revisionShortfallTemplate,
         "outline": outlineTaskTemplate,
         "chapter": chapterTaskTemplate,
         "suggestion": suggestionTaskTemplate,

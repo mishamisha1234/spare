@@ -13,6 +13,22 @@ public enum LessonStreamEvent: Sendable, Equatable {
     /// Revised (pass 2) text for a chapter. Reader-facing, append-only.
     case revisedDelta(chapter: Int, text: String)
     case revisedChapterFinished(chapter: Int)
+    /// Withdraws every `revisedDelta` already sent for this chapter: the pass
+    /// that produced them is being run again.
+    ///
+    /// The one exception to append-only, and it exists for one reason. A
+    /// lesson's length is a promise about the reader's time, and a revision
+    /// that lands materially under the floor has broken it — 1,555 words
+    /// against a 2,400-word floor is eight minutes of reading sold as fifteen.
+    /// That can only be known when the pass finishes, by which point its text
+    /// is already on the screen, so the only honest options are to show it
+    /// anyway or to take it back. This is taking it back.
+    ///
+    /// Rare by construction: it fires on a failed length check, not on a
+    /// network error, and the retry that follows it is bounded. A consumer that
+    /// ignores it will show a lesson twice over — `RevisionGate` handles it, and
+    /// nothing should be reading these events without one.
+    case revisionRestarted(chapter: Int)
     /// Canonical fully revised lesson; the value persisted as `bodyMarkdown`.
     case finished(Lesson)
 }
@@ -61,6 +77,14 @@ public enum LessonProviderError: Error, Equatable, Sendable {
     case refused(category: String?, explanation: String?)
     case cancelled
     case malformedStream(String)
+    /// Generation kept coming back materially shorter than the length the
+    /// reader chose, and the retries are spent.
+    ///
+    /// Surfaced rather than served. The alternative — hand over a lesson that
+    /// is two-thirds the length it was sold as — is the failure this whole
+    /// check exists to stop, and it is worse for being invisible: nobody
+    /// reports a lesson that was merely short.
+    case underWordFloor(words: Int, floor: Int)
     /// A tier or spend limit the proxy enforced. `message` is the server's own
     /// wording, which is written for the reader.
     case limited(ProxyLimit, message: String)
@@ -75,6 +99,10 @@ public enum LessonProviderError: Error, Equatable, Sendable {
         // therefore the same three wasted retries.
         case .httpStatus(let code, _): return code == 429 || (code >= 500 && code != 502)
         case .missingAPIKey, .decoding, .refused, .cancelled: return false
+        // The pipeline has already retried this as many times as it is going
+        // to. Offering the reader a button that runs the same two calls again
+        // spends real money to reach the same answer.
+        case .underWordFloor: return false
         // A ceiling clears and an Apple outage ends; a tier boundary doesn't
         // move by retrying, and offering a button that cannot help implies the
         // failure is the reader's to fix.

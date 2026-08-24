@@ -8,6 +8,7 @@ import {
   appleSandbox,
   fixtureFetch,
   jsonMessage,
+  lessonBody,
   sseLesson,
   subscriptionStatus,
 } from "./fixtures";
@@ -227,7 +228,12 @@ describe("one lesson is one charge, however many requests it takes", () => {
     // all day and generate every time — cheaper abuse than clearing the device
     // id, which at least costs a reinstall.
     const routes = [];
-    for (let index = 0; index < 20; index += 1) {
+    // Derived, not 20. The loop has to be able to reach the bound: when
+    // MAX_REQUESTS_PER_LESSON was raised for the word-floor retry, a hardcoded
+    // 20 meant the refusal never happened and the test reported "never
+    // refused" as `refusedAt === 0`.
+    const attempts = MAX_REQUESTS_PER_LESSON + 4;
+    for (let index = 0; index < attempts; index += 1) {
       routes.push(anthropicStreaming(sseLesson(`Pass ${index}.`)));
     }
     const fetcher = fixtureFetch(routes);
@@ -240,7 +246,7 @@ describe("one lesson is one charge, however many requests it takes", () => {
     };
 
     let refusedAt = 0;
-    for (let attempt = 1; attempt <= 20; attempt += 1) {
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
       const response = await call({ fetcher, device, body });
       if (response.status !== 200) {
         expect(await response.json()).toMatchObject({ error: { code: "dailyLimitReached" } });
@@ -516,7 +522,7 @@ describe("premium", () => {
 
 describe("the lesson cache", () => {
   it("serves a free user a cached lesson without calling Anthropic", async () => {
-    const sse = sseLesson("Cached body.");
+    const sse = sseLesson(lessonBody(520));
     const fetcher = fixtureFetch([anthropicStreaming(sse)]);
 
     // First device generates and populates the cache.
@@ -534,7 +540,7 @@ describe("the lesson cache", () => {
     // cached lesson from a generated one, so an allowance that only counted
     // generations would make the free tier behave unpredictably from their side
     // and be impossible to describe honestly on the paywall.
-    const fetcher = fixtureFetch([anthropicStreaming(sseLesson("Shared body."))]);
+    const fetcher = fixtureFetch([anthropicStreaming(sseLesson(lessonBody(520)))]);
     await (await call({ fetcher, device: "cache-meter-seed" })).text();
 
     const reader = "cache-meter-reader";
@@ -576,7 +582,7 @@ describe("the lesson cache", () => {
   it("collides on topics that differ only by wording", async () => {
     // Both topics are stated explicitly: this test is about the exact pair of
     // wordings, so inheriting a test-scoped default topic would test nothing.
-    const fetcher = fixtureFetch([anthropicStreaming(sseLesson("Shared."))]);
+    const fetcher = fixtureFetch([anthropicStreaming(sseLesson(lessonBody(520)))]);
     await (await call({
       fetcher,
       device: "wording-a",
@@ -594,7 +600,7 @@ describe("the lesson cache", () => {
   });
 
   it("never serves a cached lesson to premium", async () => {
-    const fetcher = fixtureFetch(premiumRoutes(sseLesson("Fresh for premium.")));
+    const fetcher = fixtureFetch(premiumRoutes(sseLesson(lessonBody(520))));
     // Seeded under the same explicit topic the premium read asks for, so a
     // cache hit is available and declining it is the thing being tested.
     await (await call({
@@ -622,7 +628,7 @@ describe("the lesson cache", () => {
 
     // Someone else generates it, so the entry exists and this device has not
     // read it. Their own generation would mark it read for them.
-    const seedFetcher = fixtureFetch([anthropicStreaming(sseLesson("Shared lesson body."))]);
+    const seedFetcher = fixtureFetch([anthropicStreaming(sseLesson(lessonBody(520)))]);
     await (await call({ fetcher: seedFetcher, device: "repeat-seed", body })).text();
 
     const first = await call({ fetcher: fixtureFetch([]), device, body });
@@ -652,7 +658,7 @@ describe("the lesson cache", () => {
     const body = { window: "three", format: "oneThing", topic, request: modelRequest() };
     const device = "own-lesson-reader";
 
-    const first = fixtureFetch([anthropicStreaming(sseLesson("My own lesson."))]);
+    const first = fixtureFetch([anthropicStreaming(sseLesson(lessonBody(520)))]);
     await (await call({ fetcher: first, device, body })).text();
 
     const next = fixtureFetch([anthropicStreaming(sseLesson("Something new."))]);
@@ -665,7 +671,7 @@ describe("the lesson cache", () => {
     const topic = "Ageing entry";
     const body = { window: "three", format: "oneThing", topic, request: modelRequest() };
 
-    const seed = fixtureFetch([anthropicStreaming(sseLesson("Written a while ago."))]);
+    const seed = fixtureFetch([anthropicStreaming(sseLesson(lessonBody(520)))]);
     await (await call({ fetcher: seed, device: "age-seed", body })).text();
 
     // A day inside the window: still served.
@@ -690,6 +696,42 @@ describe("the lesson cache", () => {
     expect(stale.status).toBe(200);
     expect(stale.headers.get("x-spare-cache")).toBeNull();
     expect((outside as any).calls.length).toBeGreaterThan(0);
+  });
+
+  it("does not cache a lesson that came back under the word floor", async () => {
+    // The same rule as the truncated stream below, for the same reason. A
+    // lesson that is 60% of the length it was sold as is not a lesson with a
+    // flaw in it; it is eight minutes of reading sold as fifteen. Shown to the
+    // reader who generated it that is one bad lesson — the app has its own
+    // check and retries — but written into the pool it is served to everyone
+    // who asks that question for the next thirty days.
+    //
+    // 300 words against a 3-minute floor of 500: under 90% of it, and complete,
+    // so nothing but the length rules it out.
+    const fetcher = fixtureFetch([
+      anthropicStreaming(sseLesson(lessonBody(300))),
+      anthropicStreaming(sseLesson(lessonBody(300))),
+    ]);
+    await (await call({ fetcher, device: "short-writer" })).text();
+
+    const callsBefore = (fetcher as any).calls.length;
+    const next = await call({ fetcher, device: "short-reader" });
+    expect(next.headers.get("x-spare-cache")).toBeNull();
+    expect((fetcher as any).calls.length).toBeGreaterThan(callsBefore);
+  });
+
+  it("caches a lesson that clears the floor by a hair", async () => {
+    // The other side of the same line, so the check is not passing by refusing
+    // everything. 460 words is under the 500-word floor and over the 450-word
+    // hard floor: tight, not short, and the reader is not made to wait for a
+    // regeneration over forty words.
+    const fetcher = fixtureFetch([anthropicStreaming(sseLesson(lessonBody(460)))]);
+    await (await call({ fetcher, device: "tight-writer" })).text();
+
+    const callsBefore = (fetcher as any).calls.length;
+    const next = await call({ fetcher, device: "tight-reader" });
+    expect(next.headers.get("x-spare-cache")).toBe("hit");
+    expect((fetcher as any).calls.length).toBe(callsBefore);
   });
 
   it("does not cache a truncated stream", async () => {

@@ -29,6 +29,9 @@ final class ProxyProviderTests: XCTestCase {
             receipt: { receipt },
             ledger: ledger,
             sleeper: RecordingSleeper(),
+            // See `Configuration.enforcesWordFloor`: `WordFloorTests` owns that
+            // rule, and these fixtures are stubs for the envelope and the meter.
+            configuration: .init(enforcesWordFloor: false),
             now: { Date(timeIntervalSince1970: 1_750_000_000) }
         )
     }

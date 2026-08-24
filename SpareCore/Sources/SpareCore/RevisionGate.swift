@@ -96,6 +96,9 @@ public struct RevisionGate: Sendable, Equatable {
     /// Rejected updates that would have rewritten already-shown text. Always
     /// empty in correct operation; asserted on in tests.
     public private(set) var appendOnlyViolations: Int = 0
+    /// How many times a revision pass was withdrawn and re-run. Nonzero is not
+    /// a bug — see `.revisionRestarted` — but it is money, so it is counted.
+    public private(set) var revisionRestarts: Int = 0
 
     // MARK: Init
 
@@ -131,6 +134,32 @@ public struct RevisionGate: Sendable, Equatable {
             guard let index = validIndex(chapter) else { return }
             buffers[index].revisedFinished = true
             refreshDisplay()
+
+        case .revisionRestarted(let chapter):
+            guard let index = validIndex(chapter) else { return }
+            revisionRestarts += 1
+            // This chapter and everything after it. Later chapters cannot have
+            // started under sequential generation, but a buffer that survived a
+            // rewind would be text from a lesson that no longer exists.
+            for later in index..<buffers.count {
+                buffers[later].revised = ""
+                buffers[later].revisedFinished = false
+            }
+            // Cleared before the runway is read, not after: `revisedRunway`
+            // returns `finalBody` outright when it is set, so recomputing first
+            // would hand back the very text being withdrawn.
+            finalBody = nil
+            // The one place `committedText` is allowed to shrink, so it is
+            // assigned rather than passed through `refreshDisplay`'s
+            // append-only guard -- which would otherwise count the rewind as a
+            // violation and then refuse it.
+            committedText = revisedRunway
+            // Back behind the curtain if the rewind left less than an opening.
+            // For an unchaptered lesson that is always: chapter 0 is the whole
+            // thing, so the reader returns to the waiting state they started in.
+            if !isFullyRevised, committedText.lessonWordCount < configuration.initialRevealWords {
+                phase = .holding
+            }
 
         case .finished(let lesson):
             finalLesson = lesson

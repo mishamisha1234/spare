@@ -7,9 +7,42 @@ export const ANTHROPIC_MESSAGES = "https://api.anthropic.com/v1/messages";
 export const APPLE_PRODUCTION = "https://api.storekit.itunes.apple.com";
 export const APPLE_SANDBOX = "https://api.storekit-sandbox.itunes.apple.com";
 
-/** An SSE body shaped like a real streaming completion. */
+/**
+ * Prose of a given length, for tests that care how long a lesson is.
+ *
+ * Real words rather than one repeated token: the word count is a whitespace
+ * split, so "a".repeat(n) is one word however long it is, and a fixture that
+ * looks long while counting as one is exactly the confusion this avoids.
+ */
+export function lessonBody(words: number): string {
+  const vocabulary = [
+    "the", "bridge", "swayed", "because", "soldiers", "marched", "in", "step",
+    "and", "resonance", "did", "the", "rest", "on", "a", "cold", "morning",
+  ];
+  return Array.from({ length: words }, (_, index) => vocabulary[index % vocabulary.length])
+    .join(" ");
+}
+
+/**
+ * An SSE body shaped like a real streaming completion.
+ *
+ * `text` becomes the lesson's `bodyMarkdown`, and what streams is the whole
+ * structured-output object — which is what the real endpoint returns and what
+ * the server now has to read to decide whether a lesson is long enough to
+ * cache. The fixture used to stream the bare prose, which no client could have
+ * decoded; nothing depended on the difference until the cache started counting
+ * words.
+ */
 export function sseLesson(text: string, options: { complete?: boolean; inputTokens?: number; outputTokens?: number } = {}): string {
   const { complete = true, inputTokens = 1200, outputTokens = 800 } = options;
+  const payload = JSON.stringify({
+    title: "A lesson",
+    subtitle: "What it is about",
+    domainTag: "History",
+    bodyMarkdown: text,
+    surprisingClaim: "Something checkable and counterintuitive.",
+    deeperAngles: ["One", "Two", "Three"],
+  });
   const lines: string[] = [];
   lines.push(
     `event: message_start\ndata: ${JSON.stringify({
@@ -18,7 +51,7 @@ export function sseLesson(text: string, options: { complete?: boolean; inputToke
     })}\n`,
   );
   // Several deltas, so a test can tell whether chunk boundaries survived.
-  for (const chunk of text.match(/.{1,20}/gs) ?? []) {
+  for (const chunk of payload.match(/.{1,20}/gs) ?? []) {
     lines.push(
       `event: content_block_delta\ndata: ${JSON.stringify({
         type: "content_block_delta",

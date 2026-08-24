@@ -29,17 +29,44 @@ public struct GenerationPipeline: LessonProvider {
         /// The editorial prompt is identical on every call, which is the whole
         /// point of caching it. Disable only to measure the difference.
         public var cacheSystemPrompt: Bool
+        /// Extra attempts allowed at a pass that came back under the word floor.
+        ///
+        /// One, not three. Each attempt is a whole pass at full price, and the
+        /// server bounds how many requests one lesson may make: at one retry a
+        /// course's worst case is an outline plus four chapters of two drafts
+        /// and two revisions, which is seventeen calls and is what
+        /// `MAX_REQUESTS_PER_LESSON` was raised to cover. A second retry would
+        /// put it past that bound and turn a length problem into a 402 halfway
+        /// through chapter three.
+        public var wordFloorRetries: Int
+        /// Whether a pass that lands under the word floor is retried and, in the
+        /// end, refused.
+        ///
+        /// On everywhere that generates. Off in tests whose subject is the
+        /// transport — retries, metering, header shape, event ordering — because
+        /// a queued fixture is a stub and not a generation. Making every such
+        /// fixture carry four hundred words of filler to satisfy a rule about
+        /// reading time would say nothing true about the model and would bury
+        /// what those tests are actually asserting.
+        ///
+        /// Tests that are about the floor keep it on and use bodies of a real
+        /// length. `Configuration.standard` enforces.
+        public var enforcesWordFloor: Bool
 
         public init(
             model: String = AnthropicAPI.model,
             effort: Effort? = .high,
             retry: RetryPolicy = .standard,
-            cacheSystemPrompt: Bool = true
+            cacheSystemPrompt: Bool = true,
+            wordFloorRetries: Int = 1,
+            enforcesWordFloor: Bool = true
         ) {
             self.model = model
             self.effort = effort
             self.retry = retry
             self.cacheSystemPrompt = cacheSystemPrompt
+            self.wordFloorRetries = max(0, wordFloorRetries)
+            self.enforcesWordFloor = enforcesWordFloor
         }
 
         public static let standard = Configuration()
@@ -235,30 +262,52 @@ public struct GenerationPipeline: LessonProvider {
 
         // Pass 1. Streamed for progress and to avoid a long silent request,
         // but never displayed — `RevisionGate` drops draft text on the floor.
-        let (draft, _) = try await streamStructured(
-            request: draftRequest,
-            field: "bodyMarkdown",
-            kind: .lessonDraft,
-            context: context,
-            as: Lesson.self,
-            retryAfterEmission: true
-        ) { text in
-            continuation.yield(.draftDelta(chapter: 0, text: text))
-        }
+        //
+        // The floor check here is the free one: nothing has been shown, so a
+        // re-run costs a call and no reader ever knows. It does not refuse.
+        let draft = try await respectingWordFloor(
+            budget: window.wordBudget,
+            throwOnExhaustion: false,
+            wordCount: { (lesson: Lesson) in lesson.wordCount },
+            runPass: { _ in
+                let (draft, _) = try await streamStructured(
+                    request: draftRequest,
+                    field: "bodyMarkdown",
+                    kind: .lessonDraft,
+                    context: context,
+                    as: Lesson.self,
+                    retryAfterEmission: true
+                ) { text in
+                    continuation.yield(.draftDelta(chapter: 0, text: text))
+                }
+                return draft
+            }
+        )
         continuation.yield(.metadata(draft.metadata))
         continuation.yield(.draftChapterFinished(chapter: 0))
 
-        // Pass 2. This is what the reader actually sees.
-        let (revised, _) = try await streamStructured(
-            request: revisionRequest(window: window, draft: draft, stream: true),
-            field: "bodyMarkdown",
-            kind: .lessonRevision,
-            context: context,
-            as: Lesson.self,
-            retryAfterEmission: false
-        ) { text in
-            continuation.yield(.revisedDelta(chapter: 0, text: text))
-        }
+        // Pass 2. This is what the reader actually sees, so a re-run has to
+        // take back what the last attempt put on their screen.
+        let revised = try await respectingWordFloor(
+            budget: window.wordBudget,
+            wordCount: { (lesson: Lesson) in lesson.wordCount },
+            onWithdraw: { continuation.yield(.revisionRestarted(chapter: 0)) },
+            runPass: { shortfall in
+                let (revised, _) = try await streamStructured(
+                    request: revisionRequest(
+                        window: window, draft: draft, stream: true, shortfall: shortfall
+                    ),
+                    field: "bodyMarkdown",
+                    kind: .lessonRevision,
+                    context: context,
+                    as: Lesson.self,
+                    retryAfterEmission: false
+                ) { text in
+                    continuation.yield(.revisedDelta(chapter: 0, text: text))
+                }
+                return revised
+            }
+        )
         continuation.yield(.revisedChapterFinished(chapter: 0))
         continuation.yield(.finished(revised))
     }
@@ -364,94 +413,127 @@ public struct GenerationPipeline: LessonProvider {
             cacheSystemPrompt: configuration.cacheSystemPrompt
         )
 
-        let (_, draftJSON) = try await streamStructured(
-            request: chapterRequest,
-            field: "bodyMarkdown",
-            kind: .chapterDraft,
-            context: context,
-            as: ChapterResponse.self,
-            retryAfterEmission: true
-        ) { text in
-            continuation.yield(.draftDelta(chapter: index, text: text))
-        }
-        continuation.yield(.draftChapterFinished(chapter: index))
-
-        let revisionRequest = MessagesRequest(
-            model: configuration.model,
-            maxTokens: AnthropicAPI.maxTokens(for: window),
-            system: Prompts.revisionSystemPrompt,
-            // The chapter's budget, not the course's. See the note on
-            // `revisionTaskPrompt`.
-            messages: [.user(Prompts.revisionTaskPrompt(
-                wordBudget: window.chapterWordBudget, draftJSON: draftJSON
-            ))],
-            stream: true,
-            effort: configuration.effort,
-            outputSchema: Schemas.chapter,
-            cacheSystemPrompt: configuration.cacheSystemPrompt
+        // Measured against the chapter's budget, not the course's. Same rule
+        // as the revision below, and the same mistake if it is got wrong.
+        var draftJSON = ""
+        _ = try await respectingWordFloor(
+            budget: window.chapterWordBudget,
+            throwOnExhaustion: false,
+            wordCount: { (chapter: ChapterResponse) in chapter.bodyMarkdown.lessonWordCount },
+            runPass: { _ in
+                let (draft, json) = try await streamStructured(
+                    request: chapterRequest,
+                    field: "bodyMarkdown",
+                    kind: .chapterDraft,
+                    context: context,
+                    as: ChapterResponse.self,
+                    retryAfterEmission: true
+                ) { text in
+                    continuation.yield(.draftDelta(chapter: index, text: text))
+                }
+                draftJSON = json
+                return draft
+            }
         )
+        continuation.yield(.draftChapterFinished(chapter: index))
 
         // The heading has to reach the reader before the body it heads, and
         // it only exists once its own JSON field closes — so body deltas are
         // held until then, then flushed.
         let headerPrefix = "\(LessonFormat.chapterHeadingPrefix)\(index + 1): "
-        var headingExtractor = StreamingJSONFieldExtractor(field: "heading")
-        var pendingBody = ""
-        var headerEmitted = false
+        var resolvedHeading = heading
 
-        let (revised, _) = try await streamStructured(
-            request: revisionRequest,
-            field: "bodyMarkdown",
-            kind: .chapterRevision,
-            context: context,
-            as: ChapterResponse.self,
-            retryAfterEmission: false,
-            onRawDelta: { raw in
-                _ = headingExtractor.consume(raw)
-            }
-        ) { bodyText in
-            if !headerEmitted, headingExtractor.isFieldComplete {
-                let resolved = headingExtractor.accumulated.isEmpty
-                    ? heading
-                    : headingExtractor.accumulated
-                continuation.yield(.revisedDelta(
-                    chapter: index, text: headerPrefix + resolved + "\n\n"
-                ))
-                headerEmitted = true
-                if !pendingBody.isEmpty {
-                    continuation.yield(.revisedDelta(chapter: index, text: pendingBody))
-                    pendingBody = ""
+        let revised = try await respectingWordFloor(
+            budget: window.chapterWordBudget,
+            wordCount: { (chapter: ChapterResponse) in chapter.bodyMarkdown.lessonWordCount },
+            onWithdraw: { continuation.yield(.revisionRestarted(chapter: index)) },
+            runPass: { shortfall in
+                let revisionRequest = MessagesRequest(
+                    model: configuration.model,
+                    maxTokens: AnthropicAPI.maxTokens(for: window),
+                    system: Prompts.revisionSystemPrompt,
+                    // The chapter's budget, not the course's. See the note on
+                    // `revisionTaskPrompt`.
+                    messages: [.user(Prompts.revisionTaskPrompt(
+                        wordBudget: window.chapterWordBudget,
+                        draftJSON: draftJSON,
+                        shortfall: shortfall
+                    ))],
+                    stream: true,
+                    effort: configuration.effort,
+                    outputSchema: Schemas.chapter,
+                    cacheSystemPrompt: configuration.cacheSystemPrompt
+                )
+
+                // Per attempt, not per chapter. A withdrawn revision takes its
+                // header back along with its body, so the next attempt has to emit
+                // one again — state carried over from the last attempt would leave
+                // the chapter headless.
+                var headingExtractor = StreamingJSONFieldExtractor(field: "heading")
+                var pendingBody = ""
+                var headerEmitted = false
+
+                let (revised, _) = try await streamStructured(
+                    request: revisionRequest,
+                    field: "bodyMarkdown",
+                    kind: .chapterRevision,
+                    context: context,
+                    as: ChapterResponse.self,
+                    retryAfterEmission: false,
+                    onRawDelta: { raw in
+                        _ = headingExtractor.consume(raw)
+                    }
+                ) { bodyText in
+                    if !headerEmitted, headingExtractor.isFieldComplete {
+                        let resolved = headingExtractor.accumulated.isEmpty
+                            ? heading
+                            : headingExtractor.accumulated
+                        continuation.yield(.revisedDelta(
+                            chapter: index, text: headerPrefix + resolved + "\n\n"
+                        ))
+                        headerEmitted = true
+                        if !pendingBody.isEmpty {
+                            continuation.yield(.revisedDelta(chapter: index, text: pendingBody))
+                            pendingBody = ""
+                        }
+                    }
+                    if headerEmitted {
+                        continuation.yield(.revisedDelta(chapter: index, text: bodyText))
+                    } else {
+                        pendingBody += bodyText
+                    }
                 }
-            }
-            if headerEmitted {
-                continuation.yield(.revisedDelta(chapter: index, text: bodyText))
-            } else {
-                pendingBody += bodyText
-            }
-        }
 
-        // If the body was empty the header never flushed; emit it now so the
-        // chapter is never silently missing its heading.
-        if !headerEmitted {
-            continuation.yield(.revisedDelta(
-                chapter: index, text: headerPrefix + revised.heading + "\n\n"
-            ))
-            if !pendingBody.isEmpty {
-                continuation.yield(.revisedDelta(chapter: index, text: pendingBody))
+                // If the body was empty the header never flushed; emit it now so the
+                // chapter is never silently missing its heading.
+                if !headerEmitted {
+                    continuation.yield(.revisedDelta(
+                        chapter: index, text: headerPrefix + revised.heading + "\n\n"
+                    ))
+                    if !pendingBody.isEmpty {
+                        continuation.yield(.revisedDelta(chapter: index, text: pendingBody))
+                    }
+                }
+
+                resolvedHeading = headerEmitted && !headingExtractor.accumulated.isEmpty
+                    ? headingExtractor.accumulated
+                    : revised.heading
+                return revised
             }
-        }
+        )
+
+        // After the floor check, never before: this is what tells the gate the
+        // chapter is done and the Reader to persist it.
         continuation.yield(.revisedChapterFinished(chapter: index))
 
-        let resolvedHeading = headerEmitted && !headingExtractor.accumulated.isEmpty
-            ? headingExtractor.accumulated
-            : revised.heading
         return headerPrefix + resolvedHeading + "\n\n" + revised.bodyMarkdown
     }
 
     private func revisionRequest(
         window: TimeWindow,
         draft: Lesson,
-        stream: Bool = false
+        stream: Bool = false,
+        shortfall: Int? = nil
     ) -> MessagesRequest {
         let draftJSON = (try? encodeJSON(draft)) ?? draft.bodyMarkdown
         return MessagesRequest(
@@ -460,7 +542,9 @@ public struct GenerationPipeline: LessonProvider {
             system: Prompts.revisionSystemPrompt,
             // A whole lesson, so the whole window's budget.
             messages: [.user(Prompts.revisionTaskPrompt(
-                wordBudget: window.wordBudget, draftJSON: draftJSON
+                wordBudget: window.wordBudget,
+                draftJSON: draftJSON,
+                shortfall: shortfall
             ))],
             stream: stream,
             effort: configuration.effort,
@@ -653,6 +737,60 @@ public struct GenerationPipeline: LessonProvider {
                 await record(usage: usage, kind: kind)
             }
             throw StreamAttemptFailure(underlying: normalized(error), didEmit: didEmit)
+        }
+    }
+
+    // MARK: - Word floor
+
+    /// Runs a pass, and runs it again if what came back is materially shorter
+    /// than the length the reader chose.
+    ///
+    /// The check sits here rather than in the caller because of what it costs
+    /// to get wrong in either direction. Serving the short lesson breaks the
+    /// product's one promise — a 15-minute lesson at 1,555 words is about
+    /// eight minutes of reading — and refusing it on the first attempt throws
+    /// away a whole generation over something a second pass usually fixes, now
+    /// that the revision prompt is told the floor matters.
+    ///
+    /// - Parameters:
+    ///   - budget: the budget for *this* pass. A chapter is measured against a
+    ///     chapter's budget, never the course's.
+    ///   - throwOnExhaustion: false for drafts. A short draft is not yet a
+    ///     failed lesson — the revision pass is now instructed to take a thin
+    ///     argument further, so refusing here would reject lessons the next
+    ///     call would have fixed. The revision's own check is the one that
+    ///     decides.
+    ///   - onWithdraw: called before each re-run, for a pass whose output has
+    ///     already reached the reader. Drafts pass nothing: they are never
+    ///     displayed, so there is nothing to take back.
+    ///   - runPass: given the previous attempt's word count, or nil first time.
+    private func respectingWordFloor<T>(
+        budget: ClosedRange<Int>,
+        throwOnExhaustion: Bool = true,
+        wordCount: (T) -> Int,
+        onWithdraw: () -> Void = {},
+        runPass: (_ previousShortfall: Int?) async throws -> T
+    ) async throws -> T {
+        guard configuration.enforcesWordFloor else { return try await runPass(nil) }
+
+        var shortfall: Int?
+        var retriesLeft = configuration.wordFloorRetries
+
+        while true {
+            let result = try await runPass(shortfall)
+            let words = wordCount(result)
+            if LessonQualityCheck.failure(wordCount: words, budget: budget) == nil {
+                return result
+            }
+            guard retriesLeft > 0 else {
+                guard throwOnExhaustion else { return result }
+                throw LessonProviderError.underWordFloor(
+                    words: words, floor: budget.lowerBound
+                )
+            }
+            retriesLeft -= 1
+            shortfall = words
+            onWithdraw()
         }
     }
 

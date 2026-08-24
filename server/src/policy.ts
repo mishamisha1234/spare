@@ -69,6 +69,53 @@ export const TOKEN_CEILINGS: Record<string, number> = {
 export const STREAMING_ENDPOINTS = new Set(["/v1/lesson", "/v1/chapter"]);
 
 /**
+ * The lower end of each window's word budget, and the fraction of it below
+ * which a generation is refused entry to the cache.
+ *
+ * Mirrors `TimeWindow.wordBudget.lowerBound` and
+ * `LessonQualityCheck.hardFloorFraction` in SpareCore, in the same way
+ * `TOKEN_CEILINGS` mirrors `AnthropicAPI.maxTokens`. The app checks the floor
+ * too, and retries when it misses; this is the half that cannot be bypassed by
+ * a client that decides not to.
+ *
+ * It matters here specifically because of what the cache is. A short lesson
+ * shown to the reader who generated it is one bad lesson. The same lesson
+ * written into the pool is served to everyone who asks that question for the
+ * next thirty days, and nothing about reading it says it is 60% of the length
+ * that was promised. Cache entries are the expensive kind of wrong.
+ *
+ * `/v1/chapter` is measured per chapter, not per course: a chapter of a
+ * 30-minute course is a quarter of 6,000 words, and measuring it against the
+ * course's floor would refuse every chapter ever written.
+ */
+export const WORD_FLOORS: Record<string, number> = {
+  three: 500,
+  ten: 1600,
+  fifteen: 2400,
+  thirty: 6000,
+};
+
+export const HARD_FLOOR_FRACTION = 0.9;
+
+/** Chapters per window, mirroring `LessonFormat.chapterCount`. */
+const CHAPTER_COUNTS: Record<string, number> = { thirty: 4 };
+
+/**
+ * The fewest words a completed generation may carry and still be cached.
+ *
+ * Returns null for a window with no floor on record, which the caller reads as
+ * "cannot judge" rather than "passes" — an unknown window is a client this
+ * server has not been deployed to match, and guessing in the permissive
+ * direction is how a wrong lesson gets a thirty-day life.
+ */
+export function hardWordFloor(window: string, pathname: string): number | null {
+  const floor = WORD_FLOORS[window];
+  if (floor === undefined) return null;
+  const chapters = pathname === "/v1/chapter" ? (CHAPTER_COUNTS[window] ?? 1) : 1;
+  return Math.round((floor / chapters) * HARD_FLOOR_FRACTION);
+}
+
+/**
  * Input ceiling, in bytes of serialised request.
  *
  * The largest honest request is a revision pass, which carries the full draft

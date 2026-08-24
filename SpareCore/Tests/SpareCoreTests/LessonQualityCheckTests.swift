@@ -308,20 +308,64 @@ final class LessonQualityCheckTests: XCTestCase {
         })
     }
 
-    func testTightIsAcceptableButThinIsFlagged() {
-        // 480 words against a 500 floor: tight, allowed.
-        let tight = LessonQualityCheck.findings(for: lesson(body: filler(words: 480)), window: .three)
-        XCTAssertFalse(tight.contains { finding in
-            if case .wellUnderBudget = finding { return true }
-            return false
-        })
+    /// Any shortfall is reported now, not only a severe one.
+    ///
+    /// The band used to start a third under the floor. That sits well below the
+    /// hard floor, so by the time the finding could fire the lesson was already
+    /// being refused outright and nobody would ever read it — the advisory band
+    /// had quietly become unreachable. Reporting the whole band under the floor
+    /// is what lets a batch summary show a drift rather than only a cliff.
+    func testAnyShortfallIsReportedAndOnBudgetIsNot() {
+        func isUnder(_ words: Int) -> Bool {
+            LessonQualityCheck.findings(for: lesson(body: filler(words: words)), window: .three)
+                .contains { finding in
+                    if case .wellUnderBudget = finding { return true }
+                    return false
+                }
+        }
 
-        // 200 words against a 500 floor: thin.
-        let thin = LessonQualityCheck.findings(for: lesson(body: filler(words: 200)), window: .three)
-        XCTAssertTrue(thin.contains { finding in
-            if case .wellUnderBudget = finding { return true }
-            return false
-        })
+        XCTAssertFalse(isUnder(520), "520 words is inside the 500-650 budget")
+        XCTAssertTrue(isUnder(480), "480 words is under the 500 floor, tight but short")
+        XCTAssertTrue(isUnder(200))
+    }
+
+    // MARK: - The hard floor
+
+    /// 90% of the budget floor, and it blocks rather than advises.
+    func testHardFloorIsNinetyPercentOfTheBudgetFloor() {
+        XCTAssertEqual(LessonQualityCheck.hardFloor(for: 500...650), 450)
+        XCTAssertEqual(LessonQualityCheck.hardFloor(for: 2400...3000), 2160)
+        // A chapter of a 30-minute course: a quarter of 6,000, then 90% of that.
+        XCTAssertEqual(LessonQualityCheck.hardFloor(for: TimeWindow.thirty.chapterWordBudget), 1350)
+    }
+
+    func testUnderTheHardFloorIsAFailureAndTightIsNot() {
+        // 460 against a 450 hard floor: under budget, over the line. A reader is
+        // not made to wait through a regeneration over forty words.
+        XCTAssertNil(LessonQualityCheck.failure(wordCount: 460, budget: 500...650))
+        XCTAssertNil(LessonQualityCheck.failure(wordCount: 450, budget: 500...650))
+
+        // The lesson from the batch that started this: 1,555 words sold as 15
+        // minutes, which is about eight minutes of reading.
+        XCTAssertEqual(
+            LessonQualityCheck.failure(wordCount: 1_555, budget: 2400...3000),
+            .underWordFloor(words: 1_555, floor: 2400, hardFloor: 2160)
+        )
+    }
+
+    /// Over budget is a finding, never a failure. A lesson that runs long has
+    /// not broken a promise about the reader's time in the way a short one has:
+    /// they can stop.
+    func testOverBudgetIsNeverAFailure() {
+        XCTAssertNil(LessonQualityCheck.failure(wordCount: 900, budget: 500...650))
+    }
+
+    func testFailureDescribesItself() {
+        let failure = LessonQualityCheck.Failure.underWordFloor(
+            words: 1_555, floor: 2400, hardFloor: 2160
+        )
+        XCTAssertTrue(failure.description.contains("1555"))
+        XCTAssertTrue(failure.description.contains("2160"))
     }
 
     // MARK: - Openings

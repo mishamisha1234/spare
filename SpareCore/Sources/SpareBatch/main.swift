@@ -635,6 +635,9 @@ func describe(_ error: Error) -> String {
         return "could not decode the response — \(message)"
     case .malformedStream(let message):
         return "malformed stream — \(message)"
+    case .underWordFloor(let words, let floor):
+        return "under the word floor — came back at \(words) words against a floor"
+            + " of \(floor), and the retry did too"
     default:
         return ProviderErrorCopy.presentation(for: providerError).title
             + " — " + ProviderErrorCopy.presentation(for: providerError).message

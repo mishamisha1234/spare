@@ -3,9 +3,71 @@ import Foundation
 /// Mechanical checks on generated prose. These catch the failure modes a
 /// regex can see; the revision pass handles everything that needs judgement.
 ///
-/// Findings are advisory: they are logged and can trigger one retry, but they
-/// never block a lesson from being read.
+/// Two severities, and the difference is the whole design.
+///
+/// **Findings** are advisory. They are logged, they can trigger one retry, and
+/// they never block a lesson from being read — a lesson with a banned phrase in
+/// it is still a lesson.
+///
+/// **Failures** block. There is one, and it exists because the product's promise
+/// is a length: a 15-minute lesson that runs 1,555 words against a 2,400-word
+/// floor is about eight minutes of reading sold as fifteen. That is not a lesson
+/// with a flaw in it, it is the wrong product, and no amount of it being
+/// well-written makes the promise true. A failure is treated exactly as a
+/// truncated stream is: not served, not cached, retried.
 public enum LessonQualityCheck {
+
+    // MARK: - Failures
+
+    /// A reason a generated lesson may not be served at all.
+    ///
+    /// One case, deliberately. Everything else a regex can see is a finding —
+    /// the bar for blocking is that the reader would be getting something other
+    /// than what they chose, not that the writing could be better.
+    public enum Failure: Equatable, Sendable, CustomStringConvertible {
+        case underWordFloor(words: Int, floor: Int, hardFloor: Int)
+
+        public var description: String {
+            switch self {
+            case .underWordFloor(let words, let floor, let hardFloor):
+                return "\(words) words, under the hard floor of \(hardFloor)"
+                    + " (90% of the \(floor)-word budget floor)"
+            }
+        }
+    }
+
+    /// How far under the budget floor a piece may land before it stops counting
+    /// as the length it was sold as.
+    ///
+    /// 90% rather than 100% because the floor is a target and hitting it exactly
+    /// every time is not a reasonable thing to ask of prose: a 2,400-floor lesson
+    /// at 2,350 words is a rounding difference, and failing it would mean
+    /// regenerating good lessons at Opus prices for thirty seconds of reading
+    /// time. At 2,160 it is a different piece of writing.
+    public static let hardFloorFraction = 0.9
+
+    public static func hardFloor(for budget: ClosedRange<Int>) -> Int {
+        Int((Double(budget.lowerBound) * hardFloorFraction).rounded())
+    }
+
+    /// The blocking check.
+    ///
+    /// Takes a budget rather than a `TimeWindow` for the same reason
+    /// `Prompts.revisionTaskPrompt` does: a chapter of a course is measured
+    /// against the chapter's budget, and a signature that accepts a window
+    /// invites the caller to pass the course's by default. That mistake has
+    /// already been made once in this pipeline and cost every 30-minute course.
+    public static func failure(wordCount: Int, budget: ClosedRange<Int>) -> Failure? {
+        let floor = hardFloor(for: budget)
+        guard wordCount < floor else { return nil }
+        return .underWordFloor(words: wordCount, floor: budget.lowerBound, hardFloor: floor)
+    }
+
+    public static func failure(for lesson: Lesson, window: TimeWindow) -> Failure? {
+        failure(wordCount: lesson.wordCount, budget: window.wordBudget)
+    }
+
+    // MARK: - Findings
 
     public enum Finding: Equatable, Sendable, CustomStringConvertible {
         case bannedPhrase(String)
@@ -62,11 +124,18 @@ public enum LessonQualityCheck {
         case .over(let by):
             findings.append(.overBudget(words: lesson.wordCount, limit: window.wordBudget.upperBound))
             _ = by
-        case .under(let by):
-            // Tight is fine; a third under budget is thin.
-            if by > window.wordBudget.lowerBound / 3 {
-                findings.append(.wellUnderBudget(words: lesson.wordCount, floor: window.wordBudget.lowerBound))
-            }
+        case .under:
+            // Every shortfall, not just a severe one.
+            //
+            // This used to start at a third under the floor. That threshold sits
+            // far below the hard floor, so by the time it fired the lesson was
+            // already being refused outright — the finding could only ever appear
+            // on a lesson nobody would read. Reporting the whole band under the
+            // floor is what makes the batch summary say "is this getting worse"
+            // rather than "did it fall off a cliff".
+            findings.append(
+                .wellUnderBudget(words: lesson.wordCount, floor: window.wordBudget.lowerBound)
+            )
         case .onTarget:
             break
         }

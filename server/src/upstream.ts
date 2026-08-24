@@ -133,6 +133,35 @@ export function parseCompletedStream(body: string): { text: string; inputTokens:
 }
 
 /**
+ * Words of prose in a completed structured-output stream.
+ *
+ * Both cacheable schemas — `Schemas.lesson` and `Schemas.chapter` — carry the
+ * prose in `bodyMarkdown`, and the assembled stream text is that whole JSON
+ * object. Counting words on the raw text instead would count the title, the
+ * subtitle, the three deeper angles and every JSON delimiter, which reads about
+ * forty words heavy on a 3-minute lesson and would let a short one through.
+ *
+ * Null when the text will not parse or carries no body: unreadable, not empty.
+ * The caller must not treat that as zero — see `hardWordFloor`.
+ */
+export function bodyWordCount(streamText: string): number | null {
+  try {
+    const parsed = JSON.parse(streamText) as { bodyMarkdown?: unknown };
+    if (typeof parsed.bodyMarkdown !== "string") return null;
+    return countWords(parsed.bodyMarkdown);
+  } catch {
+    return null;
+  }
+}
+
+/** Mirrors `StringProtocol.lessonWordCount`: whitespace-separated, nothing else. */
+export function countWords(text: string): number {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return 0;
+  return trimmed.split(/\s+/).length;
+}
+
+/**
  * Cost estimate, mirroring `CostEstimator.pricing` in SpareCore so the server's
  * ceiling and the app's usage ledger agree about what a call cost.
  *
