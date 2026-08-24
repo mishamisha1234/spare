@@ -17,11 +17,35 @@ public struct CallContext: Sendable, Equatable {
     /// The lesson's subject, as the reader chose it. Empty where there isn't
     /// one (suggestions), which the proxy reads as "not cacheable".
     public var topic: String
+    /// The interest category the lesson is being generated under, from the
+    /// suggestion's `domainTag`.
+    ///
+    /// Known before generation, which is the requirement: the premium pool is
+    /// keyed on it so retrieval can match a reader's stated interests, and a
+    /// key that could only be computed from the finished lesson would be no
+    /// use for a lookup. The free pool ignores it.
+    public var interest: String
+    /// Which chapter of a course this call is for, zero-based. Nil for
+    /// everything that is not a chapter.
+    ///
+    /// The proxy caches one body per chapter. Without an index every chapter
+    /// of a course collides on a single key, each overwriting the last, and
+    /// what comes back is whichever chapter finished most recently served as
+    /// the whole course.
+    public var chapterIndex: Int?
 
-    public init(window: TimeWindow, format: LessonFormat, topic: String = "") {
+    public init(
+        window: TimeWindow,
+        format: LessonFormat,
+        topic: String = "",
+        interest: String = "",
+        chapterIndex: Int? = nil
+    ) {
         self.window = window
         self.format = format
         self.topic = topic
+        self.interest = interest
+        self.chapterIndex = chapterIndex
     }
 
     /// For calls with no lesson of their own. `window` still matters for the
@@ -38,7 +62,10 @@ public struct CallContext: Sendable, Equatable {
     /// placeholder would be a lie waiting to be depended on.
     public static func about(_ lesson: Lesson) -> CallContext {
         let window = TimeWindow.closest(toMinutes: ReadingTime.minutes(forWordCount: lesson.wordCount))
-        return CallContext(window: window, format: window.format, topic: lesson.title)
+        return CallContext(
+            window: window, format: window.format,
+            topic: lesson.title, interest: lesson.domainTag
+        )
     }
 }
 
@@ -165,6 +192,24 @@ public struct ProxyRoute: ProviderRoute {
     ///
     /// The outline has its own endpoint rather than sharing the lesson's,
     /// because it is the one generation call that is not streamed.
+    /// Whether this call produces text a reader will actually be shown.
+    ///
+    /// Draft passes do not. They are internal input to the revision pass and
+    /// `RevisionGate` drops them on the floor -- so caching one would put
+    /// unrevised prose into the pool, where the next reader would be served it
+    /// as a finished lesson. That hole was always there; it becomes worth
+    /// closing now that both tiers read the cache and a poisoned entry has a
+    /// thirty-day life.
+    static func producesFinalText(_ kind: UsageKind) -> Bool {
+        switch kind {
+        case .lessonDraft, .chapterDraft, .goDeeperDraft:
+            return false
+        case .lessonRevision, .chapterRevision, .goDeeperRevision,
+             .courseOutline, .suggestions, .recallQuestion, .postLessonTest:
+            return true
+        }
+    }
+
     static func path(for kind: UsageKind) -> String {
         switch kind {
         case .suggestions:
@@ -198,8 +243,15 @@ public struct ProxyRoute: ProviderRoute {
             "window": .string(context.window.rawValue),
             "format": .string(context.format.rawValue),
             "topic": .string(context.topic),
+            "interest": .string(context.interest),
+            // Which pass this is. The proxy caches only final text; see
+            // `producesFinalText`.
+            "pass": .string(Self.producesFinalText(kind) ? "final" : "draft"),
             "request": request.jsonBody,
         ]
+        if let chapterIndex = context.chapterIndex {
+            envelope["chapter"] = .int(chapterIndex)
+        }
         if let receipt = await receipt(), !receipt.isEmpty {
             envelope["receipt"] = .string(receipt)
         }

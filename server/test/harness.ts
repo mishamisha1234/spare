@@ -72,6 +72,10 @@ export interface CallOptions {
   fetcher: typeof fetch;
   env?: Env;
   now?: number;
+  /** Presents the operator token, and configures the env to accept it. The
+   * batch tool's path: it skips the per-device limits and the cache, and it
+   * is the one caller allowed to choose its own model. */
+  admin?: string;
 }
 
 /**
@@ -93,6 +97,7 @@ export async function callRaw(
       // the router enforces, however short a test's name is.
       "x-spare-device": options.device ?? `device-${scope}`,
       "content-type": "application/json",
+      ...(options.admin ? { "x-spare-admin": options.admin } : {}),
     },
     body: JSON.stringify(
       options.body ?? {
@@ -103,7 +108,9 @@ export async function callRaw(
       },
     ),
   });
-  const response = await worker.fetch(request, options.env ?? testEnv(), ctx, hooks);
+  const environment = options.env
+    ?? (options.admin ? testEnv({ ADMIN_TOKEN: options.admin }) : testEnv());
+  const response = await worker.fetch(request, environment, ctx, hooks);
   return { response, ctx };
 }
 

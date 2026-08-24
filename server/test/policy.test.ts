@@ -107,17 +107,60 @@ describe("streaming mode is decided by the endpoint", () => {
   });
 });
 
+/** Any non-empty string; the harness configures the env to match. */
+const OPERATOR_TOKEN = "operator-token-fixture";
+
 describe("the client cannot choose what it costs", () => {
-  it("refuses a model the server does not pay for", async () => {
+  it("ignores the model a reader's client names, whatever it is", async () => {
+    // This used to be a 400. It is a substitution now, and the change is
+    // deliberate: the model is decided by the pool, which is decided by the
+    // entitlement the server verified with Apple, so there is nothing for a
+    // client's value to be right or wrong about. A refusal would also name the
+    // boundary for anyone probing it, and break every reader on a stale build
+    // the day the pool models change.
+    //
+    // What has to stay true is the part this test was really protecting:
+    // nothing the client names can decide what the request costs.
+    const { route, bodies } = recordingAnthropic(streamed);
+    const response = await call({
+      fetcher: fixtureFetch([route]),
+      body: lessonBody("Cheap model swap", modelRequest({ model: "some-other-model" })),
+    });
+
+    expect(response.status).toBe(200);
+    expect(bodies[0].model).toBe("claude-sonnet-5");
+  });
+
+  it("still refuses an unknown model on the operator path", async () => {
+    // The batch tool names its own model, because comparing models is why it
+    // exists — so it is the one caller whose value is used, and therefore the
+    // one caller the allowlist still has to answer.
     const fetcher = fixtureFetch([anthropicStreaming(sseLesson("Should not happen."))]);
     const response = await call({
       fetcher,
-      body: lessonBody("Cheap model swap", modelRequest({ model: "some-other-model" })),
+      admin: OPERATOR_TOKEN,
+      body: lessonBody("Operator model swap", modelRequest({ model: "some-other-model" })),
     });
 
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ error: { code: "modelNotAllowed" } });
     // The load-bearing half: nothing went upstream, so nothing was billed.
+    expect((fetcher as any).calls).toHaveLength(0);
+  });
+
+  it("no longer pays for Haiku at all", async () => {
+    // Not a cost decision. A blind comparison across three durations and six
+    // topics found confident fabrications in all three of its lessons,
+    // including an invented act of Congress. Left on the allowlist "for the
+    // batch tool", it quietly reappears in the next comparison run.
+    const fetcher = fixtureFetch([anthropicStreaming(sseLesson("Should not happen."))]);
+    const response = await call({
+      fetcher,
+      admin: OPERATOR_TOKEN,
+      body: lessonBody("Haiku", modelRequest({ model: "claude-haiku-4-5-20251001" })),
+    });
+
+    expect(response.status).toBe(400);
     expect((fetcher as any).calls).toHaveLength(0);
   });
 
@@ -274,7 +317,9 @@ describe("the client cannot choose what it costs", () => {
     const rejected = await call({
       fetcher: fixtureFetch([]),
       device,
-      body: lessonBody("Rejected first", modelRequest({ model: "not-allowed" })),
+      // Malformed rather than mis-modelled: a client's model is substituted
+      // now, not refused, so it no longer produces the 400 this test needs.
+      body: { window: "three", format: "oneThing", topic: "Rejected first", request: { messages: [] } },
     });
     expect(rejected.status).toBe(400);
 

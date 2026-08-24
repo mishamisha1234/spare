@@ -21,18 +21,40 @@
 /**
  * Models the proxy will pay for.
  *
- * The app only ever asks for `AnthropicAPI.model`. The other two are here for
- * the batch tool, which runs one set of topics through several models to
- * compare them, and they are safe to allow for the reason the allowlist exists
- * in the first place: both are cheaper than the model already on the list, so
- * nothing a spoofed client can name here costs more than what it could already
- * ask for.
+ * Two, now that the pools decide. Haiku is on no path: a blind comparison
+ * across three durations and six topics found confident fabrications in all
+ * three of its lessons, including an invented 1884 act of Congress and an
+ * entirely invented archival document. A model that makes things up cannot be
+ * on an allowlist for a product whose only asset is being right, and leaving
+ * it here "for the batch tool" would mean the next comparison quietly includes
+ * it again.
  */
 export const ALLOWED_MODELS = new Set([
   "claude-opus-5",
   "claude-sonnet-5",
-  "claude-haiku-4-5-20251001",
 ]);
+
+/**
+ * Which model writes each pool.
+ *
+ * The client cannot choose. It names a model in its request like it always
+ * has, and for an ordinary reader that value is overwritten here from the
+ * entitlement the server verified with Apple.
+ *
+ * Overwritten rather than rejected, deliberately. A 400 saying "you may not
+ * ask for Opus" tells a spoofed client exactly where the boundary is and
+ * invites it to probe the edges; being served a perfectly good Sonnet lesson
+ * tells it nothing. It also means an app build that drifts out of step with
+ * the server keeps working instead of failing for its reader.
+ *
+ * The alternative — allowlisting both and trusting the client — would let any
+ * free device spend Opus money and, worse, write what it generated into the
+ * premium pool, where it would be served to paying readers.
+ */
+export const POOL_MODELS: Record<string, string> = {
+  free: "claude-sonnet-5",
+  premium: "claude-opus-5",
+};
 
 /**
  * Per-endpoint `max_tokens` ceilings, taken from what the app actually asks
@@ -143,7 +165,16 @@ export type PolicyResult =
  * a request costs and whether the response can be forwarded, so the client's
  * values are checked or overwritten rather than trusted.
  */
-export function applyPolicy(raw: unknown, pathname: string): PolicyResult {
+/**
+ * @param forcedModel the pool's model, which overwrites whatever the client
+ *   named. Undefined only for the operator batch tool, which exists to compare
+ *   models and so must be able to choose one.
+ */
+export function applyPolicy(
+  raw: unknown,
+  pathname: string,
+  forcedModel?: string,
+): PolicyResult {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     return { ok: false, code: "malformedRequest", message: "Request body is missing." };
   }
@@ -154,11 +185,15 @@ export function applyPolicy(raw: unknown, pathname: string): PolicyResult {
     return { ok: false, code: "unknownEndpoint", message: "No such endpoint." };
   }
 
-  const model = typeof input.model === "string" ? input.model : "";
+  // The pool's model wins where there is one. See `POOL_MODELS`: the client's
+  // value is not consulted at all on that path, so there is nothing for a
+  // spoofed one to be wrong about.
+  const requestedModel = typeof input.model === "string" ? input.model : "";
+  const model = forcedModel ?? requestedModel;
   if (!ALLOWED_MODELS.has(model)) {
-    // Rejected rather than silently substituted: a client asking for a model
-    // the server won't pay for is either stale or hostile, and both are worth
-    // an explicit answer instead of a surprising one.
+    // Only reachable for the operator tool, which names its own model. A
+    // reader's request can never land here, because the pool's model is
+    // always on the list.
     return { ok: false, code: "modelNotAllowed", message: "That model isn't available." };
   }
 

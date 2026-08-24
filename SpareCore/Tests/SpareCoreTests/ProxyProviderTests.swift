@@ -285,6 +285,58 @@ final class ProxyProviderTests: XCTestCase {
         XCTAssertEqual(sent["topic"]?.stringValue, "Why bridges hum")
     }
 
+    /// Everything the proxy needs to key a pool entry, and cannot derive.
+    ///
+    /// `interest` is the premium pool's second key component, and it has to be
+    /// known *before* generation — which is why it comes from the suggestion's
+    /// domain tag and not from the finished lesson's. `pass` is what stops an
+    /// unrevised draft being written into the pool and served to the next
+    /// reader as a finished lesson.
+    func testTheEnvelopeCarriesTheInterestAndWhichPassItIs() async throws {
+        let transport = FixtureTransport([
+            .sse(HTTPFixtures.stream(json: HTTPFixtures.lessonJSON())),
+            .sse(HTTPFixtures.stream(json: HTTPFixtures.lessonJSON())),
+        ])
+        _ = try await collect(makeProvider(transport).streamLesson(
+            topic: topic, window: .seven, profile: profile, demand: .eager()
+        ))
+
+        XCTAssertEqual(transport.requests.count, 2)
+        let draft = try envelope(transport.requests[0])
+        let revision = try envelope(transport.requests[1])
+
+        XCTAssertEqual(draft["interest"]?.stringValue, topic.domainTag)
+        XCTAssertEqual(draft["pass"]?.stringValue, "draft")
+        XCTAssertEqual(revision["pass"]?.stringValue, "final")
+        XCTAssertNil(draft["chapter"], "a single lesson has no chapter index")
+    }
+
+    /// Without an index every chapter of a course lands on one cache key, each
+    /// overwriting the last, and what comes back is chapter four served as the
+    /// whole course. The index is the client's half of that contract.
+    func testEveryChapterCallCarriesItsOwnIndex() async throws {
+        let chapters = TimeWindow.thirty.format.chapterCount
+        var steps: [FixtureTransport.Step] = [
+            .body(status: 200, text: HTTPFixtures.messageBody(json: HTTPFixtures.outlineJSON()))
+        ]
+        for _ in 0..<(chapters * 2) {
+            steps.append(.sse(HTTPFixtures.stream(json: HTTPFixtures.chapterJSON())))
+        }
+        let transport = FixtureTransport(steps)
+
+        _ = try await collect(makeProvider(transport).streamLesson(
+            topic: topic, window: .thirty, profile: profile, demand: .eager()
+        ))
+
+        // Drop the outline; what is left is a draft and a revision per chapter.
+        let chapterCalls = try transport.requests.dropFirst().map { try envelope($0) }
+        XCTAssertEqual(chapterCalls.count, chapters * 2)
+        let indices = chapterCalls.compactMap { $0["chapter"]?.intValue }
+        XCTAssertEqual(indices.count, chapterCalls.count, "a chapter call went out without an index")
+        XCTAssertEqual(Set(indices).count, chapters, "chapters did not get distinct indices")
+        XCTAssertEqual(indices, indices.sorted(), "chapters went out of order")
+    }
+
     func testWindowAndFormatUseTheSameSpellingAsTheServer() async throws {
         // Both sides have a list of these strings. If they ever disagree the
         // failure is silent: an unrecognised window falls through to the

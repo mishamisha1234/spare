@@ -27,8 +27,12 @@ public enum CostEstimator {
     /// column is computed at one model's prices is worse than no cost column.
     public static let modelPricing: [String: ModelPricing] = [
         "claude-opus-5": ModelPricing(inputPerMillion: 5, outputPerMillion: 25),
-        "claude-sonnet-5": ModelPricing(inputPerMillion: 2, outputPerMillion: 10),
-        "claude-haiku-4-5-20251001": ModelPricing(inputPerMillion: 1, outputPerMillion: 5),
+        // List price. Sonnet is on an introductory $2/$10 until 2026-08-31,
+        // and this deliberately does not track it: the estimate feeds the
+        // spend ceiling, so an error high stops generation early and an error
+        // low sails past the ceiling. The free pool runs entirely on this
+        // model, which makes the direction matter more than the size.
+        "claude-sonnet-5": ModelPricing(inputPerMillion: 3, outputPerMillion: 15),
     ]
 
     /// Falls back to the generation model's prices for anything unlisted.

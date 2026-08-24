@@ -171,8 +171,13 @@ export function countWords(text: string): number {
  */
 export const MODEL_PRICES: Record<string, { input: number; output: number }> = {
   "claude-opus-5": { input: 5, output: 25 },
-  "claude-sonnet-5": { input: 2, output: 10 },
-  "claude-haiku-4-5-20251001": { input: 1, output: 5 },
+  // Sonnet's list price. It is on an introductory $2/$10 until 2026-08-31,
+  // and this deliberately does not track that: the number feeds the monthly
+  // spend ceiling, so being wrong high stops generation slightly early and
+  // being wrong low lets the ceiling be sailed past. The free pool runs
+  // entirely on this model, which makes the direction of the error matter
+  // more than its size.
+  "claude-sonnet-5": { input: 3, output: 15 },
 };
 
 /** The generation model's prices, and the fallback for anything unlisted. */

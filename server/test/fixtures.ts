@@ -147,6 +147,36 @@ export function fixtureFetch(routes: FixtureRoute[]): typeof fetch {
   return fetcher;
 }
 
+/**
+ * One Anthropic route that answers a different body each call, in order.
+ *
+ * Routes are matched by predicate and never consumed, so a list of
+ * `anthropicStreaming` fixtures all answer from the first one — fine when
+ * every call should look the same, useless when a test needs to tell the
+ * second response from the fourth. A course is exactly that case: an outline
+ * and then four chapters that have to come back distinct.
+ *
+ * Runs off the end by repeating the last step, so an unexpected extra call
+ * fails on the assertion that cares rather than on a fixture error.
+ */
+export function anthropicSequence(
+  steps: Array<{ body: string; streaming?: boolean }>,
+): FixtureRoute {
+  let index = 0;
+  return {
+    match: (url) => url.startsWith(ANTHROPIC_MESSAGES),
+    respond: () => {
+      const step = steps[Math.min(index, steps.length - 1)];
+      index += 1;
+      return new Response(step.body, {
+        headers: {
+          "content-type": step.streaming === false ? "application/json" : "text/event-stream",
+        },
+      });
+    },
+  };
+}
+
 export function anthropicStreaming(sse: string, status = 200): FixtureRoute {
   return {
     match: (url) => url.startsWith(ANTHROPIC_MESSAGES),

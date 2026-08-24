@@ -115,6 +115,41 @@ They come in two kinds, and the split is what makes caching work:
 
 A test asserts the system prompts contain no placeholders, because one byte of per-lesson detail leaking into that prefix silently destroys caching on every subsequent call.
 
+### Two content pools
+
+**Free pool** — written by `claude-sonnet-5`, cached, served to free readers.
+**Premium pool** — written by `claude-opus-5`, cached, tagged with the interest
+category it was generated under, and served to premium readers.
+
+The pools never share an entry: different models, different attached artifacts,
+different readers. Both tiers read the cache, and generation happens only on a
+miss. A premium reader may well be served a lesson written for another premium
+reader with the same interests — what premium buys is the better pool plus
+interest matching, not authorship.
+
+Which pool a request belongs to is decided by the entitlement the server
+verified with Apple, never by anything the client said. The model follows from
+the pool and **overwrites** whatever the client named. Overwrites rather than
+refuses: a 400 saying "you may not ask for Opus" names the boundary for anyone
+probing it and breaks every reader on a stale build the day the pool models
+change, whereas a perfectly good Sonnet lesson says nothing at all. The one
+exception is the operator batch tool, which names its own model because
+comparing models is why it exists.
+
+`claude-haiku-4-5` is on no path and is not on the allowlist. A blind comparison
+across three durations and six topics found confident fabrications in all three
+of its lessons, including an invented 1884 act of Congress and an entirely
+invented archival document.
+
+**What the pre-launch seed does and does not buy.** The 150-lesson seed is
+Sonnet-written and therefore lands in the **free** pool only, at 3 and 7
+minutes. Premium readers get nothing from it. Every premium miss — including a
+premium reader picking the 3-minute circle, which the free pool has covered —
+is an Opus lesson plus an Opus test plus an Opus recall question, generated
+fresh. That is the intended shape, but it means the first month's spend will
+not look like the seed cost suggests, and the premium pool fills at premium
+prices from the first paying reader.
+
 ### Cost control
 
 A 30-minute course is an outline call plus two calls per chapter — 9 requests if fully generated. Three things keep that honest:
@@ -169,7 +204,7 @@ Every screen respects one aesthetic rule: no confetti, no trophy icons, no badge
 
 **Free** is 1 lesson/day, the 3- and 7-minute lengths, the last 10 library entries, no go-deeper, no post-lesson test. **Premium** is unlimited lessons, every length, the full library, unlimited go-deeper, post-lesson tests, and 12 courses a month with the remaining count stated in Settings before it bites.
 
-Locked premium features render as **visibly locked rows that open the paywall**, never hidden — a feature nobody can see sells nothing. The exception is Home's duration circles, which carry no lock badge: size is the only thing allowed to mean anything on that screen, and lock glyphs on two of four would wreck it. Tapping a locked duration opens the paywall, which is where the lock gets stated.
+Locked premium features render as **visibly locked rows that open the paywall**, never hidden — a feature nobody can see sells nothing. Home's duration circles carry a lock glyph *beneath* the circle rather than inside it, so size stays the only thing meaning anything within the circle itself and the state is still legible before the tap. The 1-minute circle matters most here: it is premium, it sits above the grid on its own, and "the shortest one is the paid one" is counterintuitive enough to be the conversion hook. Hiding it would convert nobody.
 
 **Free-tier counting is local and therefore spoofable.** Accepted for v1, with no anti-tamper by design; it moves server-side later.
 
@@ -281,13 +316,14 @@ Naming more than one model runs the same topics through each of them and blinds
 the output:
 
 ```
-gh workflow run "Lesson batch" -f confirm=spend   -f model=claude-opus-5,claude-sonnet-5,claude-haiku-4-5-20251001   -f per_window=1
+gh workflow run "Lesson batch" -f confirm=spend   -f model=claude-opus-5,claude-sonnet-5   -f per_window=1
 ```
 
-Leave `per_window` blank for the full set: ten topics through three models is
-twenty-four lessons, roughly $11 and about two and a half hours. `-f
-per_window=1` cuts it to one topic per length — twelve lessons, roughly $3 — for
-a cheaper look.
+Leave `per_window` blank for the full set: ten topics through two models is
+twenty lessons, roughly $9 and about two hours. `-f per_window=1` cuts it to one
+topic per length — ten lessons, roughly $3 — for a cheaper look. Only the two
+models on the server's allowlist can be named; Haiku was removed from it for
+fabricating, so the comparison cannot quietly include it again.
 
 The lesson files are named by a random six-character id and carry no model, no
 cost, and no timing. Runs are shuffled and the log names lessons by id too,

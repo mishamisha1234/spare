@@ -245,7 +245,8 @@ public struct GenerationPipeline: LessonProvider {
         continuation: AsyncThrowingStream<LessonStreamEvent, Error>.Continuation
     ) async throws {
         let context = CallContext(
-            window: window, format: window.format, topic: topic.title
+            window: window, format: window.format,
+            topic: topic.title, interest: topic.domainTag
         )
         let draftRequest = MessagesRequest(
             model: configuration.model,
@@ -320,7 +321,8 @@ public struct GenerationPipeline: LessonProvider {
         continuation: AsyncThrowingStream<LessonStreamEvent, Error>.Continuation
     ) async throws {
         let context = CallContext(
-            window: window, format: window.format, topic: topic.title
+            window: window, format: window.format,
+            topic: topic.title, interest: topic.domainTag
         )
         let chapterCount = window.format.chapterCount
 
@@ -391,8 +393,11 @@ public struct GenerationPipeline: LessonProvider {
         profile: ProfileSnapshot,
         continuation: AsyncThrowingStream<LessonStreamEvent, Error>.Continuation
     ) async throws -> String {
+        // The chapter index travels with the call: the proxy stores one body
+        // per chapter, and without it they all land on one key.
         let context = CallContext(
-            window: window, format: window.format, topic: topic.title
+            window: window, format: window.format,
+            topic: topic.title, interest: topic.domainTag, chapterIndex: index
         )
         let task = Prompts.chapterTaskPrompt(
             topic: topic,

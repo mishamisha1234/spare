@@ -8,11 +8,13 @@ import {
   appleSandbox,
   fixtureFetch,
   jsonMessage,
+  anthropicSequence,
   lessonBody,
   sseLesson,
   subscriptionStatus,
 } from "./fixtures";
 import { MAX_REQUESTS_PER_LESSON } from "../src/limits";
+import { recordingAnthropic } from "./harness";
 import { NOW, call, callRaw, modelRequest, premiumReceipt, testEnv } from "./harness";
 
 /** Reads a device's counters straight out of its Durable Object. */
@@ -599,10 +601,13 @@ describe("the lesson cache", () => {
     expect((fetcher as any).calls.length).toBe(callsBefore);
   });
 
-  it("never serves a cached lesson to premium", async () => {
+  it("never serves a free-pool lesson to premium", async () => {
+    // Premium reads the cache now — it has to, or a 30-minute course read by
+    // two hundred people is written two hundred times. What it must never do
+    // is read the *free* pool: that one is written by Sonnet and carries no
+    // attached test, and serving it to a paying reader would hand them the
+    // thing they paid not to get.
     const fetcher = fixtureFetch(premiumRoutes(sseLesson(lessonBody(520))));
-    // Seeded under the same explicit topic the premium read asks for, so a
-    // cache hit is available and declining it is the thing being tested.
     await (await call({
       fetcher,
       device: "cache-premium-seed",
@@ -616,6 +621,48 @@ describe("the lesson cache", () => {
       body: { window: "three", format: "oneThing", topic: "Why bridges hum", receipt: premiumReceipt, request: modelRequest() },
     });
     expect(premium.headers.get("x-spare-cache")).toBeNull();
+    expect((fetcher as any).calls.length).toBeGreaterThan(callsBefore);
+  });
+
+  it("serves premium from the premium pool", async () => {
+    // The other half: two premium readers on the same subject share an entry.
+    const seed = fixtureFetch(premiumRoutes(sseLesson(lessonBody(520))));
+    const body = {
+      window: "three", format: "oneThing", topic: "Why bridges hum",
+      receipt: premiumReceipt, request: modelRequest(),
+    };
+    await (await call({ fetcher: seed, device: "premium-writer", body })).text();
+
+    const reader = fixtureFetch(premiumRoutes(sseLesson(lessonBody(520))));
+    const callsBefore = (reader as any).calls.length;
+    const second = await call({ fetcher: reader, device: "premium-reader", body });
+    expect(second.headers.get("x-spare-cache")).toBe("hit");
+    // The Apple check still happens; what must not happen is a generation.
+    expect((reader as any).calls.filter((u: string) => u.includes("anthropic")).length)
+      .toBe(callsBefore);
+  });
+
+  it("does not cache a draft pass", async () => {
+    // Pass 1 is never shown to the reader who produced it, so an entry holding
+    // one would serve unrevised prose to everyone who asked next — for thirty
+    // days, with nothing about reading it saying so.
+    const fetcher = fixtureFetch([
+      anthropicStreaming(sseLesson(lessonBody(520))),
+      anthropicStreaming(sseLesson(lessonBody(520))),
+    ]);
+    const body = {
+      window: "three", format: "oneThing", topic: "Draft only",
+      pass: "draft", request: modelRequest(),
+    };
+    await (await call({ fetcher, device: "draft-writer", body })).text();
+
+    const callsBefore = (fetcher as any).calls.length;
+    const next = await call({
+      fetcher,
+      device: "draft-reader",
+      body: { ...body, pass: "final" },
+    });
+    expect(next.headers.get("x-spare-cache")).toBeNull();
     expect((fetcher as any).calls.length).toBeGreaterThan(callsBefore);
   });
 
@@ -732,6 +779,127 @@ describe("the lesson cache", () => {
     const next = await call({ fetcher, device: "tight-reader" });
     expect(next.headers.get("x-spare-cache")).toBe("hit");
     expect((fetcher as any).calls.length).toBe(callsBefore);
+  });
+
+  it("serves a cached course back as four distinct chapters, in order", async () => {
+    // The bug this exists to catch was invisible until premium started reading
+    // the cache: an outline and all four chapters carried the same key, each
+    // overwriting the last, so the entry ended up holding whichever chapter
+    // finished most recently. Served back, that is a course made of four
+    // copies of chapter four — and a corrupt course in the pool is read by
+    // everyone who asks for that subject for the next thirty days.
+    const chapterCount = 4;
+    const course = {
+      window: "thirty",
+      format: "miniCourse",
+      topic: "How electricity grids stay balanced",
+      interest: "Engineering",
+      receipt: premiumReceipt,
+      pass: "final",
+      request: modelRequest({ max_tokens: 24_000 }),
+    };
+
+    // Chapters must clear their own floor: a quarter of 6,000 words, times 90%.
+    // One sequenced route, not five separate ones: fixture routes are matched
+    // by predicate and never consumed, so a list of them all answers from the
+    // first — which would hand every chapter the outline's JSON and make this
+    // test pass or fail for the wrong reason.
+    const writer = fixtureFetch([
+      appleProduction(subscriptionStatus({
+        productId: "app.spare.premium.yearly",
+        status: 1,
+        expiresDate: NOW + 30 * 86_400_000,
+      })),
+      anthropicSequence([
+        { body: jsonMessage({ title: "A course", chapterHeadings: ["a", "b", "c", "d"] }), streaming: false },
+        ...Array.from({ length: chapterCount }, (_, index) => ({
+          body: sseLesson(`CHAPTERMARK${index} ` + lessonBody(1_400)),
+        })),
+      ]),
+    ]);
+
+    expect((await call({
+      fetcher: writer, device: "course-writer", path: "/v1/outline", body: course,
+    })).status).toBe(200);
+    for (let index = 0; index < chapterCount; index += 1) {
+      const chapter = await call({
+        fetcher: writer, device: "course-writer", path: "/v1/chapter",
+        body: { ...course, chapter: index },
+      });
+      expect(chapter.status, `writing chapter ${index}`).toBe(200);
+      await chapter.text();
+    }
+
+    // A second premium reader, and an upstream that would throw if touched for
+    // anything but the Apple check.
+    const reader = fixtureFetch([
+      appleProduction(subscriptionStatus({
+        productId: "app.spare.premium.yearly",
+        status: 1,
+        expiresDate: NOW + 30 * 86_400_000,
+      })),
+    ]);
+
+    const outline = await call({
+      fetcher: reader, device: "course-reader", path: "/v1/outline", body: course,
+    });
+    expect(outline.headers.get("x-spare-cache"), "the outline regenerated").toBe("hit");
+
+    const served: number[] = [];
+    for (let index = 0; index < chapterCount; index += 1) {
+      const chapter = await call({
+        fetcher: reader, device: "course-reader", path: "/v1/chapter",
+        body: { ...course, chapter: index },
+      });
+      expect(chapter.headers.get("x-spare-cache"), `chapter ${index} was not cached`).toBe("hit");
+      const text = await chapter.text();
+      const mark = /CHAPTERMARK(\d)/.exec(text);
+      expect(mark, `chapter ${index} came back unrecognisable`).not.toBeNull();
+      served.push(Number(mark![1]));
+    }
+
+    expect(served, "the four chapters came back out of order or duplicated")
+      .toEqual([0, 1, 2, 3]);
+    expect(new Set(served).size, "chapters collided on one cache key").toBe(chapterCount);
+  });
+
+  it("forces a free device onto the free pool's model rather than refusing it", async () => {
+    // A free client naming Opus is either a stale build or a spoofed one. It is
+    // served Sonnet, not a 400: a refusal names the boundary and invites
+    // probing at its edges, while a perfectly good Sonnet lesson says nothing
+    // at all. It also means an app build that drifts out of step with the
+    // server keeps working for its reader.
+    const upstream = recordingAnthropic(() =>
+      new Response(sseLesson(lessonBody(520)), {
+        headers: { "content-type": "text/event-stream" },
+      }));
+    const fetcher = fixtureFetch([upstream.route]);
+    const body = {
+      window: "three", format: "oneThing", topic: "Whichever model writes this",
+      pass: "final",
+      request: modelRequest({ model: "claude-opus-5" }),
+    };
+
+    const response = await call({ fetcher, device: "free-asking-for-opus", body });
+
+    expect(response.status, "the request was refused rather than redirected").toBe(200);
+    expect(upstream.bodies).toHaveLength(1);
+    expect(upstream.bodies[0].model, "a free device spent Opus money").toBe("claude-sonnet-5");
+
+    // And it landed in the free pool, not the premium one: another free reader
+    // gets the hit, a premium reader does not.
+    const freeReader = await call({
+      fetcher: fixtureFetch([upstream.route]), device: "free-reader", body,
+    });
+    expect(freeReader.headers.get("x-spare-cache")).toBe("hit");
+
+    const premiumReader = await call({
+      fetcher: fixtureFetch(premiumRoutes(sseLesson(lessonBody(520)))),
+      device: "premium-reader-of-free-entry",
+      body: { ...body, receipt: premiumReceipt },
+    });
+    expect(premiumReader.headers.get("x-spare-cache"), "a free-pool entry reached premium")
+      .toBeNull();
   });
 
   it("does not cache a truncated stream", async () => {

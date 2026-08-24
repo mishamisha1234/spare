@@ -23,9 +23,20 @@ import {
   type AppStoreConfig,
   type VerifiedEntitlement,
 } from "./appstore";
-import { lessonCacheKey, readCachedLesson, replayCachedLesson, writeCachedLesson } from "./cache";
+import {
+  lessonCacheKey,
+  lessonPoolKey,
+  poolFor,
+  readCachedLesson,
+  replayCachedJSON,
+  replayCachedLesson,
+  unitFor,
+  writeCachedLesson,
+  type LessonIdentity,
+} from "./cache";
 import { SpendLedger, UsageCounter, type Decision } from "./limits";
-import { applyPolicy, hardWordFloor } from "./policy";
+import type { Pool } from "./cache";
+import { applyPolicy, hardWordFloor, POOL_MODELS } from "./policy";
 import {
   bodyWordCount,
   callAnthropic,
@@ -130,10 +141,21 @@ export default {
       }
     }
 
+    // Which pool this reader belongs to, from the entitlement the server
+    // verified with Apple — never from anything the client said.
+    const pool = poolFor(entitlement.tier);
+
     // The client builds the Anthropic request; the proxy decides what it is
     // allowed to be. Runs before any metering so a request that will be
     // refused never consumes an allowance. See `policy.ts`.
-    const policy = applyPolicy(body.request, url.pathname);
+    //
+    // The operator tool keeps its own choice of model, because comparing
+    // models is the whole reason it exists. Everyone else gets their pool's.
+    const policy = applyPolicy(
+      body.request,
+      url.pathname,
+      isOperator ? undefined : POOL_MODELS[pool],
+    );
     if (!policy.ok) {
       const status = policy.code === "unknownEndpoint" ? 404 : 400;
       return errorResponse(status, policy.code, policy.message);
@@ -150,7 +172,7 @@ export default {
       case "/v1/outline":
       case "/v1/chapter":
         return handleGeneration(
-          body, modelRequest, url.pathname, env, entitlement, deviceId,
+          body, modelRequest, url.pathname, pool, env, entitlement, deviceId,
           ctx, hooks, now, isOperator,
         );
 
@@ -320,6 +342,8 @@ async function handleGeneration(
   /** Which generation endpoint this is. Decides the word floor: a chapter is
    * measured against a chapter's budget, not the whole course's. */
   pathname: string,
+  /** Which pool to read from and write to. From the verified entitlement. */
+  pool: Pool,
   env: Env,
   entitlement: VerifiedEntitlement,
   deviceId: string,
@@ -331,15 +355,47 @@ async function handleGeneration(
   const window = typeof body.window === "string" ? body.window : "three";
   const format = typeof body.format === "string" ? body.format : "oneThing";
   const topic = typeof body.topic === "string" ? body.topic : "";
+  const interest = typeof body.interest === "string" ? body.interest : "";
+  const chapterIndex = Number.isInteger(body.chapter) ? (body.chapter as number) : null;
 
   const isFree = entitlement.tier === "free";
-  const cacheKey = lessonCacheKey({ window, format, topic });
+  const identity: LessonIdentity = { pool, window, format, topic, interest };
 
-  // The outline is the only generation call that comes back as JSON. It is
-  // metered like the rest — it is what starts a course, so it is what the
-  // course cap should count — but there is nothing to tee, and the cache holds
-  // SSE, so both the cache read and the cache write are skipped for it.
+  // Two keys, and the difference matters.
+  //
+  // `chargeKey` is the lesson: one course, one charge, one "already read"
+  // mark, however many requests it takes. `cacheKey` is one stored body —
+  // the whole lesson, the outline, or one chapter. Collapsing them is what
+  // made every chapter of a course overwrite the last.
+  const chargeKey = lessonPoolKey(identity);
+  const cacheKey = lessonCacheKey(identity, unitFor(pathname, chapterIndex));
+
+  // The outline comes back as JSON rather than a stream. It is cached like
+  // everything else — a cached course whose outline regenerated would hand
+  // the reader chapter headings that do not match the chapters underneath
+  // them — but it is replayed as JSON and never teed.
   const streaming = modelRequest.stream === true;
+  // A chapter request with no index cannot be cached: every chapter of the
+  // course would collide on one key. Better to pay for it than to poison the
+  // pool with a course made of four copies of chapter four.
+  // Read on either pass, write only on the final one.
+  //
+  // A draft must never be *written*: it is pass 1 of two, the reader never
+  // sees it, and an entry holding one would serve unrevised prose to everyone
+  // who asks that question for thirty days.
+  //
+  // But a draft must still be allowed to *read*, and that is the half that is
+  // easy to get backwards. The client always sends the draft first. If the
+  // cache only answered the revision, every hit would still have paid for a
+  // draft it threw away — which is most of the saving gone, on the path the
+  // cache exists for.
+  //
+  // Marking the entry read is likewise the final pass's job, so the revision
+  // that follows a hit is a hit too, instead of finding its own draft has
+  // already spent the entry.
+  const isFinalPass = body.pass !== "draft";
+  const cacheable = topic !== ""
+    && !(pathname === "/v1/chapter" && chapterIndex === null);
 
   // Work out what we would serve before metering anything, so the allowance is
   // spent on exactly one thing and never on a request that then fails.
@@ -353,8 +409,25 @@ async function handleGeneration(
   // The operator bypass skips the cache too: a batch run exists to produce
   // fresh lessons to judge, and replaying old ones would quietly make it
   // measure nothing.
+  //
+  // Both tiers read the cache now. Premium used to always generate, which was
+  // the old shape of the product: premium bought fresh authorship. It buys
+  // the better pool and interest matching instead, so a premium reader being
+  // served another premium reader's lesson is the design rather than a
+  // shortfall — and a 30-minute course read by two hundred people cannot be
+  // written two hundred times.
+  //
+  // Seen-once is keyed on the stored body, not the lesson.
+  //
+  // Which is what makes a course work now that chapters have their own keys: a
+  // reader is served each chapter once, in order, and none of them is blocked
+  // because an earlier one was marked. On a later day every unit of that
+  // course is marked, so the outline and all four chapters regenerate
+  // together — the outline cannot come back fresh while the chapters under it
+  // come back cached, which would leave the headings describing something
+  // else.
   let cachedEntry: Awaited<ReturnType<typeof readCachedLesson>> = null;
-  if (streaming && isFree && topic && !isOperator) {
+  if (cacheable && !isOperator) {
     const cached = await readCachedLesson(env.LESSONS, cacheKey, now);
     if (cached && !(await hasSeenLesson(env, deviceId, cacheKey))) {
       cachedEntry = cached;
@@ -399,7 +472,7 @@ async function handleGeneration(
     // twelve. `ProxyProviderTests` already asserted this contract from the
     // client side; nothing asserted it here.
     const decision = await consume(
-      env, deviceId, entitlement.tier, window, cacheKey, hooks, now,
+      env, deviceId, entitlement.tier, window, chargeKey, hooks, now,
     );
     if (!decision.allow) {
       return errorResponse(402, decision.reason, denialMessage(decision.reason));
@@ -407,8 +480,10 @@ async function handleGeneration(
   }
 
   if (cachedEntry) {
-    await markSeen(env, deviceId, cacheKey);
-    return replayCachedLesson(cachedEntry.sse);
+    if (isFinalPass) await markSeen(env, deviceId, cacheKey);
+    return cachedEntry.streaming === false
+      ? replayCachedJSON(cachedEntry.sse)
+      : replayCachedLesson(cachedEntry.sse);
   }
 
   const upstream = await callAnthropic(modelRequest, {
@@ -425,6 +500,18 @@ async function handleGeneration(
       typeof modelRequest.model === "string" ? modelRequest.model : undefined,
       env, ctx, hooks, now,
     );
+    // The outline, cached so a course's chapters keep matching the headings
+    // they were written under. No word floor applies: an outline is a plan,
+    // not prose, and measuring it against a course's 6,000-word floor would
+    // refuse every outline ever written.
+    if (cacheable && isFinalPass && !isOperator && isCompleteMessage(text)) {
+      ctx.waitUntil(writeCachedLesson(env.LESSONS, cacheKey, {
+        sse: text,
+        streaming: false,
+        createdAt: now,
+        originalCostUSD: 0,
+      }));
+    }
     return new Response(text, { status: 200, headers: JSON_HEADERS });
   }
 
@@ -460,7 +547,7 @@ async function handleGeneration(
         ? false
         : words !== null && words >= floor;
 
-      if (parsed.complete && topic && longEnough) {
+      if (parsed.complete && cacheable && isFinalPass && longEnough) {
         await writeCachedLesson(env.LESSONS, cacheKey, {
           sse: fullBody,
           createdAt: now,
@@ -475,6 +562,24 @@ async function handleGeneration(
     },
     (promise) => ctx.waitUntil(promise),
   );
+}
+
+/**
+ * Whether a non-streaming upstream body is a finished message worth caching.
+ *
+ * The streamed path has `message_stop` to go on. This one has the message
+ * envelope: a body that will not parse, or that came back truncated at
+ * `max_tokens`, is the same kind of thing as a cut-off stream and gets the
+ * same answer.
+ */
+function isCompleteMessage(text: string): boolean {
+  try {
+    const parsed = JSON.parse(text) as { stop_reason?: unknown; content?: unknown };
+    if (!Array.isArray(parsed.content) || parsed.content.length === 0) return false;
+    return parsed.stop_reason !== "max_tokens" && parsed.stop_reason !== "refusal";
+  } catch {
+    return false;
+  }
 }
 
 function denialMessage(reason: Decision extends { allow: false } ? never : string): string {

@@ -99,11 +99,16 @@ final class CostEstimatorTests: XCTestCase {
 
     /// Published list prices, checked against the numbers rather than against
     /// each other, so a transcription slip is visible.
+    ///
+    /// Sonnet is at its list $3/$15, not the introductory $2/$10 it is on
+    /// until 2026-08-31. That is deliberate and the comment on the table says
+    /// why: this figure feeds the spend ceiling, the free pool runs entirely
+    /// on this model, and an error high stops generation slightly early while
+    /// an error low sails past the ceiling.
     func testEachModelIsPricedAtItsPublishedRate() {
         let expected: [String: (input: Double, output: Double)] = [
             "claude-opus-5": (5, 25),
-            "claude-sonnet-5": (2, 10),
-            "claude-haiku-4-5-20251001": (1, 5),
+            "claude-sonnet-5": (3, 15),
         ]
         for (model, prices) in expected {
             let pricing = CostEstimator.pricing(for: model)
@@ -116,23 +121,37 @@ final class CostEstimatorTests: XCTestCase {
     func testAMillionTokensCostsTheListedAmount() {
         let usage = TokenUsage(inputTokens: 1_000_000, outputTokens: 1_000_000)
         XCTAssertEqual(CostEstimator.cost(of: usage, model: "claude-opus-5"), 30, accuracy: 0.0001)
-        XCTAssertEqual(CostEstimator.cost(of: usage, model: "claude-sonnet-5"), 12, accuracy: 0.0001)
+        XCTAssertEqual(CostEstimator.cost(of: usage, model: "claude-sonnet-5"), 18, accuracy: 0.0001)
+    }
+
+    /// Haiku is priced nowhere, because it is used nowhere.
+    ///
+    /// A blind comparison across three durations and six topics found
+    /// confident fabrications in all three of its lessons — an invented 1884
+    /// act of Congress among them. Leaving it in the pricing table would be
+    /// harmless on its own; leaving it in the table *and* the server's
+    /// allowlist is how it quietly reappears in the next comparison run. It
+    /// now prices as an unknown model, which is to say at the most expensive
+    /// known rate.
+    func testHaikuIsNotAPricedModel() {
+        XCTAssertNil(CostEstimator.modelPricing["claude-haiku-4-5-20251001"])
         XCTAssertEqual(
-            CostEstimator.cost(of: usage, model: "claude-haiku-4-5-20251001"), 6, accuracy: 0.0001
+            CostEstimator.pricing(for: "claude-haiku-4-5-20251001").inputPerMillion,
+            CostEstimator.pricing(for: "claude-opus-5").inputPerMillion
         )
     }
 
-    /// The point of the table. The comparison run reports a cost per lesson, and
-    /// pricing every model at the app's model's rate would make the cheap ones
-    /// look five times more expensive than they are.
+    /// The point of the table, and it matters more now than it did when it was
+    /// only about a comparison run: the free pool is written by Sonnet and the
+    /// premium pool by Opus, so pricing both at the app's model's rate would
+    /// overstate every free lesson by two thirds.
     func testTheSameTokensCostDifferentAmountsOnDifferentModels() {
         let usage = TokenUsage(inputTokens: 40_000, outputTokens: 8_000)
         let opus = CostEstimator.cost(of: usage, model: "claude-opus-5")
         let sonnet = CostEstimator.cost(of: usage, model: "claude-sonnet-5")
-        let haiku = CostEstimator.cost(of: usage, model: "claude-haiku-4-5-20251001")
         XCTAssertGreaterThan(opus, sonnet)
-        XCTAssertGreaterThan(sonnet, haiku)
-        XCTAssertEqual(opus / haiku, 5, accuracy: 0.0001)
+        // Both rates scale by the same 3/5, so the ratio holds for any mix.
+        XCTAssertEqual(opus / sonnet, 5.0 / 3.0, accuracy: 0.0001)
     }
 
     /// Over-estimating a bill is recoverable; under-estimating it is what the
@@ -160,21 +179,23 @@ final class CostEstimatorTests: XCTestCase {
         let opus = UsageEvent(
             kind: .lessonDraft, model: "claude-opus-5", usage: usage, occurredAt: Date()
         )
-        let haiku = UsageEvent(
-            kind: .lessonDraft, model: "claude-haiku-4-5-20251001", usage: usage, occurredAt: Date()
+        let sonnet = UsageEvent(
+            kind: .lessonDraft, model: "claude-sonnet-5", usage: usage, occurredAt: Date()
         )
-        XCTAssertEqual(opus.estimatedCostUSD / haiku.estimatedCostUSD, 5, accuracy: 0.0001)
+        XCTAssertEqual(
+            opus.estimatedCostUSD / sonnet.estimatedCostUSD, 5.0 / 3.0, accuracy: 0.0001
+        )
     }
 
     func testCacheMultipliersApplyToTheModelsOwnInputRate() {
         let cached = TokenUsage(inputTokens: 0, outputTokens: 0, cacheReadInputTokens: 1_000_000)
         // A cache read is a tenth of that model's input price: $0.50 on Opus,
-        // $0.10 on Haiku.
+        // $0.30 on Sonnet.
         XCTAssertEqual(
             CostEstimator.cost(of: cached, model: "claude-opus-5"), 0.5, accuracy: 0.0001
         )
         XCTAssertEqual(
-            CostEstimator.cost(of: cached, model: "claude-haiku-4-5-20251001"), 0.1, accuracy: 0.0001
+            CostEstimator.cost(of: cached, model: "claude-sonnet-5"), 0.3, accuracy: 0.0001
         )
     }
 
