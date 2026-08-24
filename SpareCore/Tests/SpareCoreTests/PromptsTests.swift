@@ -335,10 +335,11 @@ final class PromptsTests: XCTestCase {
         let prompt = Prompts.postLessonTestSystemPrompt
         XCTAssertTrue(prompt.contains("The task will say how many"))
         XCTAssertTrue(prompt.contains("different part of the lesson"))
-        // Collapsed, for the same reason the other prompt tests do it: these
-        // are source-wrapped paragraphs, so a phrase can straddle a line break
-        // that reads as a plain space to anything reading the rendered prompt.
-        let flat = prompt.replacingOccurrences(of: "\n", with: " ")
+        // Whitespace runs collapsed, not just newlines. These are
+        // source-wrapped paragraphs, so a phrase can straddle a line break --
+        // and what follows the break is ten spaces of indentation, which a
+        // plain newline swap turns into "No          two" rather than "No two".
+        let flat = prompt.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
         XCTAssertTrue(flat.contains("No two questions should be answerable from the same sentence"))
         XCTAssertTrue(prompt.contains("exactly 3"))
         XCTAssertTrue(prompt.contains("not about the text"))
