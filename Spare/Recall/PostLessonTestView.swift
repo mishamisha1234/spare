@@ -33,6 +33,12 @@ struct PostLessonTestView: View {
         ))
     }
 
+    /// Four seconds, in quarter-second steps. Long enough to cover two model
+    /// calls finishing on the screen behind this one, short enough that a
+    /// lesson which genuinely has no test says so rather than hanging.
+    private static let attachmentPollAttempts = 16
+    private static let attachmentPollInterval: UInt64 = 250_000_000
+
     /// The test as it was attached to the lesson. Nothing here generates one:
     /// see `PostLessonTestViewModel`.
     private var storedQuestions: [RecallQuestion] {
@@ -65,6 +71,23 @@ struct PostLessonTestView: View {
         .navigationTitle("Quick test")
         .navigationBarTitleDisplayMode(.inline)
         .task {
+            // Waits for the attachment before deciding there is none.
+            //
+            // The test is written and stored moments after the lesson
+            // finishes, on the completion screen this reader just came from,
+            // and a fast reader arrives first. "No test for this one" is a
+            // real state -- a free-pool lesson, or an upload that never landed
+            // -- but it is not this one, and showing it here would be telling
+            // the reader something untrue about a lesson that is about to have
+            // a test. Bounded, and it generates nothing either way.
+            for _ in 0..<Self.attachmentPollAttempts {
+                let questions = storedQuestions
+                if !questions.isEmpty {
+                    viewModel.start(stored: questions)
+                    return
+                }
+                try? await Task.sleep(nanoseconds: Self.attachmentPollInterval)
+            }
             viewModel.start(stored: storedQuestions)
         }
         // No container-level accessibilityIdentifier: see OnboardingView.

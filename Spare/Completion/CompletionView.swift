@@ -104,7 +104,7 @@ struct CompletionView: View {
                         }
 
                         lockableButton(
-                            title: "Take a 3-question test",
+                            title: "Take a \(lesson.window.testQuestionCount)-question test",
                             decision: entitlements.canTakePostLessonTest(),
                             identifier: "completion.takeTest",
                             action: onTakeTest
@@ -166,7 +166,7 @@ struct CompletionView: View {
             lesson = stored
             isMarkedComplete = stored?.completedAt != nil
             if let stored {
-                await viewModel.ensureAttachmentsReady(for: stored)
+                viewModel.ensureAttachmentsReady(for: stored)
             }
         }
         // No container-level accessibilityIdentifier: SwiftUI can propagate

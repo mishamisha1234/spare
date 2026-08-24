@@ -12,12 +12,23 @@ import SpareCore
 /// be roughly $40 of tests on a $1.40 lesson.
 @MainActor
 final class CompletionViewModel: ObservableObject {
-    @Published private(set) var isGeneratingRecall = false
+    /// True while the recall question and, for premium, the test are being
+/// prepared. Covers both now, not just the recall question.
+@Published private(set) var isPreparingAttachments = false
 
     private let provider: LessonProvider
     private let attachments: any AttachmentStore
     private let modelContext: ModelContext
     private let isPremium: Bool
+    /// Held rather than awaited by the view.
+    ///
+    /// `.task` is tied to the view's lifetime, and the reader's very next
+    /// action is to push the test screen on top of this one -- which is
+    /// exactly when a view-bound task can be cancelled. The work would then
+    /// stop half way, leaving the lesson with a recall question and no test,
+    /// and the screen that reads it would honestly report that there is none.
+    /// An unstructured task owned by the model outlives the push.
+    private var preparation: Task<Void, Never>?
 
     init(
         provider: LessonProvider,
@@ -31,7 +42,12 @@ final class CompletionViewModel: ObservableObject {
         self.isPremium = isPremium
     }
 
-    func ensureAttachmentsReady(for lesson: StoredLesson) async {
+    func ensureAttachmentsReady(for lesson: StoredLesson) {
+        guard preparation == nil else { return }
+        preparation = Task { [weak self] in await self?.prepare(for: lesson) }
+    }
+
+    private func prepare(for lesson: StoredLesson) async {
         let lessonID = lesson.id
         let existing = FetchDescriptor<StoredRecallItem>(
             predicate: #Predicate { $0.lessonID == lessonID }
@@ -42,8 +58,8 @@ final class CompletionViewModel: ObservableObject {
         let wantsTest = isPremium && lesson.postLessonTest.isEmpty
         guard !hasRecall || wantsTest else { return }
 
-        isGeneratingRecall = true
-        defer { isGeneratingRecall = false }
+        isPreparingAttachments = true
+        defer { isPreparingAttachments = false }
 
         let identity = lesson.poolIdentity
 
