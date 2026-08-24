@@ -300,7 +300,10 @@ final class ProxyProviderTests: XCTestCase {
             XCTAssertEqual(sent["format"]?.stringValue, window.format.rawValue)
         }
         // Spelled out rather than derived, so a rename has to be made here too.
-        XCTAssertEqual(TimeWindow.allCases.map(\.rawValue), ["three", "seven", "fifteen", "thirty"])
+        XCTAssertEqual(
+            TimeWindow.allCases.map(\.rawValue),
+            ["one", "three", "seven", "fifteen", "thirty"]
+        )
         XCTAssertEqual(
             LessonFormat.allCases.map(\.rawValue),
             ["oneThing", "explainer", "lesson", "miniCourse"]
@@ -563,7 +566,7 @@ final class ProxyProviderTests: XCTestCase {
     private func fixtureLesson() -> Lesson {
         Lesson(
             title: "Why bridges hum",
-            subtitle: "A 10-minute explainer",
+            subtitle: "A 7-minute explainer",
             domainTag: "Engineering",
             bodyMarkdown: String(repeating: "word ", count: 1_800),
             surprisingClaim: "Pedestrians synchronised with the sway.",

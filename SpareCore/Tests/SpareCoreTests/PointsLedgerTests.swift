@@ -20,10 +20,19 @@ final class PointsLedgerTests: XCTestCase {
     // MARK: - Award amounts
 
     func testLessonCompletionPointsAscendWithWindowLength() {
+        XCTAssertEqual(Points.forCompleting(.one), 5)
         XCTAssertEqual(Points.forCompleting(.three), 10)
-        XCTAssertEqual(Points.forCompleting(.seven), 20)
+        XCTAssertEqual(Points.forCompleting(.seven), 15)
         XCTAssertEqual(Points.forCompleting(.fifteen), 30)
         XCTAssertEqual(Points.forCompleting(.thirty), 60)
+
+        // Ascending, and asserted as such rather than only as five literals:
+        // the numbers are a judgement call and may move, but a longer lesson
+        // being worth less than a shorter one never makes sense.
+        let awards = TimeWindow.allCases.map(Points.forCompleting)
+        for (shorter, longer) in zip(awards, awards.dropFirst()) {
+            XCTAssertLessThan(shorter, longer)
+        }
     }
 
     func testCorrectRecallIsFlatRegardlessOfSourceLength() {

@@ -460,7 +460,7 @@ final class PromptsTests: XCTestCase {
         let prompt = Prompts.revisionTaskPrompt(
             wordBudget: TimeWindow.seven.wordBudget, draftJSON: #"{"title":"x"}"#
         )
-        XCTAssertTrue(prompt.contains("1600"))
+        XCTAssertTrue(prompt.contains("1100"))
         XCTAssertTrue(prompt.contains(#"{"title":"x"}"#))
     }
 

@@ -129,7 +129,7 @@ enum HTTPFixtures {
         body: String = "On June 10, 2000, the Millennium Bridge opened across the Thames. It swayed."
     ) -> String {
         """
-        {"title":\(jsonEncoded(title)),"subtitle":"A 10-minute explainer","domainTag":"Engineering","bodyMarkdown":\(jsonEncoded(body)),"surprisingClaim":"Pedestrians synchronised with the sway.","deeperAngles":["Resonance","Dampers","Over-damping"]}
+        {"title":\(jsonEncoded(title)),"subtitle":"A 7-minute explainer","domainTag":"Engineering","bodyMarkdown":\(jsonEncoded(body)),"surprisingClaim":"Pedestrians synchronised with the sway.","deeperAngles":["Resonance","Dampers","Over-damping"]}
         """
     }
 

@@ -254,13 +254,13 @@ final class LessonQualityCheckTests: XCTestCase {
         )
     }
 
-    /// Every fixture subtitle is a window label ("A 10-minute explainer"), too
+    /// Every fixture subtitle is a window label ("A 7-minute explainer"), too
     /// short to compare against anything. Guarding the floor explicitly so a
     /// future short subtitle cannot start failing on two coincidental stems.
     func testAShortSubtitleIsNeverJudged() {
         XCTAssertFalse(
             LessonQualityCheck.subtitleGivesAwayClaim(
-                subtitle: "A 10-minute explainer", claim: "The correction is the cause"
+                subtitle: "A 7-minute explainer", claim: "The correction is the cause"
             )
         )
     }
