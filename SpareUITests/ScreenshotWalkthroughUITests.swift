@@ -298,10 +298,21 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             try waitAndCapture(app, "09d-completion-unlocked", scheme: colorScheme, identifier: "completion.takeTest")
             try tap(app, "completion.takeTest", scheme: colorScheme, step: "09d-completion-unlocked")
 
-            for questionNumber in 1...3 {
+            // Answers every question, however many this length carries.
+            //
+            // It used to be `1...3`. The count is 2/3/4/5/10 by duration now,
+            // so a fixed number here is a number that has to be edited every
+            // time the product changes it — and it tests nothing that
+            // `LessonAttachmentsTests` and the proxy's own shape check do not
+            // already pin exactly. What this walkthrough is for is the flow:
+            // answer everything, arrive at the summary. Bounded above the
+            // longest test so a screen that never advances still fails.
+            var questionNumber = 0
+            while questionNumber < 12, !element(app, "postLessonTest.done").exists {
                 let option = app.descendants(matching: .any)
                     .matching(NSPredicate(format: "identifier BEGINSWITH 'postLessonTest.option.'"))
                     .firstMatch
+                questionNumber += 1
                 if questionNumber == 1 {
                     try waitAndCapture(
                         app, "09e-postlessontest", scheme: colorScheme,
@@ -319,6 +330,7 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
                 }
                 try tap(app, "postLessonTest.next", scheme: colorScheme, step: "postlessontest-q\(questionNumber)")
             }
+            XCTAssertGreaterThan(questionNumber, 1, "the test ended after a single question")
             try waitAndCapture(app, "09g-postlessontest-summary", scheme: colorScheme, identifier: "postLessonTest.done")
             try tap(app, "postLessonTest.done", scheme: colorScheme, step: "09g-postlessontest-summary")
 
