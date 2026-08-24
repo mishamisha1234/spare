@@ -22,6 +22,27 @@ final class StoredLesson {
     /// Set when this lesson came from "go deeper" on another lesson.
     var parentLessonID: UUID?
     var isFavorite: Bool
+    /// The subject as it was *asked for*, and the interest category it was
+    /// asked for under.
+    ///
+    /// Not the same as `title` and `topicTag`, which the model wrote. The pool
+    /// keys entries on what the client sent, so anything that wants to find
+    /// this lesson's attachments later has to ask with the same two strings —
+    /// and a lesson called "The clock that beat the railways" filed under a
+    /// request for "How standard time was imposed" would look up nothing,
+    /// forever, silently.
+    ///
+    /// Empty for rows written before attachments existed, which read as "no
+    /// attachments to look for" rather than as a wrong lookup.
+    var requestedTopic: String = ""
+    var requestedInterest: String = ""
+    /// The post-lesson test, as generated with the lesson and stored beside it.
+    ///
+    /// JSON rather than a relationship, for the same reason
+    /// `StoredSuggestionCache` holds Data: the value type stays owned by
+    /// SpareCore. Nil where there is none — a free-pool lesson, or a premium
+    /// one whose attachment upload has not landed yet.
+    var testData: Data?
 
     init(
         id: UUID = UUID(),
@@ -36,7 +57,9 @@ final class StoredLesson {
         completedAt: Date? = nil,
         scrollProgress: Double = 0,
         parentLessonID: UUID? = nil,
-        isFavorite: Bool = false
+        isFavorite: Bool = false,
+        requestedTopic: String = "",
+        requestedInterest: String = ""
     ) {
         self.id = id
         self.title = title
@@ -51,6 +74,27 @@ final class StoredLesson {
         self.scrollProgress = scrollProgress
         self.parentLessonID = parentLessonID
         self.isFavorite = isFavorite
+        self.requestedTopic = requestedTopic
+        self.requestedInterest = requestedInterest
+    }
+
+    /// How the pool names this lesson. Nil when it was written before the
+    /// requested subject was recorded, which is not a lookup worth making.
+    var poolIdentity: LessonIdentity? {
+        guard !requestedTopic.isEmpty else { return nil }
+        return LessonIdentity(
+            window: window, topic: requestedTopic, interest: requestedInterest
+        )
+    }
+
+    var postLessonTest: [RecallQuestion] {
+        get {
+            guard let testData else { return [] }
+            return (try? JSONDecoder().decode([RecallQuestion].self, from: testData)) ?? []
+        }
+        set {
+            testData = newValue.isEmpty ? nil : (try? JSONEncoder().encode(newValue))
+        }
     }
 
     convenience init(
@@ -58,7 +102,9 @@ final class StoredLesson {
         window: TimeWindow,
         id: UUID = UUID(),
         parentLessonID: UUID? = nil,
-        generatedAt: Date = .now
+        generatedAt: Date = .now,
+        requestedTopic: String = "",
+        requestedInterest: String = ""
     ) {
         self.init(
             id: id,
@@ -70,7 +116,9 @@ final class StoredLesson {
             surprisingClaim: lesson.surprisingClaim,
             deeperAngles: lesson.deeperAngles,
             generatedAt: generatedAt,
-            parentLessonID: parentLessonID
+            parentLessonID: parentLessonID,
+            requestedTopic: requestedTopic,
+            requestedInterest: requestedInterest
         )
     }
 

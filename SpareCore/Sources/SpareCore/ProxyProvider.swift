@@ -91,8 +91,11 @@ public struct ProxyProvider: LessonProvider {
         try await pipeline.generateRecallQuestion(for: lesson)
     }
 
-    public func generatePostLessonTest(for lesson: Lesson) async throws -> [RecallQuestion] {
-        try await pipeline.generatePostLessonTest(for: lesson)
+    public func generatePostLessonTest(
+        for lesson: Lesson,
+        window: TimeWindow
+    ) async throws -> [RecallQuestion] {
+        try await pipeline.generatePostLessonTest(for: lesson, window: window)
     }
 
     public func goDeeper(

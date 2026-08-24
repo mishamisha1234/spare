@@ -150,6 +150,32 @@ fresh. That is the intended shape, but it means the first month's spend will
 not look like the seed cost suggests, and the premium pool fills at premium
 prices from the first paying reader.
 
+### Tests and recall questions travel with the lesson
+
+A lesson is written once and read by many people, so its recall question and
+its test are properties of the lesson, not of the reader. Both are generated
+once — by whichever device generated the lesson — and stored beside it via
+`POST /v1/attach`; every later reader gets them from `POST /v1/attachments`,
+which generates nothing, ever.
+
+This is a cost cliff rather than a preference. A 30-minute course read by two
+hundred premium users, at roughly $0.20 of test generation each, would be $40
+of tests on a lesson that cost $1.40 to write. `PostLessonTestViewModel` holds
+no provider at all for the same reason: a screen with a provider on it is a
+screen that can grow a "generate one" path.
+
+`/v1/attach` is the only route by which bytes a client chose reach a pool other
+readers are served from — lesson bodies are Anthropic's own, forwarded — so it
+is guarded twice: only the device recorded as the lesson's generator may write,
+and the test's question count must match the length exactly (2/3/4/5/10 by
+duration). A course's test attaches when the reader finishes it; one who stops
+at chapter two leaves none behind, which is correct — they have not finished.
+
+The recall question is not gated. It is free for every reader, both pools carry
+one, and it is written by the same model that wrote the lesson: a question from
+a stronger model than the lesson's can probe something the text never quite
+establishes, which is fair on the subject and unfair on the page.
+
 ### Cost control
 
 A 30-minute course is an outline call plus two calls per chapter — 9 requests if fully generated. Three things keep that honest:

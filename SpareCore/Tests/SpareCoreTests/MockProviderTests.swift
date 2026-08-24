@@ -255,21 +255,28 @@ final class MockProviderTests: XCTestCase {
 
     // MARK: - Post-lesson test
 
-    func testPostLessonTestReturnsExactlyThreeWellFormedQuestions() async throws {
+    /// The count is a function of the length, and the server rejects an
+    /// uploaded test that does not match it exactly — so a fixture that always
+    /// returned three would be a fixture that could never be attached.
+    func testPostLessonTestReturnsAsManyQuestionsAsTheLengthCallsFor() async throws {
         let lesson = try await provider.generateLesson(topic: topic(for: .three), window: .three, profile: profile)
-        let questions = try await provider.generatePostLessonTest(for: lesson)
-        XCTAssertEqual(questions.count, 3)
-        for question in questions {
-            XCTAssertEqual(question.distractors.count, 3)
-            XCTAssertFalse(question.question.isEmpty)
-            XCTAssertFalse(question.answer.isEmpty)
-            XCTAssertFalse(question.distractors.contains(question.answer))
+        for window in TimeWindow.allCases {
+            let questions = try await provider.generatePostLessonTest(for: lesson, window: window)
+            XCTAssertEqual(questions.count, window.testQuestionCount, "\(window)")
+            for question in questions {
+                XCTAssertEqual(question.distractors.count, 3)
+                XCTAssertFalse(question.question.isEmpty)
+                XCTAssertFalse(question.answer.isEmpty)
+                XCTAssertFalse(question.distractors.contains(question.answer))
+            }
         }
     }
 
     func testPostLessonTestQuestionsAreNotAllIdentical() async throws {
         let lesson = try await provider.generateLesson(topic: topic(for: .three), window: .three, profile: profile)
-        let questions = try await provider.generatePostLessonTest(for: lesson)
+        // The course, because ten is where a fixture that pads with repeats
+        // would give itself away.
+        let questions = try await provider.generatePostLessonTest(for: lesson, window: .thirty)
         XCTAssertEqual(Set(questions.map(\.question)).count, questions.count, "each question should ask something different")
     }
 

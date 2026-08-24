@@ -152,9 +152,16 @@ public struct MockProvider: LessonProvider {
         )
     }
 
-    public func generatePostLessonTest(for lesson: Lesson) async throws -> [RecallQuestion] {
+    public func generatePostLessonTest(
+        for lesson: Lesson,
+        window: TimeWindow
+    ) async throws -> [RecallQuestion] {
         try await pause(milliseconds: 400)
-        return [
+        // As many as the length calls for: two for a minute, ten for a course.
+        // The three below are the distinct ones; anything past them is filled
+        // with indexed variants rather than repeats, because the real check on
+        // this fixture is that no two questions are identical.
+        let distinct: [RecallQuestion] = [
             RecallQuestion(
                 question: "What actually drove the effect described in \u{201C}\(lesson.title)\u{201D}?",
                 answer: lesson.surprisingClaim,
@@ -188,6 +195,23 @@ public struct MockProvider: LessonProvider {
                 explanation: "The piece's own subtitle: \(lesson.subtitle)"
             ),
         ]
+
+        let wanted = window.testQuestionCount
+        guard wanted > distinct.count else { return Array(distinct.prefix(wanted)) }
+
+        let filler = (distinct.count..<wanted).map { index in
+            RecallQuestion(
+                question: "Which detail from \u{201C}\(lesson.title)\u{201D} is point \(index + 1)?",
+                answer: "The \(index + 1)th thing the piece establishes",
+                distractors: [
+                    "A detail from a neighbouring subject",
+                    "A detail the piece explicitly rules out",
+                    "A detail nobody would seriously propose",
+                ],
+                explanation: "Sample content, numbered so no two questions collide."
+            )
+        }
+        return distinct + filler
     }
 
     public func goDeeper(

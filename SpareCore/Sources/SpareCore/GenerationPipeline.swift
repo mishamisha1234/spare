@@ -151,20 +151,25 @@ public struct GenerationPipeline: LessonProvider {
         )
     }
 
-    public func generatePostLessonTest(for lesson: Lesson) async throws -> [RecallQuestion] {
+    public func generatePostLessonTest(
+        for lesson: Lesson,
+        window: TimeWindow
+    ) async throws -> [RecallQuestion] {
         let request = MessagesRequest(
             model: configuration.model,
             maxTokens: 3_500,
             system: Prompts.postLessonTestSystemPrompt,
-            messages: [.user(Prompts.postLessonTestTaskPrompt(lesson: lesson))],
+            messages: [.user(Prompts.postLessonTestTaskPrompt(
+                lesson: lesson, questionCount: window.testQuestionCount
+            ))],
             effort: configuration.effort,
-            outputSchema: Schemas.postLessonTest,
+            outputSchema: Schemas.postLessonTest(questionCount: window.testQuestionCount),
             cacheSystemPrompt: configuration.cacheSystemPrompt
         )
         let response: PostLessonTestResponse = try await sendStructured(
             request, kind: .postLessonTest, context: .about(lesson)
         )
-        return response.normalizedQuestions
+        return response.normalizedQuestions(count: window.testQuestionCount)
     }
 
     // MARK: - Go deeper

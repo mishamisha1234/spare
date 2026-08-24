@@ -18,6 +18,10 @@ final class ReaderViewModel: ObservableObject {
 
     let window: TimeWindow
     private let source: ReaderSource
+    /// What was asked for, as opposed to what the model titled it. The pool
+    /// keys on this, so the lesson has to remember it or its attachments can
+    /// never be found again. See `StoredLesson.requestedTopic`.
+    private let requested: (topic: String, interest: String)
     private let provider: LessonProvider
     private let modelContext: ModelContext
     private var gate: RevisionGate
@@ -33,8 +37,14 @@ final class ReaderViewModel: ObservableObject {
         self.provider = provider
         self.modelContext = modelContext
         switch source {
-        case .newTopic(_, let window), .goDeeper(_, _, let window):
+        case .newTopic(let topic, let window):
             self.window = window
+            self.requested = (topic.title, topic.domainTag)
+        case .goDeeper(_, let angle, let window):
+            self.window = window
+            // A go-deeper lesson's subject is the angle, which is what the
+            // generation call sends as its topic.
+            self.requested = (angle.text, "")
         }
         self.gate = RevisionGate(window: window)
     }
@@ -168,7 +178,9 @@ final class ReaderViewModel: ObservableObject {
                 topicTag: metadata.domainTag,
                 window: window,
                 bodyMarkdown: gate.displayText,
-                parentLessonID: parentLessonID
+                parentLessonID: parentLessonID,
+                requestedTopic: requested.topic,
+                requestedInterest: requested.interest
             )
             modelContext.insert(stored)
             persistedLessonID = stored.id
@@ -181,7 +193,8 @@ final class ReaderViewModel: ObservableObject {
             existing.applyRevised(lesson)
         } else {
             let stored = StoredLesson(
-                lesson: lesson, window: window, parentLessonID: parentLessonID
+                lesson: lesson, window: window, parentLessonID: parentLessonID,
+                requestedTopic: requested.topic, requestedInterest: requested.interest
             )
             modelContext.insert(stored)
             persistedLessonID = stored.id

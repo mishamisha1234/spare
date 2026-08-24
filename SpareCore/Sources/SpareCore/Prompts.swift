@@ -330,13 +330,20 @@ public enum Prompts {
     // MARK: - POST-LESSON TEST SYSTEM PROMPT  (stable · cached · premium)
     // ─────────────────────────────────────────────────────────────────────────
 
+    /// Deliberately does not say how many questions.
+    ///
+    /// The count varies by length — two for a minute, ten for a course — and
+    /// this prompt is the cached prefix on every test call. A number in here
+    /// would mean five different cached prefixes instead of one, which is the
+    /// cache doing nothing. The count goes in the task prompt, where the
+    /// lesson's own text already makes every call unique.
     public static let postLessonTestSystemPrompt: String = """
-        Write three recall questions about the lesson below, to be answered
-        immediately, right after finishing it.
+        Write recall questions about the lesson below, to be answered
+        immediately, right after finishing it. The task will say how many.
 
         - Each question tests a different part of the lesson: the central claim,
-          a supporting mechanism or detail, and one more specific fact. No two
-          questions should be answerable from the same sentence.
+          a supporting mechanism or detail, and specific facts beyond those. No
+          two questions should be answerable from the same sentence.
         - If someone could answer a question from the title alone, it is the
           wrong question.
         - Four options per question: one correct answer and exactly 3
@@ -470,6 +477,8 @@ public enum Prompts {
         """
 
     public static let postLessonTestTaskTemplate: String = """
+        Write exactly {{questionCount}} questions.
+
         Title: {{title}}
         Central claim: {{claim}}
 
@@ -643,8 +652,15 @@ public enum Prompts {
         ])
     }
 
-    public static func postLessonTestTaskPrompt(lesson: Lesson) -> String {
+    /// - Parameter questionCount: from `TimeWindow.testQuestionCount`. Passed
+    ///   in rather than derived here, because the count belongs to the length
+    ///   the reader chose and this function only sees a finished lesson.
+    public static func postLessonTestTaskPrompt(
+        lesson: Lesson,
+        questionCount: Int
+    ) -> String {
         PromptTemplate.render(postLessonTestTaskTemplate, [
+            "questionCount": "\(questionCount)",
             "title": lesson.title,
             "claim": lesson.surprisingClaim,
             "body": lesson.bodyMarkdown,

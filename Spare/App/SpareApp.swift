@@ -29,6 +29,9 @@ struct SpareApp: App {
 
     private let container: ModelContainer
     private let provider: any LessonProvider
+    /// Where a lesson's recall question and test come from. Real only on the
+    /// proxy path: there is no shared pool to attach to anywhere else.
+    private let attachments: any AttachmentStore
     private let pointsLedger: any PointsLedger
     private let entitlements: EntitlementService
 
@@ -76,11 +79,32 @@ struct SpareApp: App {
 
         if Self.isUITestFailingProvider {
             self.provider = FailingProvider()
+            self.attachments = NoAttachmentStore()
         } else if Self.isUITestReset {
             self.provider = MockProvider()
+            self.attachments = NoAttachmentStore()
         } else {
             self.provider = Self.makeLiveProvider(container: container, purchases: purchases)
+            self.attachments = Self.makeAttachmentStore(purchases: purchases)
         }
+    }
+
+    /// The proxy's attachment store, or one that attaches nothing.
+    ///
+    /// Nothing rather than a local substitute, deliberately. Attachments only
+    /// mean anything where a pool is shared between readers; on the direct
+    /// route and the mock there is exactly one reader, so generating per
+    /// reader is not a cost cliff, it is the only thing that makes sense.
+    private static func makeAttachmentStore(
+        purchases: any PurchaseStore
+    ) -> any AttachmentStore {
+        guard let baseURL = ProxyConfiguration.baseURL() else { return NoAttachmentStore() }
+        return ProxyAttachmentStore(
+            transport: FoundationHTTPTransport(),
+            baseURL: baseURL,
+            deviceID: DeviceIdentity.current(),
+            receipt: { await purchases.currentReceipt() }
+        )
     }
 
     /// Builds the shipping provider.
@@ -220,6 +244,7 @@ struct SpareApp: App {
             RootView()
                 .themedAppearance(appearanceMode)
                 .environment(\.lessonProvider, provider)
+                .environment(\.attachmentStore, attachments)
                 .environment(\.pointsLedger, pointsLedger)
                 .entitlementService(entitlements)
         }

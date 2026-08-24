@@ -2,13 +2,16 @@ import SwiftUI
 import SwiftData
 import SpareCore
 
-/// The immediate, optional 3-question test right after a lesson (premium).
-/// One question at a time, immediate reveal, same quiet visual language as
-/// the daily recall card — this is a bigger dose of the same mechanic, not a
-/// different one.
+/// The immediate, optional test right after a lesson (premium). Two questions
+/// at a minute, ten after a course. One question at a time, immediate reveal,
+/// same quiet visual language as the daily recall card — this is a bigger dose
+/// of the same mechanic, not a different one.
+///
+/// Holds no provider, deliberately. The test is already on the lesson or it is
+/// not; a screen with a provider on it is a screen that can grow a "generate
+/// one" path, and that path is the $40-of-tests-on-a-$1.40-lesson cliff.
 struct PostLessonTestView: View {
     let lessonID: UUID
-    let provider: LessonProvider
     let modelContext: ModelContext
     var onFinished: () -> Void
 
@@ -18,18 +21,22 @@ struct PostLessonTestView: View {
 
     init(
         lessonID: UUID,
-        provider: LessonProvider,
         modelContext: ModelContext,
         pointsLedger: any PointsLedger,
         onFinished: @escaping () -> Void
     ) {
         self.lessonID = lessonID
-        self.provider = provider
         self.modelContext = modelContext
         self.onFinished = onFinished
         _viewModel = StateObject(wrappedValue: PostLessonTestViewModel(
-            lessonID: lessonID, provider: provider, pointsLedger: pointsLedger
+            lessonID: lessonID, pointsLedger: pointsLedger
         ))
+    }
+
+    /// The test as it was attached to the lesson. Nothing here generates one:
+    /// see `PostLessonTestViewModel`.
+    private var storedQuestions: [RecallQuestion] {
+        modelContext.storedLesson(id: lessonID)?.postLessonTest ?? []
     }
 
     var body: some View {
@@ -41,8 +48,7 @@ struct PostLessonTestView: View {
                     ErrorStateView(
                         presentation: failure,
                         onRetry: {
-                            guard let lesson = modelContext.storedLesson(id: lessonID)?.lesson else { return }
-                            Task { await viewModel.start(lesson: lesson) }
+                            viewModel.start(stored: storedQuestions)
                         },
                         identifier: "postLessonTest.error"
                     )
@@ -59,8 +65,7 @@ struct PostLessonTestView: View {
         .navigationTitle("Quick test")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            guard let lesson = modelContext.storedLesson(id: lessonID)?.lesson else { return }
-            await viewModel.start(lesson: lesson)
+            viewModel.start(stored: storedQuestions)
         }
         // No container-level accessibilityIdentifier: see OnboardingView.
     }

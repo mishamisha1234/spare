@@ -46,7 +46,10 @@ public struct FailingProvider: LessonProvider {
         throw error
     }
 
-    public func generatePostLessonTest(for lesson: Lesson) async throws -> [RecallQuestion] {
+    public func generatePostLessonTest(
+        for lesson: Lesson,
+        window: TimeWindow
+    ) async throws -> [RecallQuestion] {
         throw error
     }
 

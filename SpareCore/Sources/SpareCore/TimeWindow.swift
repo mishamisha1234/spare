@@ -204,6 +204,26 @@ public enum TimeWindow: String, Codable, CaseIterable, Sendable, Identifiable, H
         }
     }
 
+    /// Questions in the post-lesson test for this length.
+    ///
+    /// Fixed per duration rather than proportional to word count: the test is
+    /// a check on what stuck, and ten questions on a 3-minute One Thing would
+    /// be interrogating a single idea from ten angles. The course gets ten
+    /// because it has four chapters to cover and a reader who finished one has
+    /// spent half an hour earning the right to be asked properly.
+    ///
+    /// The server validates an uploaded test against this exact number, so it
+    /// is a contract and not a suggestion.
+    public var testQuestionCount: Int {
+        switch self {
+        case .one: return 2
+        case .three: return 3
+        case .seven: return 4
+        case .fifteen: return 5
+        case .thirty: return 10
+        }
+    }
+
     /// Per-chapter word budget for chaptered formats; the whole budget otherwise.
     public var chapterWordBudget: ClosedRange<Int> {
         let chapters = format.chapterCount

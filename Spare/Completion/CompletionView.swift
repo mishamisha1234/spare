@@ -27,6 +27,8 @@ struct CompletionView: View {
         lessonID: UUID,
         provider: LessonProvider,
         modelContext: ModelContext,
+        attachments: any AttachmentStore,
+        isPremium: Bool,
         onGoDeeper: @escaping (DeeperAngle) -> Void,
         onReturnHome: @escaping () -> Void,
         onTakeTest: @escaping () -> Void,
@@ -39,7 +41,14 @@ struct CompletionView: View {
         self.onReturnHome = onReturnHome
         self.onTakeTest = onTakeTest
         self.onPaywall = onPaywall
-        _viewModel = StateObject(wrappedValue: CompletionViewModel(provider: provider, modelContext: modelContext))
+        // Both passed in rather than read from the environment: `StateObject`
+        // is built in `init`, where environment values are not available yet.
+        _viewModel = StateObject(wrappedValue: CompletionViewModel(
+            provider: provider,
+            attachments: attachments,
+            modelContext: modelContext,
+            isPremium: isPremium
+        ))
     }
 
     var body: some View {
@@ -157,7 +166,7 @@ struct CompletionView: View {
             lesson = stored
             isMarkedComplete = stored?.completedAt != nil
             if let stored {
-                await viewModel.ensureRecallGenerated(for: stored)
+                await viewModel.ensureAttachmentsReady(for: stored)
             }
         }
         // No container-level accessibilityIdentifier: SwiftUI can propagate

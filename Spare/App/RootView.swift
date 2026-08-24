@@ -9,6 +9,7 @@ struct RootView: View {
     @AppStorage(AppSettingsKey.hasCompletedOnboarding) private var hasCompletedOnboarding = false
     @Environment(\.modelContext) private var modelContext
     @Environment(\.lessonProvider) private var provider
+    @Environment(\.attachmentStore) private var attachmentStore
     @Environment(\.pointsLedger) private var pointsLedger
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var entitlements: EntitlementService
@@ -166,6 +167,8 @@ struct RootView: View {
                 lessonID: lessonID,
                 provider: provider,
                 modelContext: modelContext,
+                attachments: attachmentStore,
+                isPremium: entitlements.isPremium,
                 onGoDeeper: { angle in
                     guard let lesson = modelContext.storedLesson(id: lessonID) else { return }
                     path.append(.reader(.goDeeper(parentLessonID: lessonID, angle: angle, window: lesson.window)))
@@ -198,7 +201,6 @@ struct RootView: View {
         case .postLessonTest(let lessonID):
             PostLessonTestView(
                 lessonID: lessonID,
-                provider: provider,
                 modelContext: modelContext,
                 pointsLedger: pointsLedger,
                 onFinished: { path.removeLast() }

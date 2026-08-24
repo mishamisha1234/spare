@@ -1,10 +1,19 @@
 import Foundation
 import SpareCore
 
-/// Drives the immediate, optional post-lesson test: generates 3 questions,
-/// steps through them one at a time with immediate reveal, and records a
-/// `PointEvent` per answer. Never persisted as a schedule — unlike the daily
-/// recall card, there is nothing here for `RecallScheduler` to track.
+/// Drives the immediate, optional post-lesson test: steps through the stored
+/// questions one at a time with immediate reveal, and records a `PointEvent`
+/// per answer. Never persisted as a schedule — unlike the daily recall card,
+/// there is nothing here for `RecallScheduler` to track.
+///
+/// **Generates nothing.** The test was written once, with the lesson, by the
+/// device that generated it, and stored beside it in the pool; by the time a
+/// reader taps through to here it is either on the lesson or it is not. That
+/// is the whole cost argument: a cached 30-minute course read by two hundred
+/// premium users must not trigger two hundred test generations, which would be
+/// roughly $40 of tests on a $1.40 lesson. There is deliberately no fallback
+/// path from "no test" to "make one" — a fallback is exactly how a cost cliff
+/// gets reintroduced by someone fixing an empty screen.
 @MainActor
 final class PostLessonTestViewModel: ObservableObject {
     @Published private(set) var questions: [RecallQuestion] = []
@@ -20,7 +29,6 @@ final class PostLessonTestViewModel: ObservableObject {
     @Published private(set) var answers: [String: String] = [:]
 
     private let lessonID: UUID
-    private let provider: LessonProvider
     private let pointsLedger: any PointsLedger
     /// One stable option order per question, fixed at load time so the
     /// order doesn't reshuffle mid-question on a view refresh.
@@ -34,9 +42,8 @@ final class PostLessonTestViewModel: ObservableObject {
     /// looking entirely normal.
     private var loadedLessonID: UUID?
 
-    init(lessonID: UUID, provider: LessonProvider, pointsLedger: any PointsLedger) {
+    init(lessonID: UUID, pointsLedger: any PointsLedger) {
         self.lessonID = lessonID
-        self.provider = provider
         self.pointsLedger = pointsLedger
     }
 
@@ -49,7 +56,10 @@ final class PostLessonTestViewModel: ObservableObject {
         return question.options(seed: optionSeeds[currentIndex])
     }
 
-    func start(lesson: Lesson) async {
+    /// - Parameter stored: the questions already on the lesson. Passed in
+    ///   rather than fetched, so this type has no way to reach a provider and
+    ///   therefore no way to grow a generation path later.
+    func start(stored: [RecallQuestion]) {
         // Keyed to the lesson, not merely to "something is loaded".
         guard loadedLessonID != lessonID || questions.isEmpty else { return }
         if loadedLessonID != lessonID {
@@ -62,30 +72,25 @@ final class PostLessonTestViewModel: ObservableObject {
             isFinished = false
             answers = [:]
         }
-        isLoading = true
-        // Cleared up front so a retry doesn't show the previous failure
-        // underneath the new attempt.
+        // Nothing to wait for: the questions are already on the lesson.
+        isLoading = false
         failure = nil
-        defer { isLoading = false }
-        do {
-            questions = try await provider.generatePostLessonTest(for: lesson)
-            loadedLessonID = lessonID
-            // Seeded from the question text, not randomly: a random seed
-            // reshuffles the options on every view refresh of the same
-            // question, which is the recall-card bug in another place.
-            optionSeeds = questions.map { RecallQuestion.stableSeed(for: $0.question) }
-            if questions.isEmpty {
-                // Succeeded but returned nothing. Not an error condition —
-                // there is no thrown error to describe — so it gets its own
-                // honest wording rather than being dressed up as a failure.
-                failure = ErrorPresentation(
-                    title: "No questions",
-                    message: "The model didn't produce a test for this lesson. Trying again usually works.",
-                    isRetryable: true
-                )
-            }
-        } catch {
-            failure = (error as? LessonProviderError).map(ProviderErrorCopy.presentation) ?? ProviderErrorCopy.unexpected
+        questions = stored
+        loadedLessonID = lessonID
+        // Seeded from the question text, not randomly: a random seed
+        // reshuffles the options on every view refresh of the same
+        // question, which is the recall-card bug in another place.
+        optionSeeds = questions.map { RecallQuestion.stableSeed(for: $0.question) }
+        if questions.isEmpty {
+            // No error to describe: nothing failed, there is simply no test on
+            // this lesson. Not retryable, because retrying calls nothing —
+            // the honest thing is to say so rather than offer a button that
+            // re-runs the same read.
+            failure = ErrorPresentation(
+                title: "No test for this one",
+                message: "This lesson was saved without a test. Try another lesson.",
+                isRetryable: false
+            )
         }
     }
 

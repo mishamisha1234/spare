@@ -464,7 +464,8 @@ final class AnthropicDirectProviderTests: XCTestCase {
         let ledger = InMemoryUsageLedger()
         let provider = makeProvider(transport, ledger: ledger)
         let questions = try await provider.generatePostLessonTest(
-            for: MockProvider.fixtureLesson(topic: topic, window: .three)
+            for: MockProvider.fixtureLesson(topic: topic, window: .three),
+            window: .three
         )
         XCTAssertEqual(questions.count, 3)
         for question in questions {
@@ -487,7 +488,8 @@ final class AnthropicDirectProviderTests: XCTestCase {
         let transport = FixtureTransport(.body(status: 200, text: HTTPFixtures.messageBody(json: overLong)))
         let provider = makeProvider(transport)
         let questions = try await provider.generatePostLessonTest(
-            for: MockProvider.fixtureLesson(topic: topic, window: .three)
+            for: MockProvider.fixtureLesson(topic: topic, window: .three),
+            window: .three
         )
         XCTAssertEqual(questions.count, 3)
     }

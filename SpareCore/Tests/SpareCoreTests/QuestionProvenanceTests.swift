@@ -53,8 +53,8 @@ final class QuestionProvenanceTests: XCTestCase {
     // MARK: - Post-lesson test
 
     func testPostLessonTestAnswersBelongToTheirOwnLesson() async throws {
-        let gpsQuestions = try await provider.generatePostLessonTest(for: lesson(gps))
-        let bridgeQuestions = try await provider.generatePostLessonTest(for: lesson(bridges))
+        let gpsQuestions = try await provider.generatePostLessonTest(for: lesson(gps), window: .seven)
+        let bridgeQuestions = try await provider.generatePostLessonTest(for: lesson(bridges), window: .seven)
 
         XCTAssertFalse(gpsQuestions.isEmpty)
         XCTAssertEqual(gpsQuestions.count, bridgeQuestions.count)
@@ -69,7 +69,7 @@ final class QuestionProvenanceTests: XCTestCase {
 
     /// The exact failure from the review: a bridge answer under a GPS title.
     func testNoQuestionForOneLessonMentionsTheOtherLessonsSubject() async throws {
-        let gpsQuestions = try await provider.generatePostLessonTest(for: lesson(gps))
+        let gpsQuestions = try await provider.generatePostLessonTest(for: lesson(gps), window: .seven)
         for question in gpsQuestions {
             let text = ([question.question, question.answer, question.explanation]
                 + question.distractors).joined(separator: " ").lowercased()

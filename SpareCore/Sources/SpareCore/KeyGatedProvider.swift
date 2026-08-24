@@ -79,8 +79,11 @@ public struct KeyGatedProvider: LessonProvider {
         try await active().generateRecallQuestion(for: lesson)
     }
 
-    public func generatePostLessonTest(for lesson: Lesson) async throws -> [RecallQuestion] {
-        try await active().generatePostLessonTest(for: lesson)
+    public func generatePostLessonTest(
+        for lesson: Lesson,
+        window: TimeWindow
+    ) async throws -> [RecallQuestion] {
+        try await active().generatePostLessonTest(for: lesson, window: window)
     }
 
     public func goDeeper(

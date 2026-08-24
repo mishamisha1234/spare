@@ -15,9 +15,25 @@ private struct LessonProviderKey: EnvironmentKey {
     static var defaultValue: LessonProvider { MockProvider() }
 }
 
+/// Where a lesson's recall question and test are read from and written to.
+///
+/// Separate from the provider on purpose: this one never calls a model, and
+/// keeping the two apart is what makes "reading a test cannot cost money" a
+/// property of the type rather than a rule to remember. The default attaches
+/// nothing, which is right for previews, tests, and the offline mock — none of
+/// which have a shared pool to attach to.
+private struct AttachmentStoreKey: EnvironmentKey {
+    static var defaultValue: AttachmentStore { NoAttachmentStore() }
+}
+
 extension EnvironmentValues {
     var lessonProvider: LessonProvider {
         get { self[LessonProviderKey.self] }
         set { self[LessonProviderKey.self] = newValue }
+    }
+
+    var attachmentStore: AttachmentStore {
+        get { self[AttachmentStoreKey.self] }
+        set { self[AttachmentStoreKey.self] = newValue }
     }
 }

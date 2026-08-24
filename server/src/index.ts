@@ -11,11 +11,20 @@
  *   POST /v1/post-lesson-test
  *   POST /v1/go-deeper
  *
- * Plus one that is not a generation call:
+ * Plus three that are not generation calls:
  *
+ *   POST /v1/attachments (read a cached lesson's recall question and test)
+ *   POST /v1/attach      (store them, once, from the device that generated it)
  *   GET  /v1/status      (authenticated; read-only spend and usage)
  */
 
+import {
+  checkAttachments,
+  isGenerator,
+  readAttachments,
+  recordGenerator,
+  writeAttachments,
+} from "./attachments";
 import {
   AppStoreVerificationError,
   FREE_ENTITLEMENT,
@@ -145,6 +154,13 @@ export default {
     // verified with Apple — never from anything the client said.
     const pool = poolFor(entitlement.tier);
 
+    // Attachments carry no model request and cost nothing to serve, so they
+    // are answered before the policy layer, which exists to decide what a
+    // generation may spend.
+    if (url.pathname === "/v1/attachments" || url.pathname === "/v1/attach") {
+      return handleAttachments(url.pathname, body, pool, env, deviceId, now);
+    }
+
     // The client builds the Anthropic request; the proxy decides what it is
     // allowed to be. Runs before any metering so a request that will be
     // refused never consumes an allowance. See `policy.ts`.
@@ -188,6 +204,79 @@ export default {
     }
   },
 };
+
+/**
+ * Reading and writing the artifacts that travel with a cached lesson.
+ *
+ * Neither call generates anything, and that is the whole point: a cached
+ * lesson already has its recall question and, in the premium pool, its test,
+ * so a reader who is served one costs nothing beyond the read. See
+ * `attachments.ts` for why per-reader generation is not an option.
+ *
+ * Free readers get a recall question and no test. That is not a gate applied
+ * here — the free pool simply has no test to give, because Sonnet is never
+ * asked to write one.
+ */
+async function handleAttachments(
+  pathname: string,
+  body: Record<string, any>,
+  pool: Pool,
+  env: Env,
+  deviceId: string,
+  now: number,
+): Promise<Response> {
+  const window = typeof body.window === "string" ? body.window : "three";
+  const identity: LessonIdentity = {
+    pool,
+    window,
+    format: typeof body.format === "string" ? body.format : "oneThing",
+    topic: typeof body.topic === "string" ? body.topic : "",
+    interest: typeof body.interest === "string" ? body.interest : "",
+  };
+  if (identity.topic === "") {
+    return errorResponse(400, "malformedRequest", "A topic is required.");
+  }
+
+  if (pathname === "/v1/attachments") {
+    const stored = await readAttachments(env.LESSONS, identity, now);
+    if (!stored) {
+      // 404 rather than an empty object, so a client can tell "nothing is
+      // attached yet, generate it" from "attached, and the test is empty
+      // because this is the free pool".
+      return errorResponse(404, "noAttachments", "Nothing is attached to that lesson.");
+    }
+    return new Response(
+      JSON.stringify({ recall: stored.recall, test: stored.test }),
+      { status: 200, headers: { ...JSON_HEADERS, "cache-control": "no-store" } },
+    );
+  }
+
+  // Writing. Two guards, and they answer different questions.
+  //
+  // The first is *may this device write here at all*: only the one that
+  // generated the lesson, which it proves by having been recorded as its
+  // generator when the body was cached. Device ids are spoofable, so this is
+  // not a strong claim — what it does is turn "anyone may overwrite any entry"
+  // into "you must first pay to generate the lesson you want to attach to".
+  if (!(await isGenerator(env.LESSONS, identity, deviceId))) {
+    return errorResponse(
+      403,
+      "notTheGenerator",
+      "Attachments come from the device that generated the lesson.",
+    );
+  }
+
+  // The second is *is this the right shape for this length*. A 30-minute
+  // course with a two-question test is a premium feature quietly failing to be
+  // what it was sold as, for everyone who reads that lesson for thirty days.
+  const checked = checkAttachments(body.attachments, pool, window, now);
+  if (!checked.ok) {
+    return errorResponse(400, checked.code, checked.message);
+  }
+
+  await writeAttachments(env.LESSONS, identity, checked.attachments);
+  return new Response(JSON.stringify({ stored: true }), { status: 200, headers: JSON_HEADERS });
+}
 
 /**
  * Read-only operational status: what the ceiling is, and what has been spent
@@ -505,12 +594,16 @@ async function handleGeneration(
     // not prose, and measuring it against a course's 6,000-word floor would
     // refuse every outline ever written.
     if (cacheable && isFinalPass && !isOperator && isCompleteMessage(text)) {
-      ctx.waitUntil(writeCachedLesson(env.LESSONS, cacheKey, {
-        sse: text,
-        streaming: false,
-        createdAt: now,
-        originalCostUSD: 0,
-      }));
+      ctx.waitUntil(Promise.all([
+        writeCachedLesson(env.LESSONS, cacheKey, {
+          sse: text,
+          streaming: false,
+          createdAt: now,
+          originalCostUSD: 0,
+        }),
+        // Who may attach a test to this lesson later. See `attachments.ts`.
+        recordGenerator(env.LESSONS, identity, deviceId),
+      ]));
     }
     return new Response(text, { status: 200, headers: JSON_HEADERS });
   }
@@ -553,6 +646,8 @@ async function handleGeneration(
           createdAt: now,
           originalCostUSD: cost,
         });
+        // Who may attach a test to this lesson later. See `attachments.ts`.
+        await recordGenerator(env.LESSONS, identity, deviceId);
         // Recorded against the reader who generated it, so tomorrow they aren't
         // served their own lesson back from the cache. Marked here rather than
         // when generation started, so a truncated stream — which is also not

@@ -158,11 +158,26 @@ public protocol LessonProvider: Sendable {
 
     func generateRecallQuestion(for lesson: Lesson) async throws -> RecallQuestion
 
-    /// The immediate, optional 3-question test offered right after a lesson
-    /// (premium). A separate call from `generateRecallQuestion`: that one
-    /// question is scheduled for tomorrow and stored for offline use; this
-    /// one is answered on the spot and never persisted as a schedule.
-    func generatePostLessonTest(for lesson: Lesson) async throws -> [RecallQuestion]
+    /// The immediate, optional test offered right after a lesson (premium).
+    ///
+    /// A separate call from `generateRecallQuestion`: that one question is
+    /// scheduled for tomorrow and stored for offline use; this one is answered
+    /// on the spot and never persisted as a schedule.
+    ///
+    /// Takes the window because the question count is a function of the
+    /// length — two for a minute, ten for a course — and a finished `Lesson`
+    /// does not record the length it was written for. Deriving it from the
+    /// word count would be a guess, and the server validates the uploaded test
+    /// against the exact number.
+    ///
+    /// Called once per *lesson*, by whichever device generated it, and the
+    /// result is attached to the cache entry. Never called per reader: a
+    /// 30-minute course read by two hundred premium users would otherwise be
+    /// forty dollars of tests on a lesson that cost a dollar forty.
+    func generatePostLessonTest(
+        for lesson: Lesson,
+        window: TimeWindow
+    ) async throws -> [RecallQuestion]
 
     func goDeeper(
         from lesson: Lesson,

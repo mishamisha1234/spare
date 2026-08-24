@@ -104,14 +104,22 @@ public enum Schemas {
         required: ["heading", "bodyMarkdown"]
     )
 
-    /// Three recall questions for the immediate, optional post-lesson test
-    /// (premium). Wrapped in an object like `topicSuggestions`, since a
-    /// top-level array is not a valid structured-output root.
-    public static let postLessonTest: JSONValue = object(
+    /// The immediate, optional post-lesson test (premium). Wrapped in an object
+    /// like `topicSuggestions`, since a top-level array is not a valid
+    /// structured-output root.
+    ///
+    /// A function of the count rather than a constant, because the count is a
+    /// function of the duration: two questions on a 1-minute One Thing, ten on
+    /// a 30-minute course. The number lives in `TimeWindow.testQuestionCount`
+    /// and reaches both the schema and the task prompt from there, so the shape
+    /// the model is asked for and the shape the server will accept cannot
+    /// drift apart.
+    public static func postLessonTest(questionCount: Int) -> JSONValue {
+        object(
         properties: [
             "questions": .object([
                 "type": .string("array"),
-                "description": .string("Exactly 3 questions, each testing a different part of the lesson."),
+                "description": .string("Exactly \(questionCount) questions, each testing a different part of the lesson."),
                 "items": object(
                     properties: [
                         "question": string("One question testing part of the lesson, not a trivia detail."),
@@ -128,7 +136,8 @@ public enum Schemas {
             ]),
         ],
         required: ["questions"]
-    )
+        )
+    }
 
     /// A recall question.
     public static let recallQuestion: JSONValue = object(
@@ -206,9 +215,16 @@ public struct PostLessonTestResponse: Codable, Sendable, Equatable {
 
     /// JSON Schema can't constrain array length. Truncating an over-long
     /// response is safe; padding a short one is not — a fabricated recall
-    /// question would be worse content than simply showing fewer than 3.
-    public var normalizedQuestions: [RecallQuestion] {
-        Array(questions.prefix(3))
+    /// question would be worse content than simply showing fewer.
+    ///
+    /// Takes the count rather than assuming three, now that it varies by
+    /// length. A short response still comes back short: the server rejects an
+    /// uploaded test whose count is wrong, so a lesson generated with a
+    /// too-short test carries no test rather than a padded one. That is the
+    /// right way round — the test is the thing premium pays for, and a
+    /// fabricated question is worse than a missing one.
+    public func normalizedQuestions(count: Int) -> [RecallQuestion] {
+        Array(questions.prefix(max(0, count)))
     }
 }
 

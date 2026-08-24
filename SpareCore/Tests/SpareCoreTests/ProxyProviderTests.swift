@@ -101,7 +101,7 @@ final class ProxyProviderTests: XCTestCase {
         let test = FixtureTransport(.body(
             status: 200, text: HTTPFixtures.messageBody(json: HTTPFixtures.postLessonTestJSON)
         ))
-        _ = try await makeProvider(test).generatePostLessonTest(for: fixtureLesson())
+        _ = try await makeProvider(test).generatePostLessonTest(for: fixtureLesson(), window: .seven)
         XCTAssertEqual(test.requests.first?.url.path, "/v1/post-lesson-test")
 
         let deeper = FixtureTransport([
@@ -238,7 +238,7 @@ final class ProxyProviderTests: XCTestCase {
         let test = FixtureTransport(.body(
             status: 200, text: HTTPFixtures.messageBody(json: HTTPFixtures.postLessonTestJSON)
         ))
-        _ = try await makeProvider(test).generatePostLessonTest(for: fixtureLesson())
+        _ = try await makeProvider(test).generatePostLessonTest(for: fixtureLesson(), window: .seven)
         try assertStreamModeMatchesEndpoint(test)
 
         let deeper = FixtureTransport([
