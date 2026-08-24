@@ -199,16 +199,24 @@ public struct MockProvider: LessonProvider {
         let wanted = window.testQuestionCount
         guard wanted > distinct.count else { return Array(distinct.prefix(wanted)) }
 
+        // Every string names the lesson it belongs to.
+        //
+        // Numbering alone is not enough: two different lessons would then
+        // produce the same answer for the same index, which is precisely the
+        // cross-contamination `QuestionProvenanceTests` exists to catch and
+        // which an earlier version of this fixture already shipped once, as a
+        // bridge answer under a GPS title.
+        let subject = lesson.title.lowercased()
         let filler = (distinct.count..<wanted).map { index in
             RecallQuestion(
                 question: "Which detail from \u{201C}\(lesson.title)\u{201D} is point \(index + 1)?",
-                answer: "The \(index + 1)th thing the piece establishes",
+                answer: "Point \(index + 1) of \(subject)",
                 distractors: [
-                    "A detail from a neighbouring subject",
-                    "A detail the piece explicitly rules out",
-                    "A detail nobody would seriously propose",
+                    "A detail from a field next to \(lesson.domainTag.lowercased())",
+                    "A detail \(subject) explicitly rules out",
+                    "A detail nobody discussing \(subject) would propose",
                 ],
-                explanation: "Sample content, numbered so no two questions collide."
+                explanation: "Sample content for \(subject), numbered so no two questions collide."
             )
         }
         return distinct + filler

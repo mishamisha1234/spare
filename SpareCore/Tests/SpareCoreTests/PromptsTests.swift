@@ -326,10 +326,20 @@ final class PromptsTests: XCTestCase {
         XCTAssertTrue(prompt.contains("not about the text"))
     }
 
-    func testPostLessonTestPromptDemandsThreeDistinctQuestions() {
+    /// The count moved out of this prompt and into the task, because it varies
+    /// by length and this is the cached prefix — five counts here would be five
+    /// cached prefixes instead of one. What the prompt still has to demand is
+    /// everything else: distinct questions, four options, and questions about
+    /// the world rather than about the text.
+    func testPostLessonTestPromptDemandsDistinctQuestionsWithoutNamingACount() {
         let prompt = Prompts.postLessonTestSystemPrompt
-        XCTAssertTrue(prompt.contains("three recall questions"))
+        XCTAssertTrue(prompt.contains("The task will say how many"))
         XCTAssertTrue(prompt.contains("different part of the lesson"))
+        // Collapsed, for the same reason the other prompt tests do it: these
+        // are source-wrapped paragraphs, so a phrase can straddle a line break
+        // that reads as a plain space to anything reading the rendered prompt.
+        let flat = prompt.replacingOccurrences(of: "\n", with: " ")
+        XCTAssertTrue(flat.contains("No two questions should be answerable from the same sentence"))
         XCTAssertTrue(prompt.contains("exactly 3"))
         XCTAssertTrue(prompt.contains("not about the text"))
     }
