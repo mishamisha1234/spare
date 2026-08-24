@@ -116,26 +116,28 @@ public enum Schemas {
     /// drift apart.
     public static func postLessonTest(questionCount: Int) -> JSONValue {
         object(
-        properties: [
-            "questions": .object([
-                "type": .string("array"),
-                "description": .string("Exactly \(questionCount) questions, each testing a different part of the lesson."),
-                "items": object(
-                    properties: [
-                        "question": string("One question testing part of the lesson, not a trivia detail."),
-                        "answer": string("The correct option."),
-                        "distractors": .object([
-                            "type": .string("array"),
-                            "description": .string("Exactly 3 plausible wrong options a careless reader would fall for."),
-                            "items": .object(["type": .string("string")]),
-                        ]),
-                        "explanation": string("One sentence on why the answer is right."),
-                    ],
-                    required: ["question", "answer", "distractors", "explanation"]
-                ),
-            ]),
-        ],
-        required: ["questions"]
+            properties: [
+                "questions": .object([
+                    "type": .string("array"),
+                    "description": .string(
+                        "Exactly \(questionCount) questions, each testing a different part of the lesson."
+                    ),
+                    "items": object(
+                        properties: [
+                            "question": string("One question testing part of the lesson, not a trivia detail."),
+                            "answer": string("The correct option."),
+                            "distractors": .object([
+                                "type": .string("array"),
+                                "description": .string("Exactly 3 plausible wrong options a careless reader would fall for."),
+                                "items": .object(["type": .string("string")]),
+                            ]),
+                            "explanation": string("One sentence on why the answer is right."),
+                        ],
+                        required: ["question", "answer", "distractors", "explanation"]
+                    ),
+                ]),
+            ],
+            required: ["questions"]
         )
     }
 

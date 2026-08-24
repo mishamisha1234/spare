@@ -436,7 +436,9 @@ final class PromptsTests: XCTestCase {
 
     func testPostLessonTestTaskPromptCarriesTitleClaimAndBody() {
         let lesson = MockProvider.fixtureLesson(topic: topic, window: .three)
-        let prompt = Prompts.postLessonTestTaskPrompt(lesson: lesson)
+        let prompt = Prompts.postLessonTestTaskPrompt(
+            lesson: lesson, questionCount: TimeWindow.three.testQuestionCount
+        )
         XCTAssertTrue(prompt.contains(lesson.title))
         XCTAssertTrue(prompt.contains(lesson.surprisingClaim))
         // Asserted via the lesson's own text rather than a fixture phrase:
@@ -531,7 +533,9 @@ final class PromptsTests: XCTestCase {
                 window: .seven, profile: profile, history: []
             ),
             "recall": Prompts.recallTaskPrompt(lesson: lesson),
-            "postLessonTest": Prompts.postLessonTestTaskPrompt(lesson: lesson),
+            "postLessonTest": Prompts.postLessonTestTaskPrompt(
+                lesson: lesson, questionCount: TimeWindow.seven.testQuestionCount
+            ),
             "goDeeper": Prompts.goDeeperTaskPrompt(
                 window: .seven, profile: profile, parentTitle: "P", angle: DeeperAngle(text: "A")
             ),
