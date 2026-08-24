@@ -29,6 +29,23 @@ struct Options {
     var models: [String]
     /// How many of each length's topics to use. Nil means all of them.
     var perWindow: Int?
+    /// A file of topics to use instead of the built-in comparison table.
+    ///
+    /// The table holds two topics per window, chosen to stress the editorial
+    /// rules — right for judging prompts, useless for filling a pool. Seeding
+    /// needs a hundred and fifty subjects spread across the interest
+    /// categories, and they want to be reviewable before anybody spends money
+    /// on them, which a file is and a hardcoded array is not.
+    var topicsFile: URL?
+    /// Skip a topic whose lesson file is already in the output directory.
+    ///
+    /// The operator path bypasses the server's cache *read*, so a re-run
+    /// regenerates and re-pays for everything. On a two-hour, 150-lesson run
+    /// that is the difference between resuming and starting again.
+    var resume: Bool
+    /// Print the plan and stop. Costs nothing, and is the only way to find a
+    /// malformed topics file before paying for the lessons it describes.
+    var isDryRun: Bool
 
     /// More than one model means this is a comparison, and a comparison you can
     /// see the answers to is not one.
@@ -94,6 +111,10 @@ struct Options {
             )
         }
 
+        let topicsFile = values["topics"].map { URL(fileURLWithPath: $0) }
+        let resume = values["resume"] != "false"
+        let isDryRun = values["dry-run"] != nil
+
         var perWindow: Int?
         if let raw = values["per-window"] {
             guard let count = Int(raw), count > 0 else {
@@ -117,7 +138,10 @@ struct Options {
             // test from the same id.
             deviceID: "batch-\(UUID().uuidString)",
             models: models,
-            perWindow: perWindow
+            perWindow: perWindow,
+            topicsFile: topicsFile,
+            resume: resume,
+            isDryRun: isDryRun
         )
     }
 
@@ -206,6 +230,71 @@ func newIdentifier() -> String {
     UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(6).lowercased()
 }
 
+/// One line of a topics file.
+///
+/// Tab-separated, three fields: window, title, hook. Not JSON, because the
+/// point of the file is that a person reads it before a hundred and fifty
+/// lessons are paid for, and a hundred and fifty JSON objects is not a thing
+/// anybody reads. Blank lines and `#` comments are skipped so the file can be
+/// organised by category.
+func loadTopics(from url: URL) throws -> [TimeWindow: [(title: String, hook: String, domain: String)]] {
+    let text: String
+    do {
+        text = try String(contentsOf: url, encoding: .utf8)
+    } catch {
+        throw Failure("could not read --topics file at \(url.path): \(error)")
+    }
+
+    var loaded: [TimeWindow: [(title: String, hook: String, domain: String)]] = [:]
+    var domain = "General"
+
+    for (number, rawLine) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+        let line = rawLine.trimmingCharacters(in: .whitespaces)
+        if line.isEmpty { continue }
+        if line.hasPrefix("#") {
+            // A comment line names the category the topics under it belong to,
+            // which is what the premium pool keys its interest tag on. Free
+            // pool ignores it, but the file is the same file either way.
+            let named = line.dropFirst().trimmingCharacters(in: .whitespaces)
+            if !named.isEmpty { domain = named }
+            continue
+        }
+
+        let fields = line.split(separator: "\t", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        guard fields.count >= 3 else {
+            throw Failure(
+                "line \(number + 1) of the topics file has \(fields.count) tab-separated "
+                + "fields, expected 3 (window, title, hook): \(line)"
+            )
+        }
+        guard let window = TimeWindow(rawValue: fields[0]) else {
+            throw Failure("line \(number + 1): \(fields[0]) is not a window")
+        }
+        loaded[window, default: []].append((title: fields[1], hook: fields[2], domain: domain))
+    }
+
+    guard !loaded.isEmpty else { throw Failure("the topics file has no topics in it") }
+    return loaded
+}
+
+/// A stable filename for a seeded lesson.
+///
+/// Keyed on what was *asked for*, not on the title the model wrote — that is
+/// what makes `--resume` able to tell an already-generated topic from a new
+/// one. The default naming uses the lesson's own title, which is not known
+/// until after it has been paid for.
+func seedFilename(window: TimeWindow, title: String) -> String {
+    let slug = title.lowercased()
+        .map { $0.isLetter || $0.isNumber ? $0 : "-" }
+        .reduce(into: "") { output, character in
+            if character == "-" && output.hasSuffix("-") { return }
+            output.append(character)
+        }
+        .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+    return "\(window.rawValue)-\(slug.prefix(60)).md"
+}
+
 /// Expands the topic table into one run per (topic, model) pair.
 ///
 /// Shuffled when blinded. The identifiers are random already, so the order does
@@ -216,13 +305,15 @@ func plannedRuns(
     plan: [TimeWindow],
     models: [String],
     perWindow: Int?,
-    blind: Bool
+    blind: Bool,
+    table: [TimeWindow: [(title: String, hook: String, domain: String)]] = topics,
+    skip: (TimeWindow, String) -> Bool = { _, _ in false }
 ) -> [PlannedRun] {
     var runs: [PlannedRun] = []
     var used: Set<String> = []
 
     for window in plan {
-        let available = topics[window] ?? []
+        let available = (table[window] ?? []).filter { !skip(window, $0.title) }
         let chosen = perWindow.map { Array(available.prefix($0)) } ?? available
         for topic in chosen {
             for model in models {
@@ -421,15 +512,67 @@ func preflight(models: [String], options: Options) async throws -> [ModelSupport
 func run() async throws {
     let options = try Options.parse()
     let plan = options.only.map { [$0] } ?? TimeWindow.allCases
-    let runs = plannedRuns(
-        plan: plan, models: options.models,
-        perWindow: options.perWindow, blind: options.isBlind
-    )
-    let total = runs.count
+
+    let table = try options.topicsFile.map { try loadTopics(from: $0) } ?? topics
+    let seeding = options.topicsFile != nil
 
     try FileManager.default.createDirectory(
         at: options.outputDirectory, withIntermediateDirectories: true
     )
+
+    // What is already on disk, so a run that died at lesson ninety does not
+    // pay for the first eighty-nine again. Only meaningful when seeding: the
+    // comparison table's files are named after the lesson the model wrote,
+    // which is not known until it has been bought.
+    let alreadyWritten: Set<String>
+    if seeding, options.resume {
+        let existing = (try? FileManager.default.contentsOfDirectory(
+            atPath: options.outputDirectory.path
+        )) ?? []
+        alreadyWritten = Set(existing)
+    } else {
+        alreadyWritten = []
+    }
+
+    let runs = plannedRuns(
+        plan: plan, models: options.models,
+        perWindow: options.perWindow, blind: options.isBlind,
+        table: table,
+        skip: { window, title in
+            seeding && alreadyWritten.contains(seedFilename(window: window, title: title))
+        }
+    )
+    let total = runs.count
+
+    if seeding {
+        let planned = plan.reduce(0) { $0 + (table[$1]?.count ?? 0) }
+        print("")
+        print("Seeding the free pool from \(options.topicsFile?.lastPathComponent ?? "?")")
+        if planned > total {
+            print("  \(planned - total) of \(planned) already written; \(total) to go")
+        }
+        if total == 0 {
+            print("  Nothing left to generate. Every topic in the file is already on disk.")
+            return
+        }
+    }
+
+    if options.isDryRun {
+        print("")
+        print("Dry run — nothing will be generated and nothing will be spent.")
+        for window in plan {
+            let forWindow = runs.filter { $0.window == window }
+            guard !forWindow.isEmpty else { continue }
+            print("")
+            print("  \(window.label)  (\(forWindow.count))")
+            for run in forWindow {
+                print("    \(run.domain.padding(toLength: 16, withPad: " ", startingAt: 0))  \(run.title)")
+            }
+        }
+        print("")
+        print("\(total) lessons would be generated on \(options.models.joined(separator: ", ")).")
+        return
+    }
 
     print("")
     print("Spare lesson batch — real prompts, real pipeline")
@@ -512,11 +655,43 @@ func run() async throws {
             let cost = events.reduce(0) { $0 + $1.estimatedCostUSD }
             runningCost += cost
 
+            // A seeded lesson without its recall question is a lesson every
+            // reader has to generate one for — per reader, which is the exact
+            // thing the pool exists to avoid. The batch device is the recorded
+            // generator, so it is the only device the proxy will accept an
+            // attachment from; if this is skipped, nobody can ever supply one.
+            //
+            // No test: the seed fills the *free* pool, which has none by
+            // design, and the proxy rejects a free-pool attachment carrying
+            // one.
+            if seeding {
+                let store = ProxyAttachmentStore(
+                    transport: FoundationHTTPTransport(),
+                    baseURL: options.baseURL,
+                    deviceID: options.deviceID
+                )
+                let identity = LessonIdentity(
+                    window: window, topic: run.title, interest: run.domain
+                )
+                do {
+                    let recall = try await provider.generateRecallQuestion(for: lesson)
+                    try await store.attach(
+                        LessonAttachments(recall: recall), for: identity
+                    )
+                } catch {
+                    // Loud but not fatal: the lesson is cached and good, and a
+                    // missing recall question costs a later reader one cheap
+                    // call rather than costing this run.
+                    print(prefix + "  recall not attached — " + describe(error))
+                }
+            }
+
             let findings = LessonQualityCheck.findings(for: lesson, window: window)
             let file = try write(
                 lesson: lesson, run: run, seconds: seconds, cost: cost,
                 events: events, findings: findings,
-                blind: options.isBlind, directory: options.outputDirectory
+                blind: options.isBlind, seeded: seeding,
+                directory: options.outputDirectory
             )
 
             let row = Row(
@@ -662,6 +837,7 @@ func write(
     events: [UsageEvent],
     findings: [LessonQualityCheck.Finding],
     blind: Bool,
+    seeded: Bool,
     directory: URL
 ) throws -> String {
     // Blinded, the id is the whole filename. An index would encode generation
@@ -669,7 +845,10 @@ func write(
     // neither names the model, but both make a file identifiable before it is
     // read, and reading it cold is the point.
     let name: String
-    if blind {
+    if seeded {
+        // Named for the request, not the result. See `seedFilename`.
+        name = seedFilename(window: run.window, title: run.title)
+    } else if blind {
         name = "\(run.id).md"
     } else {
         let slug = lesson.title.lowercased()
@@ -1097,7 +1276,16 @@ do {
                        [--only one|three|seven|fifteen|thirty]
                        [--model <id>[,<id>...]]
                        [--per-window <n>]
+                       [--topics <file.tsv>] [--resume false] [--dry-run]
                        [--out <dir>]
+
+    --topics reads subjects from a tab-separated file (window, title, hook)
+    instead of the built-in comparison table, with "# Category" lines naming
+    the interest each block belongs to. That is how the pre-launch pool is
+    seeded. Re-running the same command skips topics already written to --out,
+    so an interrupted run resumes rather than paying twice; --resume false
+    turns that off. --dry-run prints the plan and spends nothing, which is the
+    cheap way to find a malformed file.
 
     Naming more than one --model runs every chosen topic through each of them
     and blinds the output: files are named by a random id, and the model, cost,

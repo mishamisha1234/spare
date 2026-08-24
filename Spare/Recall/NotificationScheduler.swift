@@ -72,6 +72,36 @@ enum NotificationScheduler {
         #endif
     }
 
+    #if DEBUG
+    /// Ten seconds from now, so notification delivery can be verified in a
+    /// sitting rather than tomorrow.
+    ///
+    /// The real schedule is a day out at the earliest and fires at a time the
+    /// reader picked, which is right for the product and useless to anybody
+    /// checking the plumbing works. Asks for permission directly rather than
+    /// through `requestPermissionIfNeeded`, which deliberately fires at most
+    /// once and only for a reader who opted in during onboarding.
+    ///
+    /// DEBUG only. It cannot reach a release build.
+    static func sendTestNotification() {
+        #if canImport(UserNotifications)
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = "Spare"
+            content.body = "Test reminder. If you can see this, delivery works."
+            content.sound = .default
+            center.add(UNNotificationRequest(
+                identifier: "spare.test.notification",
+                content: content,
+                trigger: UNTimeIntervalNotificationTrigger(timeInterval: 10, repeats: false)
+            ))
+        }
+        #endif
+    }
+    #endif
+
     /// Fires the system prompt at most once, and only for a reader who asked
     /// for reminders during onboarding.
     private static func requestPermissionIfNeeded() {

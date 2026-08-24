@@ -64,6 +64,7 @@ struct SettingsView: View {
                 #endif
                 readingSection
                 reminderSection
+                widgetSection
                 usageSection
                 aboutSection
             }
@@ -241,6 +242,54 @@ struct SettingsView: View {
                 .datePickerStyle(.compact)
                 .tint(palette.accent)
                 .accessibilityIdentifier("settings.recallTime")
+
+            #if DEBUG
+            // The first recall interval is a day, and the reminder fires at a
+            // time of the reader's choosing — so "do notifications work?"
+            // cannot otherwise be answered without waiting until tomorrow.
+            // That is a fine property for the product and a useless one for
+            // somebody with a borrowed Mac for an afternoon.
+            //
+            // DEBUG only: it cannot reach a release build.
+            Button("Send a test reminder in 10 seconds") {
+                NotificationScheduler.sendTestNotification()
+            }
+            .font(Theme.Font.label.font)
+            .foregroundStyle(palette.accent)
+            .accessibilityIdentifier("settings.testNotification")
+            #endif
+        }
+    }
+
+    // MARK: - Widget
+
+    /// Whether the widget can actually see the library.
+    ///
+    /// `AppGroup.isSharedStorageAvailable` has always existed and its own
+    /// documentation said it was "surfaced in Settings rather than left as a
+    /// silent condition". It was not. Without it, a widget showing zero is
+    /// indistinguishable from a reader who has finished nothing — and the two
+    /// have completely different causes, one of which is an entitlement that
+    /// a free personal development team cannot grant at all.
+    private var widgetSection: some View {
+        section("Widget") {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Shared storage")
+                    .font(Theme.Font.label.font)
+                    .foregroundStyle(palette.text)
+                Spacer()
+                Text(AppGroup.isSharedStorageAvailable ? "Available" : "Unavailable")
+                    .font(Theme.Font.headline.font)
+                    .foregroundStyle(palette.text)
+                    .accessibilityIdentifier("settings.sharedStorage")
+            }
+
+            Text(AppGroup.isSharedStorageAvailable
+                 ? "The widget reads the same library this app does."
+                 : "The widget cannot read your library, so it will show nothing. "
+                   + "This build's App Group entitlement is not in effect.")
+                .font(Theme.Font.label.font)
+                .foregroundStyle(palette.secondaryText)
         }
     }
 

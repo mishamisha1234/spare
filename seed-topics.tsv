@@ -1,0 +1,209 @@
+# Spare pre-launch seed topics
+#
+# Format: window <TAB> title <TAB> hook. Lines beginning with # are
+# comments, and a comment naming a category applies to everything under it
+# until the next one. Read this before running the seed: these 150 subjects
+# are the first thing a day-one reader sees, and generating them costs real
+# money. Delete, rewrite or reorder freely -- the tool reads whatever is here.
+#
+
+# History
+three	The year with no summer	A volcano in Indonesia froze a New England June.
+three	Why we drive on different sides	Swordsmen, teamsters, and a decision nobody quite made.
+three	The map that ended a cholera outbreak	One pump handle, removed, and a new science.
+seven	How standard time was imposed	Railways needed one clock, and towns fought back for years.
+seven	The Dutch tulip crash, minus the myth	Most of what you have heard was written by a satirist.
+seven	Why the Bronze Age collapsed at once	Eight civilisations, one century, and no single cause.
+three	The telegram that took nine days	News crossed the Atlantic slower than the ships carrying it.
+
+# Physics
+three	Why ice is slippery	Not pressure, and not friction alone. A liquid layer nobody predicted.
+three	The colour of the sun	It is white. Your sky is what makes it yellow.
+three	Why mirrors reverse left and right	They do not. They reverse front and back.
+seven	How GPS corrects for relativity	Satellite clocks run fast; ignoring Einstein breaks navigation within hours.
+seven	Why nothing can be perfectly cold	Absolute zero is not merely hard. It is forbidden.
+seven	The experiment that weighed the Earth	Two lead balls, a torsion wire, and a shed in Clapham.
+three	Why the sky is not violet	Shorter wavelengths scatter more, so why is it blue?
+
+# Biology
+three	Why onions make you cry	The plant is defending itself, and it works on you.
+three	Why sourdough never dies	A starter is an ecosystem that defends its own territory.
+three	Your gut has its own nervous system	Five hundred million neurons, deciding things without asking you.
+seven	How antlers regrow every single year	The fastest healthy tissue growth in any mammal, on schedule.
+seven	Why whales got enormous, and recently	Ice ages concentrated their food, and size followed within millions of years.
+seven	The immune system's filing problem	It must remember everything and attack nothing that is you.
+three	Why you have goosebumps	A reflex for fur you no longer have.
+
+# Economics
+three	Surge pricing before computers	Fish markets solved dynamic pricing a century before anyone else.
+three	Why coins have ridged edges	A defence against a crime that no longer exists.
+three	The price of a rounding error	One index recalculated, and a market moved by billions.
+seven	How the shipping container rewrote trade	A standard steel box quietly beat every tariff negotiation of its century.
+seven	Why insulin stayed cheap for decades	A patent sold for a dollar, and what happened after it lapsed.
+seven	The invention of the weekend	Two days off is younger than the lightbulb, and it was fought for.
+
+# Philosophy
+three	The ship that is no longer itself	Replace every plank. Is it still the same ship?
+three	Why you cannot step in the same river	Heraclitus had a point about identity that still bites.
+seven	The trolley problem was never about trolleys	Philippa Foot invented it to argue about something else entirely.
+seven	Hume's problem with tomorrow	Nothing justifies expecting the future to resemble the past.
+seven	What Wittgenstein meant by a game	Some words have no definition, only a family resemblance.
+three	The paradox of the heap	Remove one grain at a time. When does it stop being a heap?
+seven	Why Socrates wrote nothing down	His objection to writing survives only because somebody wrote it down.
+
+# Design
+three	Why maps put north at the top	It was a choice, and a fairly recent one.
+three	How typefaces steer trust	The same sentence reads as more true in some fonts.
+three	The button that does nothing	Placebo controls on lifts and crossings, and why they stay.
+seven	The London Tube map is not a map	Harry Beck drew a circuit diagram and changed how cities are read.
+seven	Why hospital signage keeps failing	Wayfinding breaks precisely where people are most frightened.
+seven	How the QWERTY story got told wrong	It was not designed to slow you down.
+three	The chair that ruined posture advice	Ergonomics assumed one body, and offices bought millions of them.
+
+# Architecture
+three	Why cathedrals have flying buttresses	The wall is not holding the roof up. Something else is.
+three	The staircase that goes nowhere	A Victorian building quirk that was once a fire code.
+seven	How Roman concrete healed itself	Seawater made it stronger, and we only recently worked out why.
+seven	Why skyscrapers sway on purpose	A building rigid enough not to move would be ruinous and brittle.
+seven	The dome that took a century	Brunelleschi built it with no scaffolding and no surviving plans.
+three	Why old doors are so short	Not shorter people. Heat, timber, and tax.
+seven	The city block as an invention	Grid plans are a technology, and they have authors.
+
+# Music
+three	Why choirs drift sharp	Group pitch rises predictably, and physics insists on it.
+three	The note that is always out of tune	Every piano you have heard is deliberately, carefully wrong.
+seven	How equal temperament won	A compromise nobody liked became the sound of everything.
+seven	Why some songs get stuck	Earworms have a measurable shape, and it is not catchiness.
+seven	The orchestra seating you hear	Where players sit changes the piece more than the conductor does.
+three	Why a minor chord sounds sad	The interval is physics; the sadness is learned, and not everywhere.
+seven	How recording changed performance	Musicians began playing for a microphone, and the playing changed.
+
+# Film
+three	Why the frame rate is 24	A sound engineering compromise you have watched your whole life.
+three	The cut your brain refuses to see	Editors exploit a blind spot that lasts a fifth of a second.
+seven	The grammar of film cuts	Your brain accepts jumps in space it never actually sees.
+seven	How the Hays Code shaped plots	Censorship wrote endings that outlived the censors by decades.
+seven	Why films look orange and teal	A colour grading habit, a skin tone, and a complementary shortcut.
+three	Why films are shot out of order	The schedule follows the set, not the story.
+
+# Literature
+three	The novel that invented the plot twist	Before it, readers were not expected to be fooled.
+three	Why paperbacks changed what was written	Cheap printing did not just move books. It moved sentences.
+seven	How the first novel argues about novels	Cervantes was already parodying the form he was inventing.
+seven	The translation that made a language	Luther's Bible standardised German more than any government did.
+seven	Why nobody wrote about the colour blue	Ancient texts describe a wine-dark sea, and the reason is not eyesight.
+three	The footnote as a joke	Some novels use them to argue with themselves.
+
+# Psychology
+three	Why your knees predict rain	Barometric pressure moves joint fluid just enough to feel.
+three	The memory you are certain about	Confidence and accuracy are almost unrelated, and courts know it.
+three	Why you cannot tickle yourself	Your brain cancels sensations it predicted, a fraction ahead.
+seven	How eyewitnesses are made, not found	A line-up is an experiment, and most are badly designed.
+seven	The experiments that did not replicate	A decade of psychology was rebuilt after checking its own work.
+seven	Why deadlines change what you notice	Scarcity narrows attention in ways that are measurable and expensive.
+
+# Astronomy
+three	The star that is not there	Some points of light left before there was anyone to see them.
+three	Why the Moon always shows one face	Tidal locking, and the slow braking that produced it.
+seven	How we weighed a black hole	You cannot see it, so you watch what it drags.
+seven	The planet found on paper first	Neptune was calculated before anybody pointed a telescope at it.
+seven	Why the night sky is dark	It is a harder question than it looks, and the answer is the Big Bang.
+three	Why Pluto was demoted	Not a demotion so much as a discovery about the neighbourhood.
+
+# Geology
+three	The beach that is mostly parrotfish	Some white sand is not rock. It has been eaten.
+three	Why the Grand Canyon is young	The rock is ancient. The gap is not.
+seven	How continents were proved to move	The seafloor kept a magnetic record nobody expected to find.
+seven	The flood that carved a landscape in days	An ice dam failed, and Washington State still shows the scars.
+seven	Why earthquakes cannot be predicted	Forecasting is possible; prediction may not be, and the difference matters.
+three	Why sand is running out	Desert sand is the wrong shape to build with.
+
+# Linguistics
+three	The word that means its own opposite	Cleave, sanction, dust: English contradicts itself on purpose.
+three	Why you say big red barn	Adjective order is a rule you follow and were never taught.
+seven	How lost writing systems were deciphered	Linear B, Maya glyphs, and the ones still unread.
+seven	The language with no word for left	Some speakers give directions by compass, indoors, in the dark.
+seven	Why English spelling is like that	A printing press, a vowel shift, and terrible timing.
+three	Why babies babble the same everywhere	The sounds narrow to a language later than you would think.
+
+# Mathematics
+three	Why a shuffled deck is new	That order has almost certainly never existed before.
+three	The birthday coincidence	Twenty-three people, and a better than even chance.
+seven	The mathematics of juggling	Siteswap notation turned a circus trick into number theory.
+seven	How to be sure without checking	A proof is a promise about infinitely many cases at once.
+seven	The map colouring nobody could prove	Four colours, a century of failure, and the first computer proof.
+three	Why zero took so long	A symbol for nothing was a genuinely hard idea.
+
+# Engineering
+three	Why bridges hum	Wind makes steel sing, and engineers tune it out on purpose.
+three	Why tunnels are dug from both ends	Meeting in the middle is a surveying problem, not a digging one.
+three	Why runways get renumbered	Magnetic north drifts, and the paint has to follow it.
+seven	How electricity grids stay balanced	Supply must equal demand every second, forever, with no storage.
+seven	Why planes are safe	Every rule was written after a crash; the system learns better than people.
+seven	The lift that made the skyscraper	Otis did not invent the lift. He invented not falling.
+
+# Medicine
+three	Why paper cuts hurt so much	A shallow wound the body treats as an emergency.
+three	The anaesthetic nobody can explain	We have used it for a century without knowing how it works.
+seven	How handwashing was resisted	Semmelweis was right, provably, and it ended his career.
+seven	Why placebos still work when disclosed	Told it is a sugar pill, and it helps anyway.
+seven	The trial design that changed medicine	Randomisation is a nineteenth-century idea with a body count before it.
+three	Why fever is on your side	Suppressing it is a comfort decision, not always a medical one.
+
+# Art History
+three	The pigment that poisoned painters	A green so good it was worth the arsenic.
+three	Why old paintings are cracked	The craquelure is a clock, and forgers cannot fake it easily.
+seven	How perspective was invented, once	Linear perspective has a date, a city, and an inventor.
+seven	The restoration that started a war	Cleaning the Sistine ceiling revealed colours nobody believed.
+seven	Why so much sculpture is white	It was painted. Vividly. We inherited the bleached version.
+three	The forger who signed his work	Van Meegeren proved his innocence by proving a worse crime.
+
+# Anthropology
+three	The handshake is not universal	Greeting rituals differ so much that neutrality is impossible.
+three	Why we cook	No other animal does it, and our jaws show the consequence.
+seven	How agriculture made people shorter	Skeletons record a trade: more calories, worse nutrition, denser settlement.
+seven	The gift that must be repaid	Reciprocity is an obligation with rules, not a kindness.
+seven	Why every culture has music	It is older than agriculture and possibly older than language.
+three	Why nobody agrees on spice tolerance	Capsaicin sensitivity is partly learned and partly inherited.
+
+# Politics
+three	The vote that cannot be fair	Arrow proved no ranking system satisfies every reasonable condition.
+three	Why ballots are secret	It was controversial, and the argument against it was not stupid.
+seven	How gerrymandering is measured	The efficiency gap turned a smell test into arithmetic.
+seven	The census as an instrument of power	Who is counted, and how, decides more than any single election.
+seven	Why coalitions form the way they do	Party arithmetic follows rules that were worked out on paper.
+three	Why turnout is measured wrongly	Of registered voters, or of adults? The gap is enormous.
+
+# Food & Cooking
+three	Why bread goes stale in the fridge	Not drying out. Starch retrogradation, and it is reversible.
+three	The reaction that browns everything	Maillard is not caramelisation, and the difference is the flavour.
+three	Why you salt pasta water	Not for the boiling point. The number is trivial.
+seven	How pasteurisation was resisted	Milk safety was a political fight before it was a public good.
+seven	Why chillies evolved to burn	The heat is aimed at mammals, and birds are exempt on purpose.
+seven	The spice trade's real cargo	Preservation is the myth. Status was the business.
+seven	Why fermentation was safety before flavour	Preservation came first; taste is what we kept it for.
+
+# Law
+three	Why contracts need consideration	A promise alone is not enough, and the reason is old.
+three	The right to remain silent, before Miranda	It existed, and almost nobody knew it did.
+seven	How precedent actually binds	Judges distinguish more often than they overrule, and that is the mechanism.
+seven	The patent that was sold for a dollar	Deliberate under-pricing as a strategy, and what it cost later.
+seven	Why juries decide facts, not law	A division of labour with a violent history behind it.
+three	Why courtrooms have a bar	A literal wooden rail that named an entire profession.
+
+# Technology
+three	Why passwords have those rules	Most of the advice was one man's guess, and he regrets it.
+three	The bug named after a moth	A real insect, a real logbook, and a misremembered origin.
+seven	How undersea cables carry everything	Ninety-nine per cent of intercontinental traffic, in pipes on the seabed.
+seven	Why software estimates are always wrong	The bias is structural, measurable, and survives every attempt to fix it.
+seven	The compression that throws away sound	MP3 works by modelling what you cannot hear.
+three	Why files have extensions	A three-letter limit from the 1970s still shapes your desktop.
+
+# Nature
+three	Why leaves change colour	The yellow was there all along, hidden under the green.
+three	The tree that is one organism	A forest of aspens sharing a single root system.
+three	Why flamingos are pink	Diet, not pigment, and a captive flock fades without help.
+seven	How migrating birds navigate	Magnetism, stars, and smell, layered as redundant systems.
+seven	Why forests need fire	Suppression made the fires worse, and the seeds needed the heat.
+seven	The fungus that connects a wood	Trees trade sugar through a network they do not control.
+three	Why deserts get cold at night	No water vapour to hold the day's heat.
