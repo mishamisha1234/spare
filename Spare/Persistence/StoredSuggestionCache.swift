@@ -18,8 +18,21 @@ final class StoredSuggestionCache {
         self.generatedAt = generatedAt
     }
 
+    /// `TimeWindow.stored` rather than `init(rawValue:)`, for the same reason
+    /// `StoredLesson` uses it.
+    ///
+    /// This was the plain initialiser with a `?? .three` behind it, which is
+    /// the exact shape of the bug the shared decoder exists to prevent: a row
+    /// written under a raw value the app no longer has decodes to nil, falls
+    /// to the default, and a cached set of 7-minute suggestions starts
+    /// answering the 3-minute circle. Nothing crashes and nothing logs.
+    ///
+    /// Legacy rows are also deleted outright at launch — see
+    /// `PersistenceStack.normalizeLegacyWindows` — so in practice this decodes
+    /// a value only in the window between an upgrade and the first launch after
+    /// it. That is exactly the window in which a wrong default would be wrong.
     var window: TimeWindow {
-        get { TimeWindow(rawValue: windowRaw) ?? .three }
+        get { TimeWindow.stored(rawValue: windowRaw) ?? .three }
         set { windowRaw = newValue.rawValue }
     }
 

@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import SpareCore
 
 /// Owns the app's SwiftData stack, in one place, so the schema is declared once
 /// and store creation is not left to defaults.
@@ -72,6 +73,63 @@ enum PersistenceStack {
             guard fileManager.fileExists(atPath: from.path) else { continue }
             try? fileManager.copyItem(at: from, to: to)
         }
+    }
+
+    /// Rewrites rows written under a window raw value the app no longer has.
+    ///
+    /// `TimeWindow.stored` already decodes those rows correctly, so nothing is
+    /// broken without this. What it fixes is the data continuing to say
+    /// something untrue: a lesson row still holding `"ten"` reads as a
+    /// 7-minute explainer through the accessor and as an unknown window to
+    /// anything that looks at `windowRaw` directly — the suggestion cache's
+    /// `#Predicate` filters do exactly that, and a predicate cannot call
+    /// `TimeWindow.stored`.
+    ///
+    /// The two models are treated differently on purpose.
+    ///
+    /// A lesson is the reader's library and is rewritten in place. Losing one
+    /// because a length was renamed would be indefensible.
+    ///
+    /// A suggestion cache row is deleted. It is a cache — the Suggestions
+    /// screen regenerates it in the background on the next visit — and
+    /// deleting sidesteps the collision that renaming would create:
+    /// `windowRaw` is `@Attribute(.unique)`, so rewriting a `"ten"` row to
+    /// `"seven"` next to an existing `"seven"` row is a constraint violation
+    /// that would fail the whole save, taking the lesson rewrites with it.
+    ///
+    /// Idempotent, and cheap when there is nothing to do: the fetches are
+    /// filtered on the legacy values, so the common case reads nothing.
+    @discardableResult
+    static func normalizeLegacyWindows(in context: ModelContext) -> (lessons: Int, caches: Int) {
+        // An Array, not a Set: `#Predicate` compiles `contains` against a
+        // captured array, and a Set does not survive the translation to a
+        // fetch predicate.
+        let legacy = Array(TimeWindow.legacyRawValues.keys)
+        guard !legacy.isEmpty else { return (0, 0) }
+
+        var rewritten = 0
+        let staleLessons = FetchDescriptor<StoredLesson>(
+            predicate: #Predicate { legacy.contains($0.windowRaw) }
+        )
+        for lesson in (try? context.fetch(staleLessons)) ?? [] {
+            guard let window = TimeWindow.stored(rawValue: lesson.windowRaw) else { continue }
+            lesson.windowRaw = window.rawValue
+            rewritten += 1
+        }
+
+        var dropped = 0
+        let staleCaches = FetchDescriptor<StoredSuggestionCache>(
+            predicate: #Predicate { legacy.contains($0.windowRaw) }
+        )
+        for cache in (try? context.fetch(staleCaches)) ?? [] {
+            context.delete(cache)
+            dropped += 1
+        }
+
+        if rewritten > 0 || dropped > 0 {
+            try? context.save()
+        }
+        return (rewritten, dropped)
     }
 
     /// The app's container. Falls back to an in-memory store rather than

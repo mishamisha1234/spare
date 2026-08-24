@@ -41,6 +41,12 @@ struct SpareApp: App {
         self.container = container
         self.pointsLedger = PointsLedgerActor(modelContainer: container)
 
+        // Rows written under a window this build no longer has. Reads nothing
+        // in the common case; see `normalizeLegacyWindows`. Runs before
+        // anything queries the store, because the suggestion cache filters on
+        // `windowRaw` directly and a predicate cannot decode a legacy value.
+        PersistenceStack.normalizeLegacyWindows(in: ModelContext(container))
+
         if Self.isUITestReset {
             let defaults = UserDefaults.standard
             defaults.removeObject(forKey: AppSettingsKey.hasCompletedOnboarding)

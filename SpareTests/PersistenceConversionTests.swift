@@ -215,6 +215,105 @@ final class PersistenceConversionTests: XCTestCase {
     /// The store path must sit under a directory that exists. `Application
     /// Support` is absent in a fresh app container, which is what broke store
     /// creation at launch.
+    // MARK: - Legacy window migration
+
+    /// The reader's library survives a length being renamed.
+    ///
+    /// The spec asked for this by name, and the reason is that the failure is
+    /// silent. A row written as `"ten"` decodes to nil through the plain
+    /// initialiser, the call site's `?? .three` turns it into a 3-minute One
+    /// Thing, and a 1,300-word explainer sits in the library labelled as
+    /// something it is not. Nothing crashes, nothing logs, and nobody reports
+    /// it because the lesson is still readable.
+    func testTenMinuteLessonsMigrateToSeven() throws {
+        let context = inMemoryContext()
+        let lesson = StoredLesson(
+            title: "How standard time was imposed", subtitle: "s", topicTag: "History",
+            window: .seven, bodyMarkdown: "Body."
+        )
+        // Written the way a build from before the rename would have written it.
+        lesson.windowRaw = "ten"
+        context.insert(lesson)
+        try context.save()
+
+        let moved = PersistenceStack.normalizeLegacyWindows(in: context)
+
+        XCTAssertEqual(moved.lessons, 1)
+        XCTAssertEqual(lesson.windowRaw, "seven", "the stored value still says ten")
+        XCTAssertEqual(lesson.window, .seven)
+        XCTAssertEqual(lesson.window.format, .explainer, "an explainer must stay an explainer")
+    }
+
+    /// And the 45-minute course, which is the same rule and was already relied on.
+    func testFortyFiveMinuteCoursesMigrateToThirty() throws {
+        let context = inMemoryContext()
+        let course = StoredLesson(
+            title: "How planes got safe", subtitle: "s", topicTag: "Engineering",
+            window: .thirty, bodyMarkdown: "Body."
+        )
+        course.windowRaw = "fortyFive"
+        context.insert(course)
+        try context.save()
+
+        PersistenceStack.normalizeLegacyWindows(in: context)
+
+        XCTAssertEqual(course.windowRaw, "thirty")
+        XCTAssertEqual(course.window.format, .miniCourse)
+    }
+
+    /// A suggestion cache row is deleted rather than renamed, and this is the
+    /// reason: `windowRaw` is unique, so renaming `"ten"` to `"seven"` beside an
+    /// existing `"seven"` row is a constraint violation that fails the whole
+    /// save — taking the lesson rewrites down with it.
+    func testLegacySuggestionCachesAreDroppedRatherThanCollidingOnTheUniqueKey() throws {
+        let context = inMemoryContext()
+        let current = StoredSuggestionCache(window: .seven, suggestions: [])
+        context.insert(current)
+        let stale = StoredSuggestionCache(window: .three, suggestions: [])
+        stale.windowRaw = "ten"
+        context.insert(stale)
+        try context.save()
+
+        let moved = PersistenceStack.normalizeLegacyWindows(in: context)
+
+        XCTAssertEqual(moved.caches, 1)
+        let remaining = try context.fetch(FetchDescriptor<StoredSuggestionCache>())
+        XCTAssertEqual(remaining.map(\.windowRaw), ["seven"], "the stale row survived, or the live one did not")
+    }
+
+    /// The migration must be safe to run on every launch, which is when it runs.
+    func testMigrationIsIdempotentAndLeavesCurrentRowsAlone() throws {
+        let context = inMemoryContext()
+        let current = StoredLesson(
+            title: "t", subtitle: "s", topicTag: "d", window: .seven, bodyMarkdown: "Body."
+        )
+        context.insert(current)
+        let stale = StoredLesson(
+            title: "t", subtitle: "s", topicTag: "d", window: .seven, bodyMarkdown: "Body."
+        )
+        stale.windowRaw = "ten"
+        context.insert(stale)
+        try context.save()
+
+        XCTAssertEqual(PersistenceStack.normalizeLegacyWindows(in: context).lessons, 1)
+        XCTAssertEqual(
+            PersistenceStack.normalizeLegacyWindows(in: context).lessons, 0,
+            "a second run must find nothing left to do"
+        )
+        XCTAssertEqual(current.windowRaw, "seven")
+    }
+
+    /// The decoder and the migration read the same table. If they ever
+    /// disagreed, the library would show one window and the stored row would
+    /// say another, and only one of them would survive the next write.
+    func testEveryLegacyRawValueDecodesToTheWindowTheMigrationWritesIt() {
+        XCTAssertFalse(TimeWindow.legacyRawValues.isEmpty)
+        for (raw, expected) in TimeWindow.legacyRawValues {
+            XCTAssertEqual(TimeWindow.stored(rawValue: raw), expected, raw)
+            XCTAssertNil(TimeWindow(rawValue: raw), "\(raw) is still a live case, not a legacy one")
+        }
+    }
+
     func testStoreURLParentDirectoryExists() {
         let url = PersistenceStack.storeURL()
         XCTAssertEqual(url.lastPathComponent, "Spare.store")

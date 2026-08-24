@@ -173,10 +173,23 @@ public enum TimeWindow: String, Codable, CaseIterable, Sendable, Identifiable, H
     /// different lesson than the one they saved.
     public static func stored(rawValue: String) -> TimeWindow? {
         if let window = TimeWindow(rawValue: rawValue) { return window }
-        if rawValue == "fortyFive" { return .thirty }
-        if rawValue == "ten" { return .seven }
-        return nil
+        return legacyRawValues[rawValue]
     }
+
+    /// Raw values this app no longer writes, and the window each becomes.
+    ///
+    /// A table rather than a chain of `if`s because two separate things read
+    /// it: `stored(rawValue:)`, which decodes an old row on the way in, and the
+    /// migration that rewrites those rows so they stop being old. Those two
+    /// disagreeing would be worse than having no migration at all — the
+    /// library would show one thing and the stored data would say another,
+    /// and only one of them would survive the next write.
+    public static let legacyRawValues: [String: TimeWindow] = [
+        // Courses were 45 minutes before they were 30.
+        "fortyFive": .thirty,
+        // The explainer was 10 minutes before it was 7.
+        "ten": .seven,
+    ]
 
     /// Free tier covers the two middle windows.
     ///
