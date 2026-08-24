@@ -225,9 +225,25 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             try tap(app, "recall.dismiss", scheme: colorScheme, step: "06a-recall-revealed")
 
             // MARK: A locked duration still opens the paywall. 06b is also
-            // the screenshot that shows the dashed lock marking on the 15-
-            // and 30-minute course circles, with 3 and 10 left plain.
+            // the screenshot that shows the lock marking on the 1-, 15- and
+            // 30-minute circles, with 3 and 7 left plain.
             try waitAndCapture(app, "06b-home-locked-durations", scheme: colorScheme, identifier: "home.circle.thirty")
+
+            // The 1-minute circle is premium and must still be on screen for a
+            // free reader. A hidden premium length converts nobody, and this
+            // one is the conversion hook precisely because "the shortest is the
+            // paid one" is counterintuitive -- so its absence would be a
+            // product failure that no other assertion here would catch.
+            let oneMinute = element(app, "home.circle.one")
+            XCTAssertTrue(oneMinute.waitForExistence(timeout: 5),
+                          "the 1-minute circle is not on Home for a free reader")
+            XCTAssertTrue(oneMinute.isHittable, "the 1-minute circle is on screen but unreachable")
+
+            try tap(app, "home.circle.one", scheme: colorScheme, step: "06b-home-locked-durations")
+            try waitAndCapture(app, "06b1-paywall-from-one-minute", scheme: colorScheme, identifier: "paywall.buy")
+            try tap(app, "paywall.close", scheme: colorScheme, step: "06b1-paywall-from-one-minute")
+            waitUntilGone(element(app, "paywall.buy"))
+
             try tap(app, "home.circle.thirty", scheme: colorScheme, step: "06b-home-locked-durations")
             try waitAndCapture(app, "06c-paywall-from-duration", scheme: colorScheme, identifier: "paywall.buy")
             try tap(app, "paywall.close", scheme: colorScheme, step: "06c-paywall-from-duration")

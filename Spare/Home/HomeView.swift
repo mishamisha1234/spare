@@ -94,6 +94,18 @@ struct HomeView: View {
             Spacer(minLength: Theme.Spacing.m)
                 .frame(maxHeight: Theme.Spacing.ml)
 
+            // The 1-minute circle, above the grid and not in it.
+            //
+            // It is a different kind of thing, not a fifth size: the grid is a
+            // size progression carrying duration, and a fifth entry would read
+            // as the bottom of that scale. Small, separate, and above -- which
+            // is also where the eye lands first, and it is the length a free
+            // reader cannot have.
+            circle(.one)
+
+            Spacer(minLength: Theme.Spacing.m)
+                .frame(maxHeight: Theme.Spacing.ml)
+
             durationGrid
 
             // The recall card sits *below* the circles now.

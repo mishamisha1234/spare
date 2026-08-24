@@ -384,6 +384,10 @@ enum Theme {
         static let thirty: CGFloat = 172
 
         /// Minimum interactive area regardless of visual diameter.
+        ///
+        /// The 1-minute circle is 56pt, comfortably over this. It is stated
+        /// anyway because the gap between the two numbers is now small enough
+        /// that shrinking the circle any further would quietly cross it.
         static let minimumTapTarget: CGFloat = 44
 
         /// The visual diameter for a given window. The only place this
