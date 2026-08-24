@@ -40,6 +40,19 @@ on:
         description: 'Topics per length (blank = all of them)'
         required: false
         default: ''
+      topics:
+        description: 'Topics file, e.g. seed-topics.tsv (blank = built-in table)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Print the plan and spend nothing'
+        required: false
+        default: false
+        type: boolean
+      resume_from:
+        description: 'Run ID whose lessons to skip (resumes an interrupted seed)'
+        required: false
+        default: ''
 
 jobs:
   batch:
@@ -91,6 +104,33 @@ jobs:
       - name: Build
         run: swift build --package-path SpareCore --product spare-batch -c release
 
+      # Resuming an interrupted seed.
+      #
+      # The output directory does not survive between workflow runs, and the
+      # operator path deliberately bypasses the server's cache *read* — so
+      # without this, a seed that dies at lesson ninety pays for the first
+      # eighty-nine all over again. Downloading the previous run's artifact
+      # puts those files back where `--resume` looks for them.
+      - name: Fetch lessons from the run being resumed
+        if: inputs.resume_from != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -u
+          mkdir -p "$GITHUB_WORKSPACE/lessons"
+          gh run download "${{ inputs.resume_from }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name lessons \
+            --dir "$GITHUB_WORKSPACE/resumed" || {
+              echo "::error::Could not download artifacts from run ${{ inputs.resume_from }}."
+              exit 1
+            }
+          # The artifact contains the `lessons` directory and the log beside it.
+          if [ -d "$GITHUB_WORKSPACE/resumed/lessons" ]; then
+            cp -n "$GITHUB_WORKSPACE/resumed/lessons/"*.md "$GITHUB_WORKSPACE/lessons/" 2>/dev/null || true
+          fi
+          echo "Recovered $(ls -1 "$GITHUB_WORKSPACE/lessons" | wc -l) lesson files."
+
       - name: Generate
         env:
           SPARE_PROXY_URL: ${{ secrets.SPARE_PROXY_URL }}
@@ -106,6 +146,12 @@ jobs:
           fi
           if [ -n "${{ inputs.per_window }}" ]; then
             args="$args --per-window ${{ inputs.per_window }}"
+          fi
+          if [ -n "${{ inputs.topics }}" ]; then
+            args="$args --topics $GITHUB_WORKSPACE/${{ inputs.topics }}"
+          fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            args="$args --dry-run"
           fi
           swift run --package-path SpareCore -c release spare-batch $args | tee "$GITHUB_WORKSPACE/batch-log.txt"
 
