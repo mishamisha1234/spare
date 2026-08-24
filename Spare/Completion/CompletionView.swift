@@ -28,7 +28,6 @@ struct CompletionView: View {
         provider: LessonProvider,
         modelContext: ModelContext,
         attachments: any AttachmentStore,
-        isPremium: Bool,
         onGoDeeper: @escaping (DeeperAngle) -> Void,
         onReturnHome: @escaping () -> Void,
         onTakeTest: @escaping () -> Void,
@@ -41,13 +40,17 @@ struct CompletionView: View {
         self.onReturnHome = onReturnHome
         self.onTakeTest = onTakeTest
         self.onPaywall = onPaywall
-        // Both passed in rather than read from the environment: `StateObject`
-        // is built in `init`, where environment values are not available yet.
+        // Passed in rather than read from the environment: `StateObject` is
+        // built in `init`, where environment values are not available yet.
+        //
+        // The tier deliberately is *not* passed here. It changes while this
+        // screen is on screen -- buying is the whole point of the locked row
+        // below -- and anything captured at init would be stale for the rest
+        // of the view's life.
         _viewModel = StateObject(wrappedValue: CompletionViewModel(
             provider: provider,
             attachments: attachments,
-            modelContext: modelContext,
-            isPremium: isPremium
+            modelContext: modelContext
         ))
     }
 
@@ -166,8 +169,16 @@ struct CompletionView: View {
             lesson = stored
             isMarkedComplete = stored?.completedAt != nil
             if let stored {
-                viewModel.ensureAttachmentsReady(for: stored)
+                viewModel.ensureAttachmentsReady(for: stored, isPremium: entitlements.isPremium)
             }
+        }
+        // Buying happens in a sheet over this screen, so the view never
+        // disappears and `.task` never runs again. Without this, the lesson
+        // the reader just upgraded to be tested on is the one lesson that
+        // never gets a test.
+        .onChange(of: entitlements.isPremium) { _, isPremium in
+            guard isPremium, let lesson else { return }
+            viewModel.ensureAttachmentsReady(for: lesson, isPremium: true)
         }
         // No container-level accessibilityIdentifier: SwiftUI can propagate
         // one down and clobber every descendant's own identifier — confirmed

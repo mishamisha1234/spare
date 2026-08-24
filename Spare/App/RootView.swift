@@ -168,7 +168,6 @@ struct RootView: View {
                 provider: provider,
                 modelContext: modelContext,
                 attachments: attachmentStore,
-                isPremium: entitlements.isPremium,
                 onGoDeeper: { angle in
                     guard let lesson = modelContext.storedLesson(id: lessonID) else { return }
                     path.append(.reader(.goDeeper(parentLessonID: lessonID, angle: angle, window: lesson.window)))

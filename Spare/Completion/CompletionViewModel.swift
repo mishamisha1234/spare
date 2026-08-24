@@ -19,7 +19,6 @@ final class CompletionViewModel: ObservableObject {
     private let provider: LessonProvider
     private let attachments: any AttachmentStore
     private let modelContext: ModelContext
-    private let isPremium: Bool
     /// Held rather than awaited by the view.
     ///
     /// `.task` is tied to the view's lifetime, and the reader's very next
@@ -33,26 +32,37 @@ final class CompletionViewModel: ObservableObject {
     init(
         provider: LessonProvider,
         attachments: any AttachmentStore,
-        modelContext: ModelContext,
-        isPremium: Bool
+        modelContext: ModelContext
     ) {
         self.provider = provider
         self.attachments = attachments
         self.modelContext = modelContext
-        self.isPremium = isPremium
     }
 
-    func ensureAttachmentsReady(for lesson: StoredLesson) {
+    /// - Parameter isPremium: read at the call, never captured.
+    ///
+    /// This screen is where the paywall is reached from: the reader arrives
+    /// free, sees the test row locked, buys, and comes back to the *same*
+    /// view. A tier snapshotted when the view model was built is `false` for
+    /// the rest of that view's life, so the lesson they just paid to be tested
+    /// on would never get a test. The caller re-runs this when the entitlement
+    /// changes, which is why the guard below releases on completion rather
+    /// than latching forever.
+    func ensureAttachmentsReady(for lesson: StoredLesson, isPremium: Bool) {
         guard preparation == nil else { return }
-        preparation = Task { [weak self] in await self?.prepare(for: lesson) }
+        preparation = Task { [weak self] in
+            await self?.prepare(for: lesson, isPremium: isPremium)
+            self?.preparation = nil
+        }
     }
 
-    private func prepare(for lesson: StoredLesson) async {
+    private func prepare(for lesson: StoredLesson, isPremium: Bool) async {
         let lessonID = lesson.id
         let existing = FetchDescriptor<StoredRecallItem>(
             predicate: #Predicate { $0.lessonID == lessonID }
         )
-        let hasRecall = (try? modelContext.fetch(existing).first) != nil
+        let existingRecall = (try? modelContext.fetch(existing).first)?.recallQuestion
+        let hasRecall = existingRecall != nil
         // Premium wants both. Free-pool lessons have no test and never will,
         // so a missing one is not a reason to keep asking.
         let wantsTest = isPremium && lesson.postLessonTest.isEmpty
@@ -73,13 +83,24 @@ final class CompletionViewModel: ObservableObject {
         // Nothing attached, so this device is the one that generated the
         // lesson and owes the pool its artifacts.
         //
+        // Only what is actually missing. A reader who upgrades on this screen
+        // already has their recall question, and regenerating it to satisfy
+        // the upload's shape would be a second Opus call for a value already
+        // sitting in the store.
+        //
         // Best-effort throughout: a missing recall question is not worth
         // blocking the completion screen over, and neither is a failed upload.
-        guard let recall = try? await provider.generateRecallQuestion(for: lesson.lesson) else {
+        let recall: RecallQuestion
+        if let existingRecall {
+            recall = existingRecall
+        } else if let generated = try? await provider.generateRecallQuestion(for: lesson.lesson) {
+            recall = generated
+        } else {
             return
         }
+
         var test: [RecallQuestion] = []
-        if isPremium {
+        if wantsTest {
             test = (try? await provider.generatePostLessonTest(
                 for: lesson.lesson, window: lesson.window
             )) ?? []
