@@ -88,6 +88,7 @@ struct HomeView: View {
                 .foregroundStyle(palette.text)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
+                .layoutPriority(Theme.homeContentPriority)
 
             // 32pt, down from 40: the title and the thing it is asking about
             // were reading as two separate blocks.
@@ -102,11 +103,13 @@ struct HomeView: View {
             // is also where the eye lands first, and it is the length a free
             // reader cannot have.
             circle(.one)
+                .layoutPriority(Theme.homeContentPriority)
 
             Spacer(minLength: Theme.Spacing.m)
                 .frame(maxHeight: Theme.Spacing.ml)
 
             durationGrid
+                .layoutPriority(Theme.homeContentPriority)
 
             // The recall card sits *below* the circles now.
             //
@@ -123,6 +126,7 @@ struct HomeView: View {
                     onDismiss: { isRecallDismissed = true }
                 )
                 .padding(.top, Theme.Spacing.l)
+                .layoutPriority(Theme.homeContentPriority)
             }
 
             // Weighted heavier than the top spacer, which is what produces

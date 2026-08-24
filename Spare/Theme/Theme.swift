@@ -272,6 +272,22 @@ enum Theme {
     /// gained this stage.
     static let homeBottomSpacerPriority: Double = 1.4
 
+    /// Everything on Home that is not a spacer, so a spacer can never take
+    /// space away from it.
+    ///
+    /// `homeBottomSpacerPriority` biases how *leftover* space is distributed,
+    /// which is all it was ever meant to do. But layout priority in a VStack
+    /// decides who is sized first, so at 1.4 against content at the default 0
+    /// the spacer outranked the content: once the page grew past the screen —
+    /// which it does at accessibility sizes, and started doing the day a fifth
+    /// circle arrived — the spacer took its ideal height and the recall card
+    /// underneath was squeezed to nothing. Not clipped, not scrolled past:
+    /// zero height, no frame, unreachable.
+    ///
+    /// Above both spacers, so the bias between them is unchanged and content
+    /// is sized before either of them gets a look.
+    static let homeContentPriority: Double = 2
+
     /// Horizontal margin for the reading column, narrowing as text grows so
     /// the measure stays readable rather than dropping to a few words a line.
     static func readingMargin(for step: TextSizeStep) -> CGFloat {

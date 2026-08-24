@@ -462,6 +462,20 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
         }
         XCTAssertTrue(ready, "\(step): \"\(identifier)\" never became hittable within \(defaultTimeout)s")
 
+        // An element can report itself hittable and still have no usable hit
+        // point, which `tap()` reports as "Activation point invalid and no
+        // suggested hit points based on element frame" — an XCTest-level error
+        // with no dump attached, so the accessibility tree that would explain
+        // it never reaches the log. A zero-sized frame is what causes it, and
+        // it means a layout squeezed the element to nothing rather than
+        // placing it off-screen. Caught here so the failure names itself.
+        let frame = target.frame
+        if frame.width == 0 || frame.height == 0 {
+            capture(app, "FAILURE-\(step)", scheme: scheme)
+            printHierarchy(app, scheme: scheme, context: "\(step) (hittable but zero-sized)")
+            XCTFail("\(step): \"\(identifier)\" has a zero-sized frame — squeezed by layout, not scrolled past")
+        }
+
         target.tap()
     }
 
