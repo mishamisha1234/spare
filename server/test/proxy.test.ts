@@ -13,7 +13,7 @@ import {
   sseLesson,
   subscriptionStatus,
 } from "./fixtures";
-import { MAX_REQUESTS_PER_LESSON } from "../src/limits";
+import { MAX_REQUESTS_PER_LESSON, PREMIUM_COURSES_PER_MONTH } from "../src/limits";
 import { recordingAnthropic } from "./harness";
 import { NOW, call, callRaw, modelRequest, premiumReceipt, testEnv } from "./harness";
 
@@ -481,7 +481,10 @@ describe("premium", () => {
     const fetcher = fixtureFetch(premiumRoutes(sseLesson("Course.")));
     const device = "premium-device-cap";
 
-    for (let n = 0; n < 12; n += 1) {
+    // Driven by the constant, not by 12. The cap moved to 8 and this test was
+    // right about the number it was written against -- which is exactly why it
+    // should never have been the one place the number was written twice.
+    for (let n = 0; n < PREMIUM_COURSES_PER_MONTH; n += 1) {
       const response = await call({
         fetcher,
         device,
@@ -497,13 +500,13 @@ describe("premium", () => {
       await response.text();
     }
 
-    const thirteenth = await call({
+    const oneTooMany = await call({
       fetcher,
       device,
       body: { window: "thirty", format: "miniCourse", topic: "One too many", receipt: premiumReceipt, request: modelRequest() },
     });
-    expect(thirteenth.status).toBe(402);
-    expect(await thirteenth.json()).toMatchObject({ error: { code: "courseCapReached" } });
+    expect(oneTooMany.status).toBe(402);
+    expect(await oneTooMany.json()).toMatchObject({ error: { code: "courseCapReached" } });
   });
 
   it("does not meter premium against the free daily limit", async () => {

@@ -38,14 +38,15 @@ struct PaywallView: View {
     /// already has — a false differentiator rather than a false fact, but it
     /// is still the sheet claiming a benefit that isn't one.
     ///
-    /// Names the mini-course cap for the original reason: selling "unlocks
-    /// every length" while Settings shows "11 of 12 mini-courses left this
-    /// month" is a limit disclosed only after purchase, which is an App
-    /// Review problem before it is a copy problem.
+    /// Names both caps, for the original reason: selling "unlocks every
+    /// length" while Settings shows a remaining count is a limit disclosed
+    /// only after purchase, which is an App Review problem before it is a
+    /// copy problem. There is no "unlimited" here any more, because there is
+    /// no longer anything unlimited to claim.
     static var premiumPitch: String {
         "Premium unlocks every length, adds the post-lesson test and going deeper, "
-            + "and gives you \(EntitlementRules.premiumMiniCoursesPerMonth) mini-courses a month. "
-            + "Shorter lessons are unlimited."
+            + "and gives you \(EntitlementRules.premiumLessonsPerMonth) lessons a month — "
+            + "including up to \(EntitlementRules.premiumMiniCoursesPerMonth) mini-courses."
     }
 
     let trigger: PaywallTrigger

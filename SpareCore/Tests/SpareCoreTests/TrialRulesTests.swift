@@ -80,9 +80,9 @@ final class TrialRulesTests: XCTestCase {
     }
 
     func testAnUnreachableStoreAnswersNothingAtAll() async {
-        let store = UnreachableTrialStore()
-        let status = await store.status()
-        let started = await store.start()
+        let store = UnreachableAllowanceStore()
+        let status = await store.read()
+        let started = await store.startTrial()
         XCTAssertNil(status, "a failed read must not resolve to a state")
         XCTAssertNil(started, "a failed claim must not resolve to a refusal")
     }
@@ -183,15 +183,15 @@ final class TrialRulesTests: XCTestCase {
         // Every await is hoisted out of the XCTest call. `XCTUnwrap` and the
         // `XCTAssert*` family all take autoclosures, and an autoclosure cannot
         // carry an await.
-        let store = StubTrialStore()
-        let firstResult = await store.start()
+        let store = StubAllowanceStore()
+        let firstResult = await store.startTrial()
         let first = try XCTUnwrap(firstResult)
         XCTAssertTrue(first.started)
         XCTAssertEqual(first.trial.remainingLessons, TrialLimits.lessons)
         XCTAssertEqual(first.trial.remainingCourses, TrialLimits.courses)
 
         // Non-nil: a refusal is an answer. Only an unreachable store is nil.
-        let secondResult = await store.start()
+        let secondResult = await store.startTrial()
         let second = try XCTUnwrap(secondResult)
         XCTAssertFalse(second.started)
         XCTAssertEqual(second.reason, "alreadyUsed")
@@ -199,15 +199,15 @@ final class TrialRulesTests: XCTestCase {
     }
 
     func testTheStubCanBeginPartWayThroughAWeek() async throws {
-        let store = StubTrialStore(
-            TrialMirror(status: .active, remainingLessons: 4, remainingCourses: 1)
+        let store = StubAllowanceStore(
+            trial: TrialMirror(status: .active, remainingLessons: 4, remainingCourses: 1)
         )
-        let refusedResult = await store.start()
+        let refusedResult = await store.startTrial()
         let refused = try XCTUnwrap(refusedResult)
         XCTAssertFalse(refused.started, "a running trial cannot be started again")
-        let statusResult = await store.status()
+        let statusResult = await store.read()
         let status = try XCTUnwrap(statusResult)
-        XCTAssertEqual(status.remainingLessons, 4)
+        XCTAssertEqual(status.trial.remainingLessons, 4)
     }
 
     /// The numbers the copy states have to be the numbers the server enforces.

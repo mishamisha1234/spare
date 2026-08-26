@@ -23,14 +23,18 @@ final class EntitlementService: ObservableObject {
     @Published private(set) var isPurchasing = false
     @Published private(set) var isRestoring = false
     @Published private(set) var errorMessage: String?
-    /// Surfaced in Settings so the mini-course cap is visible before it bites.
-    @Published private(set) var miniCoursesRemaining = EntitlementRules.premiumMiniCoursesPerMonth
+    /// What the server last said about this device's allowance, or why not.
+    ///
+    /// Three states rather than an optional, because "not asked yet" and
+    /// "asked and could not be reached" need different copy and are otherwise
+    /// indistinguishable. See `AllowanceState`.
+    @Published private(set) var allowance: AllowanceState = .unknown
 
     private let store: any PurchaseStore
     /// Nil when there is no proxy to ask -- a build with no configured base
     /// URL, or previews. The trial then stays whatever the cache says, which
     /// for a fresh install is `eligible` and grants nothing.
-    private let trialStore: (any TrialStore)?
+    private let allowanceStore: (any AllowanceStore)?
     /// Where funnel events go after they are written down locally. See
     /// `FunnelEvent` for why only two of the six leave the device.
     private let funnel: any FunnelReporter
@@ -39,16 +43,15 @@ final class EntitlementService: ObservableObject {
 
     init(
         store: any PurchaseStore,
-        trialStore: (any TrialStore)? = nil,
+        allowanceStore: (any AllowanceStore)? = nil,
         funnel: any FunnelReporter = NoopFunnelReporter(),
         container: ModelContainer
     ) {
         self.store = store
-        self.trialStore = trialStore
+        self.allowanceStore = allowanceStore
         self.funnel = funnel
         self.context = ModelContext(container)
         loadCachedSnapshot()
-        refreshMiniCourseUsage()
     }
 
     // No deinit cancelling `updatesTask`: deinit is nonisolated, so touching
@@ -89,7 +92,7 @@ final class EntitlementService: ObservableObject {
     /// server refusing.
     @discardableResult
     func startTrial() async -> TrialStartResult? {
-        guard let trialStore, let result = await trialStore.start() else { return nil }
+        guard let allowanceStore, let result = await allowanceStore.startTrial() else { return nil }
         apply(trial: result.trial)
         return result
     }
@@ -104,8 +107,16 @@ final class EntitlementService: ObservableObject {
     /// mirror. Writing a fabricated state here is what produced the day-7
     /// summary firing at people who had never had a trial.
     func refreshTrial() async {
-        guard let trialStore, let mirror = await trialStore.status() else { return }
-        apply(trial: mirror)
+        guard let allowanceStore else { return }
+        guard let mirror = await allowanceStore.read() else {
+            // Asked, and could not be reached. Distinct from never having
+            // asked, because only one of those is worth telling the reader
+            // about -- see `AllowanceState`.
+            if case .unknown = allowance { allowance = .unavailable }
+            return
+        }
+        allowance = .known(mirror)
+        apply(mirror: mirror)
     }
 
     // MARK: - Instrumentation
@@ -223,12 +234,7 @@ final class EntitlementService: ObservableObject {
     // current snapshot, the clock, and the mini-course history.
 
     func canStartLesson(window: TimeWindow, now: Date = .now) -> AccessDecision {
-        EntitlementRules.canStartLesson(
-            snapshot,
-            window: window,
-            miniCourseStartDates: miniCourseStartDates(),
-            now: now
-        )
+        EntitlementRules.canStartLesson(snapshot, window: window, now: now)
     }
 
     func canBrowseSuggestions(window: TimeWindow) -> AccessDecision {
@@ -264,14 +270,14 @@ final class EntitlementService: ObservableObject {
     var isPaying: Bool { snapshot.tier.isPaying }
 
     /// Records that a lesson actually started. Spends the free daily
-    /// allowance and refreshes the mini-course count.
+    /// allowance and re-reads whatever the server is counting.
     func recordLessonStarted(window: TimeWindow, now: Date = .now) {
         apply(snapshot: EntitlementRules.consumingLesson(snapshot, now: now))
-        refreshMiniCourseUsage()
-        // The trial's counters live on the server, so the only way to know
-        // what a lesson cost is to ask. Done here rather than on a timer
-        // because this is the moment the number on screen goes stale.
-        if isTrialing { Task { await refreshTrial() } }
+        // Every metered counter lives on the server now -- the trial's two and
+        // the subscriber's two -- so the only way to know what a lesson cost
+        // is to ask. Done here rather than on a timer because this is the
+        // moment the numbers on screen go stale.
+        if hasPremiumAccess { Task { await refreshTrial() } }
     }
 
     // MARK: - Persistence
@@ -297,6 +303,15 @@ final class EntitlementService: ObservableObject {
         purchasedTier = tier
         var updated = snapshot
         updated.tier = resolvedTier(purchased: tier, trial: snapshot.trial)
+        apply(snapshot: updated)
+    }
+
+    /// The whole mirror: trial state, and a subscriber's month.
+    private func apply(mirror: AllowanceMirror) {
+        var updated = snapshot
+        updated.trial = mirror.trial
+        updated.premiumAllowance = mirror.premium
+        updated.tier = resolvedTier(purchased: purchasedTier, trial: mirror.trial)
         apply(snapshot: updated)
     }
 
@@ -336,24 +351,12 @@ final class EntitlementService: ObservableObject {
         try? context.save()
     }
 
-    /// Mini-course start dates come from the library itself rather than a
-    /// counter, so the cap can't drift from what was actually generated.
-    ///
-    /// Filtered in Swift rather than in a `#Predicate`: the chaptered-window
-    /// test lives on `TimeWindow.format`, which a SwiftData predicate can't
-    /// see through, and a personal library is small enough that fetching it
-    /// is cheaper than the indirection needed to push this into the store.
-    private func miniCourseStartDates() -> [Date] {
-        let lessons = (try? context.fetch(FetchDescriptor<StoredLesson>())) ?? []
-        return lessons.filter(\.window.format.isChaptered).map(\.generatedAt)
-    }
-
-    private func refreshMiniCourseUsage() {
-        miniCoursesRemaining = EntitlementRules.miniCoursesRemaining(
-            startDates: miniCourseStartDates(),
-            now: .now
-        )
-    }
+    // `miniCourseStartDates()` and `refreshMiniCourseUsage()` lived here, and
+    // counted mini-courses from library rows. They are gone rather than
+    // fixed: the server counts *charges* -- including cache hits, and lessons
+    // started and abandoned -- while the library counts finished rows, so the
+    // two answers drift. A cap nobody reached hid that. A cap with a remaining
+    // count printed beside it on the paywall would not.
 }
 
 // MARK: - Environment

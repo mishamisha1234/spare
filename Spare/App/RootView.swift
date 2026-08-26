@@ -346,7 +346,13 @@ struct RootView: View {
             requestPaywall(trigger)
         case .capped(.miniCoursesThisMonth(_, let cap)):
             capTitle = "Mini-course limit reached"
-            capMessage = "You've started all \(cap) mini-courses included this month. The count resets on the 1st — shorter lessons are unaffected."
+            capMessage = "You've started all \(cap) mini-courses included this month. The count resets on the 1st — shorter lengths are unaffected."
+        case .capped(.lessonsThisMonth(_, let cap)):
+            // Not the paywall: they already pay, and a fair-use ceiling is not
+            // something anybody can buy their way past. Says what still works,
+            // because recall and going deeper both do.
+            capTitle = "That's this month's lessons"
+            capMessage = "You've read all \(cap) lessons included this month. Recall and going deeper still work, and the count resets on the 1st."
         case .capped(.trialCoursesThisWeek(_, let cap)):
             // A note, not the paywall. They still have most of a free week,
             // and selling to somebody in the middle of a gift is the shakedown

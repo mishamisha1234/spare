@@ -27,7 +27,7 @@
           "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "Every length, unlimited lessons, your whole library, and the post-lesson test.",
+              "description" : "Every length. 50 lessons/mo, 8 mini-courses.",
               "displayName" : "Monthly",
               "locale" : "en_US"
             }
@@ -54,7 +54,7 @@
           },
           "localizations" : [
             {
-              "description" : "Every length, unlimited lessons, your whole library, and the post-lesson test.",
+              "description" : "Every length. 50 lessons/mo, 8 mini-courses.",
               "displayName" : "Yearly",
               "locale" : "en_US"
             }

@@ -50,6 +50,8 @@ import {
 import {
   CHAPTERED_WINDOWS,
   FunnelLedger,
+  PREMIUM_COURSES_PER_MONTH,
+  PREMIUM_LESSONS_PER_MONTH,
   SpendLedger,
   UsageCounter,
   type Decision,
@@ -183,7 +185,11 @@ export default {
     // Starting and reading the trial are not generation calls and carry no
     // model request, so they are answered before the policy layer -- the same
     // reasoning as attachments below.
-    if (url.pathname === "/v1/trial/start" || url.pathname === "/v1/trial/status") {
+    if (
+      url.pathname === "/v1/trial/start"
+      || url.pathname === "/v1/trial/status"
+      || url.pathname === "/v1/allowance"
+    ) {
       return withTrialHeader(
         await handleTrial(url.pathname, env, deviceId, entitlement, ctx, now),
         trial,
@@ -789,6 +795,8 @@ function denialMessage(reason: Decision extends { allow: false } ? never : strin
       return "That length is part of Premium.";
     case "courseCapReached":
       return "You've started every course included this month.";
+    case "lessonCapReached":
+      return "That's every lesson included this month. The count resets on the 1st.";
     case "trialEnded":
       return "Your free week is over.";
     case "trialCourseCapReached":
@@ -995,6 +1003,31 @@ function courseIdentity(body: Record<string, any>): Omit<LessonIdentity, "pool">
   };
 }
 
+/**
+ * Trial state and the month's counters, in one round trip.
+ *
+ * Null when the object could not be reached, for the same reason `readTrial`
+ * is: a manufactured allowance is a number the reader would act on.
+ */
+async function readAllowance(
+  env: Env,
+  deviceId: string,
+  now: number,
+): Promise<{ trial: TrialView; lessonsThisMonth: number; coursesThisMonth: number } | null> {
+  try {
+    const stub = env.USAGE.get(env.USAGE.idFromName(deviceId));
+    const response = await stub.fetch(`https://usage/allowance?now=${now}`);
+    if (!response.ok) return null;
+    return (await response.json()) as {
+      trial: TrialView;
+      lessonsThisMonth: number;
+      coursesThisMonth: number;
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function readTrial(env: Env, deviceId: string, now: number): Promise<TrialView | null> {
   try {
     const stub = env.USAGE.get(env.USAGE.idFromName(deviceId));
@@ -1026,6 +1059,32 @@ async function handleTrial(
   now: number,
 ): Promise<Response> {
   const stub = env.USAGE.get(env.USAGE.idFromName(deviceId));
+
+  if (pathname === "/v1/allowance") {
+    const allowance = await readAllowance(env, deviceId, now);
+    if (!allowance) {
+      return errorResponse(503, "allowanceUnavailable", "Couldn't read your plan. Try again shortly.");
+    }
+    return new Response(
+      JSON.stringify({
+        trial: allowance.trial,
+        // Only a subscriber has a monthly premium allowance. Zeros for a free
+        // or trialing device would read as a cap they had exhausted rather
+        // than one that does not apply to them.
+        premium: isPaying(entitlement.tier)
+          ? {
+              lessonsRemaining: Math.max(
+                0, PREMIUM_LESSONS_PER_MONTH - allowance.lessonsThisMonth,
+              ),
+              coursesRemaining: Math.max(
+                0, PREMIUM_COURSES_PER_MONTH - allowance.coursesThisMonth,
+              ),
+            }
+          : null,
+      }),
+      { status: 200, headers: JSON_HEADERS },
+    );
+  }
 
   if (pathname === "/v1/trial/status") {
     const trial = await readTrial(env, deviceId, now);

@@ -191,3 +191,37 @@ final class TrialSummaryTests: XCTestCase {
         XCTAssertTrue(note.contains("one lesson a day"), note)
     }
 }
+
+/// The subscriber's monthly caps, said out loud.
+final class PremiumCopyTests: XCTestCase {
+
+    func testTheRemainingLineCountsDown() {
+        XCTAssertEqual(PremiumCopy.lessonsRemaining(3), "3 lessons left this month.")
+        XCTAssertEqual(PremiumCopy.lessonsRemaining(1), "1 lesson left this month.")
+    }
+
+    /// At zero it says what still works, not only when the cap lifts. Both
+    /// claims are true of the entitlement: recall runs on already-stored
+    /// questions and needs no network, and going deeper is unmetered and stays
+    /// open to anyone with premium access.
+    func testAtZeroItSaysWhatStillWorks() {
+        let copy = PremiumCopy.lessonsRemaining(0)
+        XCTAssertTrue(copy.contains("Recall and going deeper still work"), copy)
+        XCTAssertTrue(copy.contains("More on the 1st"), copy)
+        // A date on its own would read as the app being closed until then.
+        XCTAssertNotEqual(copy, "No lessons left this month. More on the 1st.")
+    }
+
+    /// Lower than the trial's four. A trialist sees their line for at most a
+    /// week; a subscriber would see one every month forever, and Home's one
+    /// rule is that nothing competes with the question.
+    func testTheSubscriberThresholdIsTighterThanTheTrialsOne() {
+        XCTAssertLessThan(PremiumCopy.lessonsRemainingBelow, TrialCopy.lessonsRemainingBelow)
+    }
+
+    func testNothingHereClaimsToBeUnlimited() {
+        for count in [0, 1, 3] {
+            XCTAssertFalse(PremiumCopy.lessonsRemaining(count).lowercased().contains("unlimited"))
+        }
+    }
+}

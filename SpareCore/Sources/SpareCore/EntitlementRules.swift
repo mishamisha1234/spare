@@ -16,17 +16,27 @@ public struct EntitlementSnapshot: Sendable, Equatable, Codable {
     /// generating anything, so a mirror that is stale or edited costs a
     /// misdrawn circle rather than a lesson.
     public var trial: TrialMirror
+    /// This month's remaining premium allowance, when the server has said.
+    ///
+    /// Deliberately not persisted. A stale figure from a previous session or a
+    /// previous month would lock a subscriber out of lengths they can have,
+    /// and the whole point of a mirror is that being briefly wrong costs a
+    /// misdrawn circle rather than a lesson. Nil means "no cap enforced here
+    /// yet" -- the server still enforces it.
+    public var premiumAllowance: PremiumAllowance?
 
     public init(
         tier: Tier = .free,
         freeLessonsUsedToday: Int = 0,
         lastFreeLessonDate: Date = .distantPast,
-        trial: TrialMirror = .eligible
+        trial: TrialMirror = .eligible,
+        premiumAllowance: PremiumAllowance? = nil
     ) {
         self.tier = tier
         self.freeLessonsUsedToday = freeLessonsUsedToday
         self.lastFreeLessonDate = lastFreeLessonDate
         self.trial = trial
+        self.premiumAllowance = premiumAllowance
     }
 
     public static let free = EntitlementSnapshot()
@@ -43,7 +53,7 @@ public struct EntitlementSnapshot: Sendable, Equatable, Codable {
     )
 
     private enum CodingKeys: String, CodingKey {
-        case tier, freeLessonsUsedToday, lastFreeLessonDate, trial
+        case tier, freeLessonsUsedToday, lastFreeLessonDate, trial, premiumAllowance
     }
 
     public init(from decoder: any Decoder) throws {
@@ -53,6 +63,9 @@ public struct EntitlementSnapshot: Sendable, Equatable, Codable {
         lastFreeLessonDate = try container.decode(Date.self, forKey: .lastFreeLessonDate)
         // Absent in anything written before the trial existed.
         trial = try container.decodeIfPresent(TrialMirror.self, forKey: .trial) ?? .eligible
+        premiumAllowance = try container.decodeIfPresent(
+            PremiumAllowance.self, forKey: .premiumAllowance
+        )
     }
 }
 
@@ -93,6 +106,7 @@ public enum PaywallTrigger: Sendable, Equatable {
 /// rather than sold to.
 public enum UsageCap: Sendable, Equatable {
     case miniCoursesThisMonth(used: Int, cap: Int)
+    case lessonsThisMonth(used: Int, cap: Int)
     case trialCoursesThisWeek(used: Int, cap: Int)
 }
 
@@ -125,11 +139,34 @@ public enum EntitlementRules {
     /// would mean an unbounded per-user cost. Surfaced honestly in Settings
     /// rather than discovered at the moment it bites.
     ///
-    /// Raised from 8 to 12 when courses went from 45 minutes to 30: at 4
-    /// chapters and ~6,200 words instead of 6 and ~8,000, a course costs
-    /// roughly a third less to generate, so 12 of the new ones is cheaper
-    /// than 8 of the old.
-    public static let premiumMiniCoursesPerMonth = 12
+    /// Back to 8, from 12, before there is anybody to lower it on.
+    ///
+    /// Not because 12 was expensive -- with a lesson cap in place, cutting
+    /// four course slots saves about $3.50 of worst case, because the freed
+    /// slots become four more 15-minute lessons at $0.53 rather than
+    /// vanishing. The reason is direction: a disclosed cap can be raised
+    /// whenever usage says so, and cannot be lowered on existing subscribers
+    /// without a material-change notice. Every number here is free exactly
+    /// until the first purchase, and 12 was chosen with no data at all.
+    public static let premiumMiniCoursesPerMonth = 8
+
+    /// The monthly ceiling on premium lessons of any length.
+    ///
+    /// A course counts against this *and* against the mini-course cap: it is
+    /// one of the 50 and one of the 8, the same way a trial course is one of
+    /// the 10 and one of the 2.
+    ///
+    /// Fifty is chosen to be a number no honest daily reader meets. Thirty-one
+    /// days at one a day is 31; fifty tolerates a reader averaging 1.6 a day
+    /// every day of the month. What it bounds is the tail -- and only
+    /// together with the course cap, since a course is worth roughly three
+    /// 15-minute lessons.
+    ///
+    /// It does not fix the unit economics of a daily 15-minute reader, and
+    /// nothing in this range would: that reader costs ~$15.90 a month against
+    /// $6.30 net on the annual plan, and the shared premium cache is what
+    /// closes that gap, not this.
+    public static let premiumLessonsPerMonth = 50
 
     /// Daily count, corrected for day rollover. A count recorded yesterday is
     /// not spent today.
@@ -142,38 +179,19 @@ public enum EntitlementRules {
         return max(0, snapshot.freeLessonsUsedToday)
     }
 
-    /// Mini-courses started in the calendar month containing `now`.
-    ///
-    /// Derived from actual start dates rather than a stored counter, for the
-    /// same reason the points ledger keeps every event: a count that is
-    /// recomputed can't drift out of sync with the thing it counts, and
-    /// month rollover needs no scheduled reset.
-    public static func miniCoursesUsed(
-        startDates: [Date],
-        now: Date,
-        calendar: Calendar = .current
-    ) -> Int {
-        startDates.filter { calendar.isDate($0, equalTo: now, toGranularity: .month) }.count
-    }
-
-    public static func miniCoursesRemaining(
-        startDates: [Date],
-        now: Date,
-        calendar: Calendar = .current
-    ) -> Int {
-        let used = miniCoursesUsed(startDates: startDates, now: now, calendar: calendar)
-        return max(0, premiumMiniCoursesPerMonth - used)
-    }
+    // `miniCoursesUsed` and `miniCoursesRemaining` counted library rows in the
+    // current month. They are deleted rather than kept, because the server
+    // counts *charges* -- cache hits included, abandoned lessons included --
+    // and the two answers drift. Nothing noticed while the cap was 12 and
+    // unreachable; a remaining count printed on the paywall would have.
+    //
+    // The month's figures now arrive in `EntitlementSnapshot.premium`, from
+    // the same object that will refuse the request.
 
     /// May this user start a lesson in this window right now?
-    ///
-    /// `miniCourseStartDates` defaults to empty, which reads as "no
-    /// mini-courses started" — correct for every caller that isn't asking
-    /// about the chaptered window.
     public static func canStartLesson(
         _ snapshot: EntitlementSnapshot,
         window: TimeWindow,
-        miniCourseStartDates: [Date] = [],
         now: Date,
         calendar: Calendar = .current
     ) -> AccessDecision {
@@ -195,11 +213,27 @@ public enum EntitlementRules {
         }
 
         guard !snapshot.tier.hasPremiumAccess else {
-            // The one limit that applies to paying users. Not a paywall.
-            guard window.format.isChaptered else { return .allowed }
-            let used = miniCoursesUsed(startDates: miniCourseStartDates, now: now, calendar: calendar)
-            guard used < premiumMiniCoursesPerMonth else {
-                return .capped(.miniCoursesThisMonth(used: used, cap: premiumMiniCoursesPerMonth))
+            // The two limits that apply to paying users. Neither is a paywall:
+            // a subscriber at a fair-use cap cannot buy their way out of it.
+            //
+            // Both come from the server's own count, mirrored into the
+            // snapshot. There is no local derivation any more -- the previous
+            // one counted library rows while the server counted charges, and
+            // the two answers drifted. A cap nobody reached hid that; a
+            // disclosed remaining count would not.
+            guard let allowance = snapshot.premiumAllowance else { return .allowed }
+
+            if window.format.isChaptered, allowance.coursesRemaining <= 0 {
+                return .capped(.miniCoursesThisMonth(
+                    used: max(0, premiumMiniCoursesPerMonth - allowance.coursesRemaining),
+                    cap: premiumMiniCoursesPerMonth
+                ))
+            }
+            guard allowance.lessonsRemaining > 0 else {
+                return .capped(.lessonsThisMonth(
+                    used: max(0, premiumLessonsPerMonth - allowance.lessonsRemaining),
+                    cap: premiumLessonsPerMonth
+                ))
             }
             return .allowed
         }

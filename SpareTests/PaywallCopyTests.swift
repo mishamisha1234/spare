@@ -51,13 +51,27 @@ final class PaywallCopyTests: XCTestCase {
         XCTAssertFalse(pitch.contains("library"), pitch)
     }
 
-    /// The mini-course cap is the one limit that applies after paying, and it
-    /// is named on the sheet rather than discovered in Settings afterwards.
-    func testPremiumPitchStatesTheMiniCourseCap() {
+    /// Both monthly caps are named on the sheet rather than discovered in
+    /// Settings afterwards. This is the assertion the App Review argument
+    /// rests on, and it is why the copy is built from the constants.
+    func testPremiumPitchStatesBothMonthlyCaps() {
+        let pitch = PaywallView.premiumPitch
         XCTAssertTrue(
-            PaywallView.premiumPitch.contains("\(EntitlementRules.premiumMiniCoursesPerMonth) mini-courses"),
-            PaywallView.premiumPitch
+            pitch.contains("\(EntitlementRules.premiumLessonsPerMonth) lessons"), pitch
         )
+        XCTAssertTrue(
+            pitch.contains("\(EntitlementRules.premiumMiniCoursesPerMonth) mini-courses"), pitch
+        )
+    }
+
+    /// The pitch said "Shorter lessons are unlimited" until there was a
+    /// monthly lesson cap. It was true when written and became false the
+    /// moment the cap landed, which is the whole reason a sales line gets
+    /// pinned by a test rather than remembered.
+    func testNothingOnThePaywallClaimsToBeUnlimited() {
+        for copy in [PaywallView.premiumPitch, PaywallView.freeTierDisclosure] {
+            XCTAssertFalse(copy.lowercased().contains("unlimited"), copy)
+        }
     }
 
     /// The two lengths named must be exactly the ones the server allows. If a

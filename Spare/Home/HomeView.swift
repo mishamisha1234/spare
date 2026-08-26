@@ -76,25 +76,38 @@ struct HomeView: View {
         // what's tested.
     }
 
-    /// The trial's line on Home, or nothing.
+    /// The one line Home is allowed to carry that is not the question.
     ///
-    /// Two different sentences, and only one at a time. The remaining count is
-    /// a *disclosure* and appears whenever it drops below four -- an
-    /// undisclosed cap is the App Review problem this project already fixed
-    /// once. The day-4 nudge is a *report* and can be dismissed for good.
-    /// Where both would apply the count wins, because it is the one the reader
-    /// cannot dismiss and the one that changes what they should do next.
-    private var trialLine: (text: String, isDismissible: Bool)? {
-        guard entitlements.isTrialing else { return nil }
+    /// Only ever one at a time, and only ever near a limit. A remaining count
+    /// is a *disclosure* and cannot be dismissed -- an undisclosed cap is the
+    /// App Review problem this project already fixed once. The day-4 trial
+    /// line is a *report* and can be dismissed for good. Where both would
+    /// apply the count wins, because it is the one that changes what the
+    /// reader should do next.
+    ///
+    /// A subscriber's threshold is lower than a trialist's on purpose: a
+    /// trialist sees their line for at most a week, where a subscriber would
+    /// see one every month forever.
+    private var allowanceLine: (text: String, isDismissible: Bool)? {
+        if entitlements.isTrialing {
+            let lessons = entitlements.trialLessonsRemaining
+            if lessons < TrialCopy.lessonsRemainingBelow {
+                return (TrialCopy.lessonsRemaining(lessons), false)
+            }
 
-        let lessons = entitlements.trialLessonsRemaining
-        if lessons < TrialCopy.lessonsRemainingBelow {
-            return (TrialCopy.lessonsRemaining(lessons), false)
+            let days = entitlements.trialDaysRemaining()
+            guard days <= TrialCopy.nudgeFromDaysRemaining, !hasDismissedTrialNudge else {
+                return nil
+            }
+            return (TrialCopy.nudge(daysRemaining: days, thingsLearned: completedCount), true)
         }
 
-        let days = entitlements.trialDaysRemaining()
-        guard days <= TrialCopy.nudgeFromDaysRemaining, !hasDismissedTrialNudge else { return nil }
-        return (TrialCopy.nudge(daysRemaining: days, thingsLearned: completedCount), true)
+        // Only from a real answer. No count at all beats a stale one, and the
+        // server refuses regardless of what this line says.
+        guard let premium = entitlements.allowance.premium,
+              premium.lessonsRemaining <= PremiumCopy.lessonsRemainingBelow
+        else { return nil }
+        return (PremiumCopy.lessonsRemaining(premium.lessonsRemaining), false)
     }
 
     private var completedCount: Int {
@@ -102,14 +115,14 @@ struct HomeView: View {
     }
 
     @ViewBuilder
-    private func trialLineView(_ line: (text: String, isDismissible: Bool)) -> some View {
+    private func allowanceLineView(_ line: (text: String, isDismissible: Bool)) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.xs) {
             Text(line.text)
                 .font(Theme.Font.label.font)
                 .foregroundStyle(palette.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityIdentifier("home.trialLine")
+                .accessibilityIdentifier("home.allowanceLine")
 
             if line.isDismissible {
                 Button {
@@ -120,7 +133,7 @@ struct HomeView: View {
                         .foregroundStyle(palette.secondaryText)
                 }
                 .buttonStyle(.plain)
-                .accessibilityIdentifier("home.trialLine.dismiss")
+                .accessibilityIdentifier("home.allowanceLine.dismiss")
                 .accessibilityLabel("Dismiss")
             }
         }
@@ -141,8 +154,8 @@ struct HomeView: View {
             // below the grid it would be under the recall card and read as
             // marketing. It is one line, it has no button, and the nudge half
             // of it can be dismissed for good.
-            if let trial = trialLine {
-                trialLineView(trial)
+            if let line = allowanceLine {
+                allowanceLineView(line)
                     .layoutPriority(Theme.homeContentPriority)
                 Spacer(minLength: Theme.Spacing.s)
                     .frame(maxHeight: Theme.Spacing.m)

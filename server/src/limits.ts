@@ -8,11 +8,32 @@
  * for a given id, so read-check-increment is atomic with no protocol.
  */
 
-import { hasPremiumAccess, type EffectiveTier } from "./appstore";
+import { hasPremiumAccess, isPaying, type EffectiveTier } from "./appstore";
 
 /** Mirrors `EntitlementRules` in SpareCore. Kept in step by a shared test. */
 export const FREE_LESSONS_PER_DAY = 1;
-export const PREMIUM_COURSES_PER_MONTH = 12;
+
+/**
+ * The subscriber's month.
+ *
+ * A course counts against both: it is one of the 50 and one of the 8, the same
+ * way a trial course is one of the 10 and one of the 2.
+ *
+ * Fifty is a number no honest daily reader meets -- 31 days at one a day is
+ * 31, and 50 tolerates an average of 1.6 a day every day. Eight courses is
+ * one every four days. Both bound the tail and neither fixes the median: a
+ * daily 15-minute reader costs ~$15.90 a month against $6.30 net on the
+ * annual plan, and the shared premium cache is what closes that, not these.
+ *
+ * Courses came down from 12 before there was anybody to lower them on. With a
+ * lesson cap in place the saving is only about $3.50 of worst case -- the four
+ * freed slots become four more 15-minute lessons rather than vanishing -- so
+ * the reason is direction, not money. A disclosed cap can be raised whenever
+ * usage says so and cannot be lowered on existing subscribers without a
+ * material-change notice.
+ */
+export const PREMIUM_LESSONS_PER_MONTH = 50;
+export const PREMIUM_COURSES_PER_MONTH = 8;
 export const FREE_WINDOWS = ["three", "seven"] as const;
 export const CHAPTERED_WINDOWS = ["thirty"] as const;
 
@@ -52,6 +73,9 @@ export type DenialReason =
   | "dailyLimitReached"
   | "lockedWindow"
   | "courseCapReached"
+  /** The subscriber's monthly lesson allowance is spent. Not a paywall: they
+   * are already paying and cannot buy their way past a fair-use ceiling. */
+  | "lessonCapReached"
   | "spendCeilingReached"
   /**
    * The trial is over: seven days elapsed, or ten lessons used, whichever
@@ -84,6 +108,8 @@ export interface UsageState {
   /** UTC month key, e.g. "2026-08". */
   month: string;
   coursesThisMonth: number;
+  /** Premium lessons of any length charged this calendar month. */
+  lessonsThisMonth: number;
   /**
    * Lessons charged for today, and how many requests each has been allowed.
    *
@@ -321,6 +347,18 @@ export class UsageCounter implements DurableObject {
       return Response.json(trialView(await this.loadTrial(), now));
     }
 
+    // Trial state and the month's counters in one round trip, for
+    // `/v1/allowance`. The router turns the counters into remaining figures,
+    // because it is the router that knows whether this device is paying.
+    if (url.pathname === "/allowance") {
+      const usage = await this.load(now);
+      return Response.json({
+        trial: trialView(await this.loadTrial(), now),
+        lessonsThisMonth: usage.lessonsThisMonth,
+        coursesThisMonth: usage.coursesThisMonth,
+      });
+    }
+
     if (url.pathname === "/trial/start") {
       return Response.json(await this.startTrial(now));
     }
@@ -424,6 +462,7 @@ export class UsageCounter implements DurableObject {
       lessonsToday: 0,
       month: monthKey(now),
       coursesThisMonth: 0,
+      lessonsThisMonth: 0,
       chargedKeys: [],
     };
 
@@ -435,6 +474,8 @@ export class UsageCounter implements DurableObject {
       lessonsToday: stored.day === today ? stored.lessonsToday : 0,
       month: thisMonth,
       coursesThisMonth: stored.month === thisMonth ? stored.coursesThisMonth : 0,
+      // Absent in anything written before the monthly lesson cap existed.
+      lessonsThisMonth: stored.month === thisMonth ? (stored.lessonsThisMonth ?? 0) : 0,
       // Rolls over with the day it belongs to. A record written before this
       // deploy has no field at all, hence the fallback.
       chargedKeys: stored.day === today ? (stored.chargedKeys ?? []) : [],
@@ -531,8 +572,17 @@ export class UsageCounter implements DurableObject {
       if (usage.lessonsToday >= FREE_LESSONS_PER_DAY) {
         return { allow: false, reason: "dailyLimitReached" };
       }
-    } else if (isChaptered && usage.coursesThisMonth >= PREMIUM_COURSES_PER_MONTH) {
-      return { allow: false, reason: "courseCapReached" };
+    } else {
+      // A subscriber's month. The course ceiling is checked first because it
+      // is the more specific refusal: "you have used every course this month"
+      // explains itself, where "you have used every lesson" would not, given
+      // the shorter lengths are still open.
+      if (isChaptered && usage.coursesThisMonth >= PREMIUM_COURSES_PER_MONTH) {
+        return { allow: false, reason: "courseCapReached" };
+      }
+      if (usage.lessonsThisMonth >= PREMIUM_LESSONS_PER_MONTH) {
+        return { allow: false, reason: "lessonCapReached" };
+      }
     }
 
     let milestone: FunnelMilestone | undefined;
@@ -563,10 +613,25 @@ export class UsageCounter implements DurableObject {
       );
     }
 
+    // A trialist is not a subscriber, so neither monthly counter moves for
+    // them. `coursesThisMonth` used to, which meant a trialist's two courses
+    // came out of the eight they would get if they subscribed that month --
+    // charging a new customer for something they were given.
+    const spendsMonthlyAllowance = isPaying(tier);
+
     await this.state.storage.put<UsageState>("usage", {
       ...usage,
       lessonsToday: isPremium ? usage.lessonsToday : usage.lessonsToday + 1,
-      coursesThisMonth: isChaptered ? usage.coursesThisMonth + 1 : usage.coursesThisMonth,
+      coursesThisMonth:
+        spendsMonthlyAllowance && isChaptered
+          ? usage.coursesThisMonth + 1
+          : usage.coursesThisMonth,
+      // Cache hits count, like everywhere else: a reader cannot tell a cached
+      // lesson from a generated one, so a cap that counted only generations
+      // would be a cap nobody could describe.
+      lessonsThisMonth: spendsMonthlyAllowance
+        ? usage.lessonsThisMonth + 1
+        : usage.lessonsThisMonth,
       chargedKeys: key
         ? trimCharged([...usage.chargedKeys, { key, requests: 1 }])
         : usage.chargedKeys,

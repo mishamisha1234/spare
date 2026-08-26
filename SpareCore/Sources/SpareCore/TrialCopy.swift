@@ -110,3 +110,35 @@ public enum TrialCopy {
     public static let summaryPrimaryButton = "Keep Premium"
     public static let summarySecondaryButton = "Continue on Free"
 }
+
+/// The subscriber's monthly caps, said out loud.
+///
+/// Same reasoning as `TrialCopy`: built from the limits rather than typed out,
+/// pinned by tests that run on Linux, and stated before the cap bites rather
+/// than discovered at the moment it does.
+public enum PremiumCopy {
+
+    /// Below this, the count moves onto Home as well as Settings.
+    ///
+    /// Three rather than the trial's four, and only at the very end. A
+    /// trialist sees their line for at most seven days; a subscriber would see
+    /// it every month forever, and Home's one rule is that nothing competes
+    /// with the question. Three is the point where it stops being trivia and
+    /// starts changing what they should do next.
+    public static let lessonsRemainingBelow = 3
+
+    /// Not dismissible. This one is the disclosure, not a nudge.
+    ///
+    /// At zero it says what still works rather than only when the cap lifts.
+    /// Recall runs entirely on already-stored questions and needs no network
+    /// at all; going deeper is unmetered and stays open to anyone with premium
+    /// access. Both are true for a subscriber who has spent the month, and a
+    /// date on its own would read as the app being closed until then.
+    public static func lessonsRemaining(_ count: Int) -> String {
+        guard count > 0 else {
+            return "No lessons left this month. Recall and going deeper still work. "
+                + "More on the 1st."
+        }
+        return "\(count) \(count == 1 ? "lesson" : "lessons") left this month."
+    }
+}

@@ -146,7 +146,7 @@ struct SettingsView: View {
         Self.planDetail(
             tier: entitlements.snapshot.tier,
             trial: entitlements.snapshot.trial,
-            miniCoursesRemaining: entitlements.miniCoursesRemaining
+            allowance: entitlements.allowance
         )
     }
 
@@ -155,15 +155,39 @@ struct SettingsView: View {
     /// as `PaywallView.freeTierDisclosure`, and for the same reason: this is
     /// a promise, and the trial's cap has to be visible while there is still
     /// some of it left to spend.
-    nonisolated static func planDetail(tier: Tier, trial: TrialMirror, miniCoursesRemaining: Int) -> String {
+    nonisolated static func planDetail(
+        tier: Tier,
+        trial: TrialMirror,
+        allowance: AllowanceState
+    ) -> String {
         switch tier {
         case .trialing:
             return "\(trial.remainingLessons) of \(TrialLimits.lessons) trial lessons left, "
                 + "including \(trial.remainingCourses) of \(TrialLimits.courses) mini-courses. "
                 + "No card, nothing to cancel."
+
         case .monthly, .yearly:
-            return "\(miniCoursesRemaining) of \(EntitlementRules.premiumMiniCoursesPerMonth) "
-                + "mini-courses left this month. Shorter lessons are unlimited."
+            let caps = "\(EntitlementRules.premiumLessonsPerMonth) lessons a month, including "
+                + "up to \(EntitlementRules.premiumMiniCoursesPerMonth) mini-courses. "
+                + "Resets on the 1st."
+
+            // Three branches, and the caps are stated in all of them. A failed
+            // read is not an answer, so no count is shown rather than a stale
+            // or zeroed one -- but the *fact* that it failed is an answer, and
+            // it is the one the reader can act on.
+            switch allowance.premium {
+            case .some(let premium):
+                return "\(premium.lessonsRemaining) of "
+                    + "\(EntitlementRules.premiumLessonsPerMonth) lessons left this month, "
+                    + "including \(premium.coursesRemaining) of "
+                    + "\(EntitlementRules.premiumMiniCoursesPerMonth) mini-courses. "
+                    + "Resets on the 1st."
+            case .none where allowance == .unavailable:
+                return caps + " Remaining count unavailable — check your connection."
+            case .none:
+                return caps
+            }
+
         case .free:
             return "Free covers the 3- and 7-minute lengths, one lesson a day, and your whole "
                 + "library. Nothing you have learned is ever hidden or deleted."

@@ -141,7 +141,7 @@ struct SpareApp: App {
             : StoreKitPurchaseStore()
         self.entitlements = EntitlementService(
             store: purchases,
-            trialStore: Self.makeTrialStore(purchases: purchases),
+            allowanceStore: Self.makeAllowanceStore(purchases: purchases),
             funnel: Self.makeFunnelReporter(),
             container: container
         )
@@ -158,27 +158,34 @@ struct SpareApp: App {
         }
     }
 
-    /// Where the trial mirror comes from.
+    /// A subscriber one lesson short of the monthly cap, when a test asks.
+    private static var uiTestPremiumAllowance: PremiumAllowance? {
+        guard ProcessInfo.processInfo.arguments.contains("-UITEST_PREMIUM_NEARLY_SPENT")
+        else { return nil }
+        return PremiumAllowance(lessonsRemaining: 1, coursesRemaining: 0)
+    }
+
+    /// Where the allowance mirror comes from.
     ///
     /// A stub under UI tests, for the same reason `StubPurchaseStore` is:
     /// tests must never reach the network, and a walkthrough that had to wait
     /// out a real seven-day clock would photograph nothing. Nil when there is
     /// no proxy configured, which leaves the trial permanently `eligible` and
     /// therefore granting nothing.
-    private static func makeTrialStore(purchases: any PurchaseStore) -> (any TrialStore)? {
+    private static func makeAllowanceStore(purchases: any PurchaseStore) -> (any AllowanceStore)? {
         if Self.isUITestReset {
             // A store that answers nothing, which is not the same as no store
             // at all: this one gets asked and fails, which is the case that
             // has to be photographed.
             if ProcessInfo.processInfo.arguments.contains("-UITEST_TRIAL_UNREACHABLE") {
-                return UnreachableTrialStore()
+                return UnreachableAllowanceStore()
             }
             // Nil unless the test named a state. See `uiTestTrial`.
             guard let mirror = Self.uiTestTrial else { return nil }
-            return StubTrialStore(mirror)
+            return StubAllowanceStore(trial: mirror, premium: Self.uiTestPremiumAllowance)
         }
         guard let baseURL = ProxyConfiguration.baseURL() else { return nil }
-        return ProxyTrialStore(
+        return ProxyAllowanceStore(
             transport: FoundationHTTPTransport(),
             baseURL: baseURL,
             deviceID: DeviceIdentity.current(),

@@ -179,7 +179,7 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
     /// A fresh launch per screen rather than one long session, because the
     /// three states are three different points in a week and there is no
     /// in-app path between them that does not involve waiting four days.
-    /// `StubTrialStore` supplies the state; nothing here reaches a network.
+    /// `StubAllowanceStore` supplies the state; nothing here reaches a network.
     private func launchForTrial(
         _ extraArguments: [String],
         colorScheme: String,
@@ -301,12 +301,12 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
         )
         do {
             waitForHome(app, scheme: colorScheme)
-            try waitAndCapture(app, "t-04-home-day4-nudge", scheme: colorScheme, identifier: "home.trialLine")
+            try waitAndCapture(app, "t-04-home-day4-nudge", scheme: colorScheme, identifier: "home.allowanceLine")
             // Dismissible, and dismissed for good. A report that keeps coming
             // back is a nag.
-            try tap(app, "home.trialLine.dismiss", scheme: colorScheme, step: "t-04-home-day4-nudge")
+            try tap(app, "home.allowanceLine.dismiss", scheme: colorScheme, step: "t-04-home-day4-nudge")
             XCTAssertTrue(
-                waitUntilGone(element(app, "home.trialLine")),
+                waitUntilGone(element(app, "home.allowanceLine")),
                 "t-04: the nudge did not go away when dismissed"
             )
         } catch {

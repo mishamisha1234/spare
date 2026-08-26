@@ -235,6 +235,21 @@ is reading the wrong way round and that is worth telling me about.
 **Pass:** paywall dismisses on purchase; Settings shows Premium; it survives a
 relaunch; restore leaves you Premium and does not error.
 
+**While you are in App Store Connect**, the subscription description field for
+both products is short — I believe 45 characters, and I cannot check it from
+Windows. Type exactly this, which is 44:
+
+> Every length. 50 lessons/mo, 8 mini-courses.
+
+It has to agree with the paywall, which says *"Premium unlocks every length,
+adds the post-lesson test and going deeper, and gives you 50 lessons a month —
+including up to 8 mini-courses."* The store listing states the same caps and
+fewer of the extras, which is the safe direction: a reviewer seeing the paywall
+disclose **more** limits than the listing is fine, and the listing promising
+more than the app delivers is not. If the field turns out to be shorter than 44
+characters, cut from the left — "50 lessons/mo, 8 mini-courses." is 30 and
+keeps both numbers, which are the part that must not go.
+
 **Wrong:** the sheet succeeds but the paywall stays open (the entitlement is not
 reaching the app); Premium is lost on relaunch (it is not being persisted);
 restore throws.
