@@ -180,14 +180,19 @@ final class TrialRulesTests: XCTestCase {
     // MARK: - The stub
 
     func testTheStubGrantsExactlyOneTrial() async throws {
+        // Every await is hoisted out of the XCTest call. `XCTUnwrap` and the
+        // `XCTAssert*` family all take autoclosures, and an autoclosure cannot
+        // carry an await.
         let store = StubTrialStore()
-        let first = try XCTUnwrap(await store.start())
+        let firstResult = await store.start()
+        let first = try XCTUnwrap(firstResult)
         XCTAssertTrue(first.started)
         XCTAssertEqual(first.trial.remainingLessons, TrialLimits.lessons)
         XCTAssertEqual(first.trial.remainingCourses, TrialLimits.courses)
 
         // Non-nil: a refusal is an answer. Only an unreachable store is nil.
-        let second = try XCTUnwrap(await store.start())
+        let secondResult = await store.start()
+        let second = try XCTUnwrap(secondResult)
         XCTAssertFalse(second.started)
         XCTAssertEqual(second.reason, "alreadyUsed")
         XCTAssertEqual(second.trial.startedAt, first.trial.startedAt)
@@ -197,10 +202,11 @@ final class TrialRulesTests: XCTestCase {
         let store = StubTrialStore(
             TrialMirror(status: .active, remainingLessons: 4, remainingCourses: 1)
         )
-        let refused = try XCTUnwrap(await store.start())
+        let refusedResult = await store.start()
+        let refused = try XCTUnwrap(refusedResult)
         XCTAssertFalse(refused.started, "a running trial cannot be started again")
-        // Hoisted: XCTAssert's arguments are autoclosures and cannot await.
-        let status = try XCTUnwrap(await store.status())
+        let statusResult = await store.status()
+        let status = try XCTUnwrap(statusResult)
         XCTAssertEqual(status.remainingLessons, 4)
     }
 
