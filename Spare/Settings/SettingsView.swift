@@ -119,7 +119,11 @@ struct SettingsView: View {
         }
     }
 
-    static func planName(for tier: Tier) -> String {
+    /// `nonisolated` because it is a pure function of a tier and nothing
+    /// else. Without it, `SettingsView`'s inferred main-actor isolation comes
+    /// with it, and passing the method as a function value -- which the copy
+    /// tests do -- is a Swift 6 error about losing a global actor.
+    nonisolated static func planName(for tier: Tier) -> String {
         switch tier {
         case .free: "Free"
         case .trialing: "Premium trial"
@@ -151,7 +155,7 @@ struct SettingsView: View {
     /// as `PaywallView.freeTierDisclosure`, and for the same reason: this is
     /// a promise, and the trial's cap has to be visible while there is still
     /// some of it left to spend.
-    static func planDetail(tier: Tier, trial: TrialMirror, miniCoursesRemaining: Int) -> String {
+    nonisolated static func planDetail(tier: Tier, trial: TrialMirror, miniCoursesRemaining: Int) -> String {
         switch tier {
         case .trialing:
             return "\(trial.remainingLessons) of \(TrialLimits.lessons) trial lessons left, "

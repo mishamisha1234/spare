@@ -30,7 +30,7 @@ final class TrialCopyTests: XCTestCase {
         XCTAssertEqual(SettingsView.planName(for: .monthly), "Premium")
         XCTAssertEqual(SettingsView.planName(for: .yearly), "Premium")
 
-        let names = Set(Tier.allCases.map(SettingsView.planName(for:)))
+        let names = Set(Tier.allCases.map { SettingsView.planName(for: $0) })
         XCTAssertEqual(names.count, 3, "a tier was added without deciding what to call it")
     }
 
