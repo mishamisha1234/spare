@@ -111,7 +111,7 @@ final class TrialCopyTests: XCTestCase {
         XCTAssertTrue(copy.contains("\(EntitlementRules.premiumLessonsPerMonth) lessons a month"), copy)
         XCTAssertTrue(copy.contains("check your connection"), copy)
         XCTAssertFalse(copy.contains("left this month"), copy)
-        XCTAssertFalse(copy.contains("0 of"), copy, "a failed read must never render as zero")
+        XCTAssertFalse(copy.contains("0 of"), "a failed read must never render as zero: \(copy)")
     }
 
     /// The ordinary first second of a launch. Saying "check your connection"
