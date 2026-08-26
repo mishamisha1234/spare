@@ -31,6 +31,33 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
         try walkthrough(colorScheme: "dark")
     }
 
+    // MARK: - The trial's screens
+    //
+    // A pass of their own rather than steps inside the main walkthrough, for
+    // a reason that is not tidiness: starting a trial unlocks every length,
+    // so capturing the offer partway through the walkthrough would leave the
+    // rest of it photographing a premium reader and the free-tier locked
+    // states -- the ones the paywall exists to explain -- would stop being
+    // reachable at all.
+    //
+    // Three passes, matching the rest of the file. Four screens each: the
+    // offer that follows a dismissed paywall, the day-4 line on Home, the
+    // day-7 summary, and Home once the week is over. None of them can be
+    // seen by a human without waiting four days and then three more, which
+    // is exactly the kind of state that ships unlooked-at.
+
+    func testTrialScreensLight() throws {
+        try trialScreens(colorScheme: "light")
+    }
+
+    func testTrialScreensDark() throws {
+        try trialScreens(colorScheme: "dark")
+    }
+
+    func testTrialScreensLargestDynamicType() throws {
+        try trialScreens(colorScheme: "ax3", accessibilityText: true)
+    }
+
     /// The largest accessibility text size, which is where layouts actually
     /// break. Screenshots only — it stops after the first few screens rather
     /// than repeating the whole flow, because the point is to see whether
@@ -141,6 +168,170 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             try waitAndCapture(app, "st-03-library-empty", scheme: scheme, identifier: "library.empty")
         } catch {
             attachFailureDiagnostics(app, scheme: scheme)
+            throw error
+        }
+    }
+
+    // MARK: - Trial screens
+
+    /// Launches the app with a given trial state and hands back a running app.
+    ///
+    /// A fresh launch per screen rather than one long session, because the
+    /// three states are three different points in a week and there is no
+    /// in-app path between them that does not involve waiting four days.
+    /// `StubTrialStore` supplies the state; nothing here reaches a network.
+    private func launchForTrial(
+        _ extraArguments: [String],
+        colorScheme: String,
+        accessibilityText: Bool
+    ) -> XCUIApplication {
+        let app = XCUIApplication()
+        var arguments = ["-UITEST_RESET_STATE"] + extraArguments
+        if accessibilityText {
+            arguments += [
+                "-UIPreferredContentSizeCategoryName",
+                "UICTContentSizeCategoryAccessibilityExtraLarge",
+            ]
+        }
+        app.launchArguments = arguments
+        app.launchEnvironment["UITEST_COLOR_SCHEME"] = accessibilityText ? "light" : colorScheme
+        app.launch()
+        return app
+    }
+
+    /// Onboarding, cleared as fast as it can be. Every screen in this pass is
+    /// behind it and none of them are about it.
+    ///
+    /// Waits on a screen-specific element between the two `onboarding.primary`
+    /// taps. The identifier is the same on every step, so back-to-back taps
+    /// can both land on the button of the screen that has not gone away yet --
+    /// the second one hits a stale element and the flow silently stalls one
+    /// screen back. Same sequence the AX3 pass already proves.
+    private func clearOnboarding(_ app: XCUIApplication, scheme: String) throws {
+        try tap(app, "onboarding.primary", scheme: scheme, step: "trial-onboarding-pitch")
+
+        let interestChip = element(app, "onboarding.chip.History")
+        XCTAssertTrue(
+            interestChip.waitForExistence(timeout: defaultTimeout),
+            "trial-onboarding-interests: never reached the interests step"
+        )
+        try tap(app, "onboarding.chip.History", scheme: scheme, step: "trial-onboarding-interests")
+        try tap(app, "onboarding.primary", scheme: scheme, step: "trial-onboarding-interests")
+
+        XCTAssertTrue(
+            element(app, "onboarding.work").waitForExistence(timeout: defaultTimeout),
+            "trial-onboarding-about: never reached the about step"
+        )
+        try tap(app, "onboarding.skip", scheme: scheme, step: "trial-onboarding-about")
+        try tap(app, "onboarding.primary", scheme: scheme, step: "trial-notifications")
+        dismissNotificationPromptIfPresent()
+    }
+
+    private func trialScreens(colorScheme: String, accessibilityText: Bool = false) throws {
+        let notificationMonitor = addUIInterruptionMonitor(withDescription: "System alert") { alert in
+            for button in alert.buttons.allElementsBoundByIndex {
+                let label = button.label.lowercased()
+                if label.contains("allow") || label.contains("ok") || label.contains("don") {
+                    button.tap()
+                    return true
+                }
+            }
+            return false
+        }
+        defer { removeUIInterruptionMonitor(notificationMonitor) }
+
+        // MARK: The offer, reached the way a reader reaches it.
+        //
+        // Not a debug entry point: this taps a locked length, gets the real
+        // paywall, closes it, and the offer is what the app does next. The
+        // seeded state already contains a finished lesson, so the ordering
+        // rule is satisfied and the paywall is allowed to appear at all.
+        var app = launchForTrial(
+            ["-UITEST_TRIAL_ELIGIBLE"], colorScheme: colorScheme, accessibilityText: accessibilityText
+        )
+        do {
+            try clearOnboarding(app, scheme: colorScheme)
+            try waitAndCapture(app, "t-01-home-eligible", scheme: colorScheme, identifier: "home.circle.thirty")
+            try tap(app, "home.circle.thirty", scheme: colorScheme, step: "t-01-home-eligible")
+            try waitAndCapture(app, "t-02-paywall", scheme: colorScheme, identifier: "paywall.buy")
+            try tap(app, "paywall.close", scheme: colorScheme, step: "t-02-paywall")
+
+            try waitAndCapture(
+                app, "t-03-trial-offer", scheme: colorScheme, identifier: "trialOffer.start"
+            )
+            // The cap has to be legible on this sheet, not merely present in
+            // the string. At AX3 that is a real question about layout, which
+            // is the whole reason this pass exists.
+            XCTAssertTrue(
+                element(app, "trialOffer.courseNote").exists,
+                "t-03-trial-offer: the mini-course limit is not on the offer"
+            )
+            try tap(app, "trialOffer.start", scheme: colorScheme, step: "t-03-trial-offer")
+        } catch {
+            attachFailureDiagnostics(app, scheme: colorScheme)
+            throw error
+        }
+        app.terminate()
+
+        // MARK: Day 4 — the nudge on Home.
+        app = launchForTrial(
+            ["-UITEST_TRIAL_DAY4"], colorScheme: colorScheme, accessibilityText: accessibilityText
+        )
+        do {
+            try clearOnboarding(app, scheme: colorScheme)
+            try waitAndCapture(app, "t-04-home-day4-nudge", scheme: colorScheme, identifier: "home.trialLine")
+            // Dismissible, and dismissed for good. A report that keeps coming
+            // back is a nag.
+            try tap(app, "home.trialLine.dismiss", scheme: colorScheme, step: "t-04-home-day4-nudge")
+            XCTAssertTrue(
+                waitUntilGone(element(app, "home.trialLine")),
+                "t-04: the nudge did not go away when dismissed"
+            )
+        } catch {
+            attachFailureDiagnostics(app, scheme: colorScheme)
+            throw error
+        }
+        app.terminate()
+
+        // MARK: Day 7 — the summary, then the free tier it collapses to.
+        app = launchForTrial(
+            ["-UITEST_TRIAL_EXPIRED"], colorScheme: colorScheme, accessibilityText: accessibilityText
+        )
+        do {
+            try clearOnboarding(app, scheme: colorScheme)
+            try waitAndCapture(
+                app, "t-05-trial-summary", scheme: colorScheme, identifier: "trialSummary.keepPremium"
+            )
+            // Both halves of the argument have to be on screen together: the
+            // reader's own numbers, and the promise that the library stays.
+            // The second is what makes this a decision rather than a threat.
+            XCTAssertTrue(
+                element(app, "trialSummary.line").exists,
+                "t-05-trial-summary: no summary line"
+            )
+            XCTAssertTrue(
+                element(app, "trialSummary.freeTierNote").exists,
+                "t-05-trial-summary: the free tier is not described"
+            )
+
+            try tap(app, "trialSummary.continueFree", scheme: colorScheme, step: "t-05-trial-summary")
+            XCTAssertTrue(
+                waitUntilGone(element(app, "trialSummary.keepPremium")),
+                "t-05: the summary did not dismiss"
+            )
+
+            // Post-trial Home. The lengths are locked again and the library is
+            // untouched -- the second of those is the entire selling model, so
+            // it is asserted rather than left to the screenshot.
+            try waitAndCapture(
+                app, "t-06-home-post-trial", scheme: colorScheme, identifier: "home.circle.thirty"
+            )
+            try tap(app, "home.libraryButton", scheme: colorScheme, step: "t-06-home-post-trial")
+            try waitAndCapture(
+                app, "t-07-library-post-trial", scheme: colorScheme, identifier: "library.stats"
+            )
+        } catch {
+            attachFailureDiagnostics(app, scheme: colorScheme)
             throw error
         }
     }

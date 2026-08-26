@@ -27,15 +27,25 @@ struct SpareApp: App {
         ProcessInfo.processInfo.arguments.contains("-UITEST_FAILING_PROVIDER")
     }
 
-    /// Which point in a seven-day trial the walkthrough starts from.
+    /// Which point in a seven-day trial a UI test starts from, or nil for
+    /// "no trial at all".
     ///
-    /// The trial's screens are the ones a human cannot otherwise see without
-    /// waiting four days and then three more, which is exactly the kind of
-    /// state that ships unlooked-at. These put the day-4 nudge and the day-7
-    /// summary in front of the camera on demand.
+    /// Nil is the default and it matters. A test that does not name a trial
+    /// state gets no trial store, so the offer, the nudge and the day-7
+    /// summary are all inert -- otherwise every existing walkthrough would
+    /// pick up a sheet it was not written for, and the free-tier screens the
+    /// paywall exists to explain would stop being reachable the moment a
+    /// trial started mid-run.
+    ///
+    /// The states themselves are the ones a human cannot otherwise see
+    /// without waiting four days and then three more, which is exactly the
+    /// kind of state that ships unlooked-at.
     private static var uiTestTrial: TrialMirror? {
         let arguments = ProcessInfo.processInfo.arguments
         let now = Date()
+        if arguments.contains("-UITEST_TRIAL_ELIGIBLE") {
+            return .eligible
+        }
         if arguments.contains("-UITEST_TRIAL_DAY4") {
             // Four days in, six lessons read, three days left.
             return TrialMirror(
@@ -131,7 +141,9 @@ struct SpareApp: App {
     /// therefore granting nothing.
     private static func makeTrialStore(purchases: any PurchaseStore) -> (any TrialStore)? {
         if Self.isUITestReset {
-            return StubTrialStore(Self.uiTestTrial ?? .eligible)
+            // Nil unless the test named a state. See `uiTestTrial`.
+            guard let mirror = Self.uiTestTrial else { return nil }
+            return StubTrialStore(mirror)
         }
         guard let baseURL = ProxyConfiguration.baseURL() else { return nil }
         return ProxyTrialStore(

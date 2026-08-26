@@ -28,6 +28,7 @@ struct HomeView: View {
     /// revisited after a push/pop.
     @State private var pinnedRecallItem: StoredRecallItem?
     @State private var isRecallDismissed = false
+    @AppStorage(AppSettingsKey.hasDismissedTrialNudge) private var hasDismissedTrialNudge = false
 
     private var palette: Theme.Palette { Theme.palette(for: colorScheme) }
 
@@ -75,6 +76,56 @@ struct HomeView: View {
         // what's tested.
     }
 
+    /// The trial's line on Home, or nothing.
+    ///
+    /// Two different sentences, and only one at a time. The remaining count is
+    /// a *disclosure* and appears whenever it drops below four -- an
+    /// undisclosed cap is the App Review problem this project already fixed
+    /// once. The day-4 nudge is a *report* and can be dismissed for good.
+    /// Where both would apply the count wins, because it is the one the reader
+    /// cannot dismiss and the one that changes what they should do next.
+    private var trialLine: (text: String, isDismissible: Bool)? {
+        guard entitlements.isTrialing else { return nil }
+
+        let lessons = entitlements.trialLessonsRemaining
+        if lessons < TrialCopy.lessonsRemainingBelow {
+            return (TrialCopy.lessonsRemaining(lessons), false)
+        }
+
+        let days = entitlements.trialDaysRemaining()
+        guard days <= TrialCopy.nudgeFromDaysRemaining, !hasDismissedTrialNudge else { return nil }
+        return (TrialCopy.nudge(daysRemaining: days, thingsLearned: completedCount), true)
+    }
+
+    private var completedCount: Int {
+        lessons.filter { $0.completedAt != nil }.count
+    }
+
+    @ViewBuilder
+    private func trialLineView(_ line: (text: String, isDismissible: Bool)) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.xs) {
+            Text(line.text)
+                .font(Theme.Font.label.font)
+                .foregroundStyle(palette.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("home.trialLine")
+
+            if line.isDismissible {
+                Button {
+                    hasDismissedTrialNudge = true
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(Theme.Font.caption.font)
+                        .foregroundStyle(palette.secondaryText)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("home.trialLine.dismiss")
+                .accessibilityLabel("Dismiss")
+            }
+        }
+    }
+
     private var content: some View {
         VStack(spacing: 0) {
             // The title + grid block is optically centred in the space under
@@ -82,6 +133,20 @@ struct HomeView: View {
             // geometrically, which sits too low once the eye accounts for the
             // toolbar above it.
             Spacer(minLength: Theme.Spacing.m)
+
+            // The one line Home is allowed to carry that is not the question.
+            //
+            // It sits above the title rather than below the grid because it
+            // is a status report about something the reader was given, and
+            // below the grid it would be under the recall card and read as
+            // marketing. It is one line, it has no button, and the nudge half
+            // of it can be dismissed for good.
+            if let trial = trialLine {
+                trialLineView(trial)
+                    .layoutPriority(Theme.homeContentPriority)
+                Spacer(minLength: Theme.Spacing.s)
+                    .frame(maxHeight: Theme.Spacing.m)
+            }
 
             Text("How long do you have?")
                 .font(Theme.Font.largeTitle.font)

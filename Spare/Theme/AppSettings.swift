@@ -16,6 +16,20 @@ enum AppSettingsKey {
     /// Set once the system prompt has actually been shown, so a decline
     /// isn't re-asked on every subsequent due question.
     static let hasRequestedNotificationPermission = "hasRequestedNotificationPermission"
+    /// Set the first time the paywall is shown after a completed lesson, so
+    /// the day-0 ask happens exactly once. The ordering rule -- never before
+    /// the first complete lesson -- is enforced separately, by the presence
+    /// of a completed lesson; this only stops it repeating.
+    static let hasShownFirstLessonPaywall = "hasShownFirstLessonPaywall"
+    /// Set once the free week has been offered, so declining the paywall a
+    /// second time does not re-announce a trial the reader already has.
+    static let hasOfferedTrial = "hasOfferedTrial"
+    /// The day-4 progress line. Dismissible and shown once, per the spec:
+    /// it is a report, and a report that keeps coming back is a nag.
+    static let hasDismissedTrialNudge = "hasDismissedTrialNudge"
+    /// Set once the day-7 summary has been shown, so it appears on the first
+    /// open after expiry and not on every launch afterwards.
+    static let hasShownTrialSummary = "hasShownTrialSummary"
 }
 
 /// Reader text size: a small fixed set of steps, like Kindle's "Aa" control.

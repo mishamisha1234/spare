@@ -127,6 +127,13 @@ struct PaywallView: View {
             "Going deeper is part of Premium."
         case .postLessonTestLocked:
             "The post-lesson test is part of Premium."
+        case .firstLessonComplete:
+            // Names what they just did rather than what they cannot do. It is
+            // the one paywall nobody triggered, so opening it with a refusal
+            // would be answering a question they never asked.
+            "That's one thing you now know."
+        case .trialEnded:
+            "That was your week."
         }
     }
 

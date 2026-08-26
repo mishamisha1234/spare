@@ -65,6 +65,13 @@ public enum PaywallTrigger: Sendable, Equatable {
     case goDeeperLocked
     /// Free user tapped the post-lesson test.
     case postLessonTestLocked
+    /// The first lesson has just been finished.
+    ///
+    /// Not a refusal -- nothing was denied. It is the one paywall the reader
+    /// did not ask for, and the ordering rule says it is also the earliest
+    /// one allowed: shown before the product has demonstrated itself, a price
+    /// reads as a shakedown from someone who has proved nothing.
+    case firstLessonComplete
     /// The free week is over. Distinct from every trigger above because it
     /// opens the day-7 summary rather than the ordinary paywall: the ask is
     /// about keeping what the reader built, not about a length they just
