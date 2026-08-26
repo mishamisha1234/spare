@@ -8,7 +8,7 @@
  * for a given id, so read-check-increment is atomic with no protocol.
  */
 
-import type { Tier } from "./appstore";
+import { hasPremiumAccess, type Tier } from "./appstore";
 
 /** Mirrors `EntitlementRules` in SpareCore. Kept in step by a shared test. */
 export const FREE_LESSONS_PER_DAY = 1;
@@ -214,7 +214,7 @@ export class UsageCounter implements DurableObject {
     now: number,
   ): Promise<Decision> {
     const usage = await this.load(now);
-    const isPremium = tier !== "free";
+    const isPremium = hasPremiumAccess(tier);
     const isChaptered = (CHAPTERED_WINDOWS as readonly string[]).includes(window);
 
     // Already paid for today. The second pass of a lesson, and every chapter of

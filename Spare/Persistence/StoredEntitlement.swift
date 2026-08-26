@@ -5,7 +5,7 @@ import SpareCore
 /// SwiftData wrapper around `EntitlementSnapshot`.
 ///
 /// All gate decisions are made by `EntitlementRules` against the value copy —
-/// there are no `if isPremium` checks scattered through views.
+/// there are no `if hasPremiumAccess` checks scattered through views.
 @Model
 final class StoredEntitlement {
     var tierRaw: String

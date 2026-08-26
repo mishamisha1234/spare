@@ -239,7 +239,7 @@ final class EntitlementRulesTests: XCTestCase {
     func testApplyingAPurchaseSetsTheTier() {
         let upgraded = EntitlementRules.applying(tier: .yearly, to: .free)
         XCTAssertEqual(upgraded.tier, .yearly)
-        XCTAssertTrue(upgraded.tier.isPremium)
+        XCTAssertTrue(upgraded.tier.hasPremiumAccess)
     }
 
     // MARK: - Library cap

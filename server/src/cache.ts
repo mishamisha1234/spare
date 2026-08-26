@@ -16,12 +16,24 @@
  * double-counts anything.
  */
 
+import type { Tier } from "./appstore";
+
 /** Which pool an entry belongs to. Never mixed: different models, different
  * attached artifacts, different readers. */
 export type Pool = "free" | "premium";
 
-export function poolFor(tier: string): Pool {
-  return tier === "free" ? "free" : "premium";
+export function poolFor(tier: Tier): Pool {
+  // An explicit switch, not `tier === "free" ? ... : "premium"`. This function
+  // decides who gets Opus, and defaulting an unrecognised tier into the
+  // premium pool is the expensive direction to be wrong in.
+  switch (tier) {
+    case "free":
+      return "free";
+    case "monthly":
+    case "yearly":
+    case "lifetime":
+      return "premium";
+  }
 }
 
 /** Words carrying no topical signal, so "why do bridges hum" == "bridges hum". */

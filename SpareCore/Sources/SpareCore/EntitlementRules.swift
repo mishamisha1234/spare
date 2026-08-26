@@ -125,7 +125,7 @@ public enum EntitlementRules {
         now: Date,
         calendar: Calendar = .current
     ) -> AccessDecision {
-        guard !snapshot.tier.isPremium else {
+        guard !snapshot.tier.hasPremiumAccess else {
             // The one limit that applies to paying users. Not a paywall.
             guard window.format.isChaptered else { return .allowed }
             let used = miniCoursesUsed(startDates: miniCourseStartDates, now: now, calendar: calendar)
@@ -151,18 +151,18 @@ public enum EntitlementRules {
     /// shown to free users as a visibly locked row that opens the paywall,
     /// never hidden, since a feature nobody can see sells nothing.
     public static func canTakePostLessonTest(_ snapshot: EntitlementSnapshot) -> AccessDecision {
-        snapshot.tier.isPremium ? .allowed : .denied(.postLessonTestLocked)
+        snapshot.tier.hasPremiumAccess ? .allowed : .denied(.postLessonTestLocked)
     }
 
     /// Browsing suggestions for a locked window is allowed; committing isn't.
     /// The paywall fires when a lesson is requested, not when a card is tapped.
     public static func canBrowseSuggestions(_ snapshot: EntitlementSnapshot, window: TimeWindow) -> AccessDecision {
-        guard !snapshot.tier.isPremium, !window.isFreeTierEligible else { return .allowed }
+        guard !snapshot.tier.hasPremiumAccess, !window.isFreeTierEligible else { return .allowed }
         return .denied(.lockedWindow(window))
     }
 
     public static func canGoDeeper(_ snapshot: EntitlementSnapshot) -> AccessDecision {
-        snapshot.tier.isPremium ? .allowed : .denied(.goDeeperLocked)
+        snapshot.tier.hasPremiumAccess ? .allowed : .denied(.goDeeperLocked)
     }
 
     /// Record a consumed lesson. Premium is untouched; free increments, resetting
@@ -172,7 +172,7 @@ public enum EntitlementRules {
         now: Date,
         calendar: Calendar = .current
     ) -> EntitlementSnapshot {
-        guard !snapshot.tier.isPremium else { return snapshot }
+        guard !snapshot.tier.hasPremiumAccess else { return snapshot }
         var updated = snapshot
         let used = effectiveLessonsUsedToday(snapshot, now: now, calendar: calendar)
         updated.freeLessonsUsedToday = used + 1
@@ -183,7 +183,7 @@ public enum EntitlementRules {
     /// How many library entries are visible. Free sees the most recent 10;
     /// older entries are hidden, never deleted, so upgrading restores them.
     public static func visibleLibraryCount(_ snapshot: EntitlementSnapshot, totalEntries: Int) -> Int {
-        guard !snapshot.tier.isPremium else { return totalEntries }
+        guard !snapshot.tier.hasPremiumAccess else { return totalEntries }
         return min(totalEntries, freeLibraryLimit)
     }
 
@@ -194,7 +194,7 @@ public enum EntitlementRules {
 
     /// Windows a user may choose without hitting the paywall.
     public static func availableWindows(_ snapshot: EntitlementSnapshot) -> [TimeWindow] {
-        snapshot.tier.isPremium
+        snapshot.tier.hasPremiumAccess
             ? TimeWindow.allCases
             : TimeWindow.allCases.filter(\.isFreeTierEligible)
     }

@@ -28,6 +28,8 @@ import {
 import {
   AppStoreVerificationError,
   FREE_ENTITLEMENT,
+  hasPremiumAccess,
+  isPaying,
   verifyEntitlement,
   type AppStoreConfig,
   type VerifiedEntitlement,
@@ -194,7 +196,7 @@ export default {
 
       case "/v1/go-deeper":
         // Premium-only, and cheap enough not to meter separately.
-        if (entitlement.tier === "free") {
+        if (!hasPremiumAccess(entitlement.tier)) {
           return errorResponse(402, "goDeeperLocked", "Going deeper is part of Premium.");
         }
         return handleUnmetered(modelRequest, env, entitlement, ctx, hooks, now);
@@ -402,7 +404,7 @@ async function handleUnmetered(
   now: number,
 ): Promise<Response> {
   const ceiling = await spendCheck(env, hooks, now);
-  if (!ceiling.withinCeiling && entitlement.tier === "free") {
+  if (!ceiling.withinCeiling && !isPaying(entitlement.tier)) {
     return errorResponse(429, "spendCeilingReached", "Spare is at its monthly limit. Try later.");
   }
 
@@ -447,7 +449,6 @@ async function handleGeneration(
   const interest = typeof body.interest === "string" ? body.interest : "";
   const chapterIndex = Number.isInteger(body.chapter) ? (body.chapter as number) : null;
 
-  const isFree = entitlement.tier === "free";
   const identity: LessonIdentity = { pool, window, format, topic, interest };
 
   // Two keys, and the difference matters.
@@ -529,7 +530,9 @@ async function handleGeneration(
   // answers.
   if (!cachedEntry) {
     const ceiling = await spendCheck(env, hooks, now);
-    if (!ceiling.withinCeiling && isFree) {
+    // `isPaying`, not "not premium": the ceiling is lifted for funded
+    // requests, and only for those.
+    if (!ceiling.withinCeiling && !isPaying(entitlement.tier)) {
       return errorResponse(
         429,
         "spendCeilingReached",

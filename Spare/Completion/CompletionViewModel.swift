@@ -39,7 +39,7 @@ final class CompletionViewModel: ObservableObject {
         self.modelContext = modelContext
     }
 
-    /// - Parameter isPremium: read at the call, never captured.
+    /// - Parameter hasPremiumAccess: read at the call, never captured.
     ///
     /// This screen is where the paywall is reached from: the reader arrives
     /// free, sees the test row locked, buys, and comes back to the *same*
@@ -48,15 +48,15 @@ final class CompletionViewModel: ObservableObject {
     /// on would never get a test. The caller re-runs this when the entitlement
     /// changes, which is why the guard below releases on completion rather
     /// than latching forever.
-    func ensureAttachmentsReady(for lesson: StoredLesson, isPremium: Bool) {
+    func ensureAttachmentsReady(for lesson: StoredLesson, hasPremiumAccess: Bool) {
         guard preparation == nil else { return }
         preparation = Task { [weak self] in
-            await self?.prepare(for: lesson, isPremium: isPremium)
+            await self?.prepare(for: lesson, hasPremiumAccess: hasPremiumAccess)
             self?.preparation = nil
         }
     }
 
-    private func prepare(for lesson: StoredLesson, isPremium: Bool) async {
+    private func prepare(for lesson: StoredLesson, hasPremiumAccess: Bool) async {
         let lessonID = lesson.id
         let existing = FetchDescriptor<StoredRecallItem>(
             predicate: #Predicate { $0.lessonID == lessonID }
@@ -65,7 +65,7 @@ final class CompletionViewModel: ObservableObject {
         let hasRecall = existingRecall != nil
         // Premium wants both. Free-pool lessons have no test and never will,
         // so a missing one is not a reason to keep asking.
-        let wantsTest = isPremium && lesson.postLessonTest.isEmpty
+        let wantsTest = hasPremiumAccess && lesson.postLessonTest.isEmpty
         guard !hasRecall || wantsTest else { return }
 
         isPreparingAttachments = true

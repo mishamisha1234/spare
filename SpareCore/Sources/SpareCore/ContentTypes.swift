@@ -262,5 +262,32 @@ public enum Tier: String, Codable, Sendable, CaseIterable {
     case yearly
     case lifetime
 
-    public var isPremium: Bool { self != .free }
+    /// Grants the premium *experience*: every length, the post-lesson test,
+    /// go-deeper, the premium cache pool.
+    ///
+    /// Deliberately a different question from ``isPaying``, and deliberately
+    /// a `switch` rather than `self != .free`. A tier that grants access
+    /// without money behind it is exactly the kind of tier this project is
+    /// about to add, and `!= .free` would silently answer *yes* at every one
+    /// of these call sites — including the ones that are really asking
+    /// whether somebody paid. Adding a case must break the build here.
+    public var hasPremiumAccess: Bool {
+        switch self {
+        case .free: false
+        case .monthly, .yearly, .lifetime: true
+        }
+    }
+
+    /// There is a purchase behind this tier.
+    ///
+    /// Use this for anything that talks about, restores, or is funded by a
+    /// transaction. "No previous purchase found" is true for somebody with
+    /// access but no receipt, and telling them otherwise would be a lie the
+    /// App Store can't back up.
+    public var isPaying: Bool {
+        switch self {
+        case .free: false
+        case .monthly, .yearly, .lifetime: true
+        }
+    }
 }

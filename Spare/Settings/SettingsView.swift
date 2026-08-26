@@ -85,11 +85,11 @@ struct SettingsView: View {
     private var planSection: some View {
         section("Plan") {
             HStack {
-                Text(entitlements.isPremium ? "Premium" : "Free")
+                Text(entitlements.hasPremiumAccess ? "Premium" : "Free")
                     .font(Theme.Font.headline.font)
                     .foregroundStyle(palette.text)
                 Spacer()
-                if !entitlements.isPremium {
+                if !entitlements.hasPremiumAccess {
                     Text("1 lesson a day")
                         .font(Theme.Font.label.font)
                         .foregroundStyle(palette.secondaryText)
@@ -97,7 +97,7 @@ struct SettingsView: View {
             }
             .accessibilityIdentifier("settings.plan")
 
-            if entitlements.isPremium {
+            if entitlements.hasPremiumAccess {
                 Text("\(entitlements.miniCoursesRemaining) of \(EntitlementRules.premiumMiniCoursesPerMonth) mini-courses left this month. Shorter lessons are unlimited.")
                     .font(Theme.Font.caption.font)
                     .foregroundStyle(palette.secondaryText)
@@ -116,7 +116,7 @@ struct SettingsView: View {
         if hasStoredKey {
             return "A key is stored on this device. Lessons are generated live."
         }
-        return entitlements.isPremium
+        return entitlements.hasPremiumAccess
             ? "No developer key stored. Premium lessons are generated normally."
             : "No key stored. The app runs on built-in sample lessons."
     }

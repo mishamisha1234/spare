@@ -23,7 +23,8 @@ final class ProductCatalogTests: XCTestCase {
 
     func testEveryPurchasedTierIsPremium() {
         for kind in PurchaseProductKind.allCases {
-            XCTAssertTrue(kind.tier.isPremium, "\(kind) must grant premium")
+            XCTAssertTrue(kind.tier.isPaying, "\(kind) must be a tier with a purchase behind it")
+            XCTAssertTrue(kind.tier.hasPremiumAccess, "\(kind) must grant premium access")
         }
     }
 

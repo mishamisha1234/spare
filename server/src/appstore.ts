@@ -16,6 +16,47 @@
 
 export type Tier = "free" | "monthly" | "yearly" | "lifetime";
 
+/**
+ * Grants the premium *experience*: every window, go-deeper, the premium cache
+ * pool, and the expensive model.
+ *
+ * Mirrors `Tier.hasPremiumAccess` in SpareCore, and is written as an
+ * exhaustive switch rather than `tier !== "free"` for the same reason. A tier
+ * that grants access without money behind it would inherit *yes* from
+ * `!== "free"` at every call site, including the ones asking the other
+ * question -- see `isPaying`. Adding a member must break this switch.
+ */
+export function hasPremiumAccess(tier: Tier): boolean {
+  switch (tier) {
+    case "free":
+      return false;
+    case "monthly":
+    case "yearly":
+    case "lifetime":
+      return true;
+  }
+}
+
+/**
+ * There is a verified purchase behind this tier.
+ *
+ * This is the one that guards the global spend ceiling. The ceiling exists so
+ * that a runaway month cannot outrun revenue, and the reason paying readers
+ * pass through it is precisely that their requests are funded. A tier holding
+ * access without a receipt is not funded and must stop at the ceiling like
+ * anyone else.
+ */
+export function isPaying(tier: Tier): boolean {
+  switch (tier) {
+    case "free":
+      return false;
+    case "monthly":
+    case "yearly":
+    case "lifetime":
+      return true;
+  }
+}
+
 export interface VerifiedEntitlement {
   tier: Tier;
   /** Milliseconds since epoch. `null` for a non-expiring purchase. */

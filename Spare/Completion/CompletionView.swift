@@ -169,16 +169,16 @@ struct CompletionView: View {
             lesson = stored
             isMarkedComplete = stored?.completedAt != nil
             if let stored {
-                viewModel.ensureAttachmentsReady(for: stored, isPremium: entitlements.isPremium)
+                viewModel.ensureAttachmentsReady(for: stored, hasPremiumAccess: entitlements.hasPremiumAccess)
             }
         }
         // Buying happens in a sheet over this screen, so the view never
         // disappears and `.task` never runs again. Without this, the lesson
         // the reader just upgraded to be tested on is the one lesson that
         // never gets a test.
-        .onChange(of: entitlements.isPremium) { _, isPremium in
-            guard isPremium, let lesson else { return }
-            viewModel.ensureAttachmentsReady(for: lesson, isPremium: true)
+        .onChange(of: entitlements.hasPremiumAccess) { _, hasPremiumAccess in
+            guard hasPremiumAccess, let lesson else { return }
+            viewModel.ensureAttachmentsReady(for: lesson, hasPremiumAccess: true)
         }
         // No container-level accessibilityIdentifier: SwiftUI can propagate
         // one down and clobber every descendant's own identifier — confirmed

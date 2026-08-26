@@ -108,7 +108,11 @@ final class EntitlementService: ObservableObject {
         do {
             try await store.restore()
             await refreshEntitlements()
-            if !snapshot.tier.isPremium {
+            // `isPaying`, not `hasPremiumAccess`: Restore is a question about
+            // transactions. Somebody holding access with no receipt behind it
+            // must still be told nothing was found, or they will believe a
+            // purchase was restored that the App Store cannot produce.
+            if !snapshot.tier.isPaying {
                 errorMessage = "No previous purchase found on this Apple Account."
             }
         } catch {
@@ -168,7 +172,12 @@ final class EntitlementService: ObservableObject {
         !availableWindows.contains(window)
     }
 
-    var isPremium: Bool { snapshot.tier.isPremium }
+    /// Grants the premium experience. Drives affordances and copy.
+    var hasPremiumAccess: Bool { snapshot.tier.hasPremiumAccess }
+
+    /// There is a purchase behind the current tier. Drives anything that
+    /// talks about, or is funded by, a transaction.
+    var isPaying: Bool { snapshot.tier.isPaying }
 
     /// Records that a lesson actually started. Spends the free daily
     /// allowance and refreshes the mini-course count.

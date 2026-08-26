@@ -74,8 +74,8 @@ struct PaywallView: View {
         .task { await entitlements.loadProducts() }
         // Dismiss as soon as the purchase lands, rather than showing a
         // congratulations screen nobody asked for.
-        .onChange(of: entitlements.isPremium) { _, isPremium in
-            if isPremium { dismiss() }
+        .onChange(of: entitlements.hasPremiumAccess) { _, hasPremiumAccess in
+            if hasPremiumAccess { dismiss() }
         }
     }
 
