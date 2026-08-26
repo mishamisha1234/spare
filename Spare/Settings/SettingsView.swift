@@ -79,36 +79,84 @@ struct SettingsView: View {
 
     // MARK: - Plan
 
-    /// States the plan and, for premium, the mini-course allowance — before
-    /// it bites rather than at the moment it does. A cap discovered only on
-    /// refusal is a worse deal than the same cap stated up front.
+    /// States the plan and whatever allowance applies to it — before it bites
+    /// rather than at the moment it does. A cap discovered only on refusal is
+    /// a worse deal than the same cap stated up front.
+    ///
+    /// Three states, not two. A trialist is neither Free nor a subscriber, and
+    /// showing them "Premium" with a mini-course allowance they do not have
+    /// would be the undisclosed-cap problem again, one tier along.
     private var planSection: some View {
         section("Plan") {
             HStack {
-                Text(entitlements.hasPremiumAccess ? "Premium" : "Free")
+                Text(Self.planName(for: entitlements.snapshot.tier))
                     .font(Theme.Font.headline.font)
                     .foregroundStyle(palette.text)
                 Spacer()
-                if !entitlements.hasPremiumAccess {
-                    Text("1 lesson a day")
+                if let trailing = planTrailing {
+                    Text(trailing)
                         .font(Theme.Font.label.font)
                         .foregroundStyle(palette.secondaryText)
                 }
             }
             .accessibilityIdentifier("settings.plan")
 
-            if entitlements.hasPremiumAccess {
-                Text("\(entitlements.miniCoursesRemaining) of \(EntitlementRules.premiumMiniCoursesPerMonth) mini-courses left this month. Shorter lessons are unlimited.")
-                    .font(Theme.Font.caption.font)
-                    .foregroundStyle(palette.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("settings.miniCourseAllowance")
-            } else {
-                Text("Free covers the 3- and 7-minute lengths, one lesson a day, and your whole library. Nothing you have learned is ever hidden or deleted.")
-                    .font(Theme.Font.caption.font)
-                    .foregroundStyle(palette.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text(planDetail)
+                .font(Theme.Font.caption.font)
+                .foregroundStyle(palette.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier(
+                    entitlements.isTrialing
+                        ? "settings.trialAllowance"
+                        : "settings.miniCourseAllowance"
+                )
+        }
+    }
+
+    static func planName(for tier: Tier) -> String {
+        switch tier {
+        case .free: "Free"
+        case .trialing: "Premium trial"
+        case .monthly, .yearly: "Premium"
+        }
+    }
+
+    /// The short right-hand summary. Nil for a subscriber: the detail line
+    /// below already carries their one allowance, and repeating it in two
+    /// sizes on one row reads as two different limits.
+    private var planTrailing: String? {
+        if entitlements.isTrialing {
+            let days = entitlements.trialDaysRemaining()
+            return "\(days) \(days == 1 ? "day" : "days") left"
+        }
+        return entitlements.hasPremiumAccess ? nil : "1 lesson a day"
+    }
+
+    private var planDetail: String {
+        Self.planDetail(
+            tier: entitlements.snapshot.tier,
+            trial: entitlements.snapshot.trial,
+            miniCoursesRemaining: entitlements.miniCoursesRemaining
+        )
+    }
+
+    /// The disclosure. Built from the limits rather than written out, and
+    /// static so `TrialCopyTests` can read it without a view — the same shape
+    /// as `PaywallView.freeTierDisclosure`, and for the same reason: this is
+    /// a promise, and the trial's cap has to be visible while there is still
+    /// some of it left to spend.
+    static func planDetail(tier: Tier, trial: TrialMirror, miniCoursesRemaining: Int) -> String {
+        switch tier {
+        case .trialing:
+            return "\(trial.remainingLessons) of \(TrialLimits.lessons) trial lessons left, "
+                + "including \(trial.remainingCourses) of \(TrialLimits.courses) mini-courses. "
+                + "No card, nothing to cancel."
+        case .monthly, .yearly:
+            return "\(miniCoursesRemaining) of \(EntitlementRules.premiumMiniCoursesPerMonth) "
+                + "mini-courses left this month. Shorter lessons are unlimited."
+        case .free:
+            return "Free covers the 3- and 7-minute lengths, one lesson a day, and your whole "
+                + "library. Nothing you have learned is ever hidden or deleted."
         }
     }
 

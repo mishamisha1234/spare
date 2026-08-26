@@ -9,19 +9,51 @@ public struct EntitlementSnapshot: Sendable, Equatable, Codable {
     public var tier: Tier
     public var freeLessonsUsedToday: Int
     public var lastFreeLessonDate: Date
+    /// The server's last word on this device's trial.
+    ///
+    /// Display and affordances only. `tier == .trialing` is derived from it,
+    /// and the server re-derives the same thing from its own copy before
+    /// generating anything, so a mirror that is stale or edited costs a
+    /// misdrawn circle rather than a lesson.
+    public var trial: TrialMirror
 
     public init(
         tier: Tier = .free,
         freeLessonsUsedToday: Int = 0,
-        lastFreeLessonDate: Date = .distantPast
+        lastFreeLessonDate: Date = .distantPast,
+        trial: TrialMirror = .eligible
     ) {
         self.tier = tier
         self.freeLessonsUsedToday = freeLessonsUsedToday
         self.lastFreeLessonDate = lastFreeLessonDate
+        self.trial = trial
     }
 
     public static let free = EntitlementSnapshot()
     public static let premium = EntitlementSnapshot(tier: .monthly)
+
+    /// A trial with everything still to spend.
+    public static let trialing = EntitlementSnapshot(
+        tier: .trialing,
+        trial: TrialMirror(
+            status: .active,
+            remainingLessons: TrialLimits.lessons,
+            remainingCourses: TrialLimits.courses
+        )
+    )
+
+    private enum CodingKeys: String, CodingKey {
+        case tier, freeLessonsUsedToday, lastFreeLessonDate, trial
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        tier = try container.decode(Tier.self, forKey: .tier)
+        freeLessonsUsedToday = try container.decode(Int.self, forKey: .freeLessonsUsedToday)
+        lastFreeLessonDate = try container.decode(Date.self, forKey: .lastFreeLessonDate)
+        // Absent in anything written before the trial existed.
+        trial = try container.decodeIfPresent(TrialMirror.self, forKey: .trial) ?? .eligible
+    }
 }
 
 public enum PaywallTrigger: Sendable, Equatable {
@@ -33,14 +65,28 @@ public enum PaywallTrigger: Sendable, Equatable {
     case goDeeperLocked
     /// Free user tapped the post-lesson test.
     case postLessonTestLocked
+    /// The free week is over. Distinct from every trigger above because it
+    /// opens the day-7 summary rather than the ordinary paywall: the ask is
+    /// about keeping what the reader built, not about a length they just
+    /// tapped.
+    case trialEnded
 }
 
 /// A limit that applies to someone who is *already paying*. Distinct from a
 /// `PaywallTrigger` on purpose: showing a paywall to a subscriber who hit a
 /// fair-use cap would be both useless and insulting, so the two can never be
 /// confused at a call site.
+/// A limit that is *not* an invitation to buy.
+///
+/// Renamed in spirit when the trial landed: the original comment said "someone
+/// who is already paying", which a trialist is not. What the two cases share
+/// is that showing a paywall would be the wrong response — a subscriber who
+/// hit a fair-use cap cannot buy their way out of it, and a trialist who spent
+/// both course slots still has most of a free week left and should be told so
+/// rather than sold to.
 public enum UsageCap: Sendable, Equatable {
     case miniCoursesThisMonth(used: Int, cap: Int)
+    case trialCoursesThisWeek(used: Int, cap: Int)
 }
 
 public enum AccessDecision: Sendable, Equatable {
@@ -124,6 +170,23 @@ public enum EntitlementRules {
         now: Date,
         calendar: Calendar = .current
     ) -> AccessDecision {
+        // The trial's own two ceilings, mirroring the server's. Checked before
+        // the general premium branch because a trialist is premium *within a
+        // budget*, and the budget is the part the reader has to be able to see.
+        if snapshot.tier == .trialing {
+            guard snapshot.trial.remainingLessons > 0 else {
+                return .denied(.trialEnded)
+            }
+            guard window.format.isChaptered else { return .allowed }
+            guard snapshot.trial.remainingCourses > 0 else {
+                return .capped(.trialCoursesThisWeek(
+                    used: max(0, TrialLimits.courses - snapshot.trial.remainingCourses),
+                    cap: TrialLimits.courses
+                ))
+            }
+            return .allowed
+        }
+
         guard !snapshot.tier.hasPremiumAccess else {
             // The one limit that applies to paying users. Not a paywall.
             guard window.format.isChaptered else { return .allowed }

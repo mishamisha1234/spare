@@ -27,11 +27,20 @@ final class EntitlementService: ObservableObject {
     @Published private(set) var miniCoursesRemaining = EntitlementRules.premiumMiniCoursesPerMonth
 
     private let store: any PurchaseStore
+    /// Nil when there is no proxy to ask -- a build with no configured base
+    /// URL, or previews. The trial then stays whatever the cache says, which
+    /// for a fresh install is `eligible` and grants nothing.
+    private let trialStore: (any TrialStore)?
     private let context: ModelContext
     private var updatesTask: Task<Void, Never>?
 
-    init(store: any PurchaseStore, container: ModelContainer) {
+    init(
+        store: any PurchaseStore,
+        trialStore: (any TrialStore)? = nil,
+        container: ModelContainer
+    ) {
         self.store = store
+        self.trialStore = trialStore
         self.context = ModelContext(container)
         loadCachedSnapshot()
         refreshMiniCourseUsage()
@@ -56,6 +65,49 @@ final class EntitlementService: ObservableObject {
         }
         Task { await refreshEntitlements() }
         Task { await loadProducts() }
+        Task { await refreshTrial() }
+    }
+
+    // MARK: - Trial
+    //
+    // Everything here is a mirror. The server holds the trial next to this
+    // device's metering and re-checks it atomically before generating, so the
+    // worst a wrong answer here can do is draw a circle that then refuses.
+
+    /// Claims this device's one trial, then mirrors whatever came back.
+    ///
+    /// Returns the result so the caller can distinguish "here is your week"
+    /// from "you have already had one" -- the second must not be presented as
+    /// a grant, and there is no second trial to fall back on.
+    @discardableResult
+    func startTrial() async -> TrialStartResult {
+        guard let trialStore else {
+            return TrialStartResult(started: false, reason: "unavailable", trial: snapshot.trial)
+        }
+        let result = await trialStore.start()
+        apply(trial: result.trial)
+        return result
+    }
+
+    /// Re-reads the mirror. Cheap, and called after anything that spends a
+    /// trial lesson so the remaining count on screen is not a lesson behind.
+    func refreshTrial() async {
+        guard let trialStore else { return }
+        apply(trial: await trialStore.status())
+    }
+
+    /// Whether this device may still be offered a free week.
+    var isTrialEligible: Bool { snapshot.trial.status == .eligible }
+
+    var isTrialing: Bool { snapshot.tier == .trialing }
+
+    /// The trial has been had and is over. What the day-7 summary waits for.
+    var hasTrialEnded: Bool { snapshot.trial.status == .ended }
+
+    var trialLessonsRemaining: Int { snapshot.trial.remainingLessons }
+
+    func trialDaysRemaining(now: Date = .now) -> Int {
+        snapshot.trial.daysRemaining(now: now)
     }
 
     func loadProducts() async {
@@ -75,7 +127,7 @@ final class EntitlementService: ObservableObject {
     /// Re-reads what StoreKit says is owned and persists the result.
     func refreshEntitlements() async {
         let owned = await store.ownedProductIDs()
-        apply(tier: ProductCatalog.resolvedTier(forOwnedProductIDs: owned))
+        apply(purchased: ProductCatalog.resolvedTier(forOwnedProductIDs: owned))
     }
 
     // MARK: - Buying
@@ -176,6 +228,10 @@ final class EntitlementService: ObservableObject {
     func recordLessonStarted(window: TimeWindow, now: Date = .now) {
         apply(snapshot: EntitlementRules.consumingLesson(snapshot, now: now))
         refreshMiniCourseUsage()
+        // The trial's counters live on the server, so the only way to know
+        // what a lesson cost is to ask. Done here rather than on a timer
+        // because this is the moment the number on screen goes stale.
+        if isTrialing { Task { await refreshTrial() } }
     }
 
     // MARK: - Persistence
@@ -183,12 +239,43 @@ final class EntitlementService: ObservableObject {
     private func loadCachedSnapshot() {
         let stored = (try? context.fetch(FetchDescriptor<StoredEntitlement>()))?.first
         snapshot = stored?.snapshot ?? .free
+        // A cached `.trialing` came from a purchase-free state, so seeding
+        // `purchasedTier` from it would invent a subscription. Only a paying
+        // cached tier is a claim about a purchase.
+        purchasedTier = snapshot.tier.isPaying ? snapshot.tier : .free
     }
 
-    private func apply(tier: Tier) {
+    /// The tier a purchase implies, which is not always the tier in force.
+    ///
+    /// Kept separate from `apply(trial:)` because the two arrive from
+    /// different places at different times -- StoreKit and the proxy -- and
+    /// whichever lands second must not erase the other. `resolvedTier` below
+    /// is the single place they are combined.
+    private var purchasedTier: Tier = .free
+
+    private func apply(purchased tier: Tier) {
+        purchasedTier = tier
         var updated = snapshot
-        updated.tier = tier
+        updated.tier = resolvedTier(purchased: tier, trial: snapshot.trial)
         apply(snapshot: updated)
+    }
+
+    private func apply(trial: TrialMirror) {
+        var updated = snapshot
+        updated.trial = trial
+        updated.tier = resolvedTier(purchased: purchasedTier, trial: trial)
+        apply(snapshot: updated)
+    }
+
+    /// A purchase always wins.
+    ///
+    /// Somebody who subscribes during their free week is a subscriber, and
+    /// leaving them on `.trialing` would apply the trial's ten-lesson cap to
+    /// a paid account. The server refuses to start a trial for a subscriber
+    /// for the same reason from the other direction.
+    private func resolvedTier(purchased: Tier, trial: TrialMirror) -> Tier {
+        if purchased.isPaying { return purchased }
+        return trial.isActive ? .trialing : .free
     }
 
     private func apply(snapshot newValue: EntitlementSnapshot) {
@@ -202,7 +289,8 @@ final class EntitlementService: ObservableObject {
             context.insert(StoredEntitlement(
                 tier: newValue.tier,
                 freeLessonsUsedToday: newValue.freeLessonsUsedToday,
-                lastFreeLessonDate: newValue.lastFreeLessonDate
+                lastFreeLessonDate: newValue.lastFreeLessonDate,
+                trial: newValue.trial
             ))
         }
         try? context.save()

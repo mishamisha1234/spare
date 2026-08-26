@@ -258,6 +258,12 @@ public struct DeeperAngle: Codable, Sendable, Hashable, Identifiable {
 
 public enum Tier: String, Codable, Sendable, CaseIterable {
     case free
+    /// The reverse trial: premium access with no transaction behind it.
+    ///
+    /// The server decides this, never the app. It is here so the gates have
+    /// one vocabulary — a second parallel "am I trialing" flag beside `tier`
+    /// would be a second thing every gate had to remember to check.
+    case trialing
     case monthly
     case yearly
 
@@ -292,7 +298,7 @@ public enum Tier: String, Codable, Sendable, CaseIterable {
     public var hasPremiumAccess: Bool {
         switch self {
         case .free: false
-        case .monthly, .yearly: true
+        case .trialing, .monthly, .yearly: true
         }
     }
 
@@ -304,7 +310,7 @@ public enum Tier: String, Codable, Sendable, CaseIterable {
     /// App Store can't back up.
     public var isPaying: Bool {
         switch self {
-        case .free: false
+        case .free, .trialing: false
         case .monthly, .yearly: true
         }
     }

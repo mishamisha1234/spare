@@ -139,6 +139,11 @@ struct RootView: View {
             paywall = PaywallPresentation(trigger: trigger)
         case .capped(.miniCoursesThisMonth(_, let cap)):
             capMessage = "You've started all \(cap) mini-courses included this month. The count resets on the 1st — shorter lessons are unaffected."
+        case .capped(.trialCoursesThisWeek(_, let cap)):
+            // A note, not the paywall. They still have most of a free week,
+            // and selling to somebody in the middle of a gift is the shakedown
+            // the ordering rule exists to prevent.
+            capMessage = "That's both \(cap == 1 ? "course" : "courses") from your free week. Every other length still works."
         }
     }
 

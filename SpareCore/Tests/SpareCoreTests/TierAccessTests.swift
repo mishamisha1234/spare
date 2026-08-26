@@ -11,6 +11,8 @@ final class TierAccessTests: XCTestCase {
 
     private let expected: [Tier: (access: Bool, paying: Bool)] = [
         .free: (access: false, paying: false),
+        // The case the split exists for. Premium access, no transaction.
+        .trialing: (access: true, paying: false),
         .monthly: (access: true, paying: true),
         .yearly: (access: true, paying: true),
     ]
@@ -27,15 +29,22 @@ final class TierAccessTests: XCTestCase {
         }
     }
 
-    /// Access without payment is the case the split is for. Today nothing
-    /// occupies it; the assertion states that as a fact rather than an
-    /// oversight, so the day something does, this test names it.
-    func testNoTierCurrentlyGrantsAccessWithoutPayment() {
+    /// Exactly one tier grants access with no purchase behind it.
+    ///
+    /// This assertion used to say *none*, and was written to fail the day one
+    /// arrived — which is what it did. Naming the tier rather than counting
+    /// them means a second one cannot be added without somebody re-reading
+    /// every `isPaying` call site, which is the whole point of the split.
+    func testOnlyTheTrialGrantsAccessWithoutPayment() {
         let accessWithoutPayment = Tier.allCases.filter { $0.hasPremiumAccess && !$0.isPaying }
-        XCTAssertEqual(
-            accessWithoutPayment, [Tier](),
-            "A tier now grants access with no purchase behind it. Every `isPaying` "
-                + "call site must be re-read before this test is updated."
-        )
+        XCTAssertEqual(accessWithoutPayment, [.trialing])
+    }
+
+    /// The single line that keeps the global spend ceiling meaningful. A
+    /// trialist's requests are not funded by anything, so they stop at the
+    /// ceiling exactly like a free device does.
+    func testATrialDoesNotPassTheSpendCeiling() {
+        XCTAssertFalse(Tier.trialing.isPaying)
+        XCTAssertTrue(Tier.trialing.hasPremiumAccess)
     }
 }

@@ -27,6 +27,35 @@ struct SpareApp: App {
         ProcessInfo.processInfo.arguments.contains("-UITEST_FAILING_PROVIDER")
     }
 
+    /// Which point in a seven-day trial the walkthrough starts from.
+    ///
+    /// The trial's screens are the ones a human cannot otherwise see without
+    /// waiting four days and then three more, which is exactly the kind of
+    /// state that ships unlooked-at. These put the day-4 nudge and the day-7
+    /// summary in front of the camera on demand.
+    private static var uiTestTrial: TrialMirror? {
+        let arguments = ProcessInfo.processInfo.arguments
+        let now = Date()
+        if arguments.contains("-UITEST_TRIAL_DAY4") {
+            // Four days in, six lessons read, three days left.
+            return TrialMirror(
+                status: .active,
+                remainingLessons: 4,
+                remainingCourses: 1,
+                startedAt: now.addingTimeInterval(-4 * 86_400),
+                expiresAt: now.addingTimeInterval(3 * 86_400)
+            )
+        }
+        if arguments.contains("-UITEST_TRIAL_EXPIRED") {
+            return TrialMirror(
+                status: .ended,
+                startedAt: now.addingTimeInterval(-8 * 86_400),
+                expiresAt: now.addingTimeInterval(-86_400)
+            )
+        }
+        return nil
+    }
+
     private let container: ModelContainer
     private let provider: any LessonProvider
     /// Where a lesson's recall question and test come from. Real only on the
@@ -75,7 +104,11 @@ struct SpareApp: App {
         let purchases: any PurchaseStore = Self.isUITestReset
             ? StubPurchaseStore()
             : StoreKitPurchaseStore()
-        self.entitlements = EntitlementService(store: purchases, container: container)
+        self.entitlements = EntitlementService(
+            store: purchases,
+            trialStore: Self.makeTrialStore(purchases: purchases),
+            container: container
+        )
 
         if Self.isUITestFailingProvider {
             self.provider = FailingProvider()
@@ -87,6 +120,26 @@ struct SpareApp: App {
             self.provider = Self.makeLiveProvider(container: container, purchases: purchases)
             self.attachments = Self.makeAttachmentStore(purchases: purchases)
         }
+    }
+
+    /// Where the trial mirror comes from.
+    ///
+    /// A stub under UI tests, for the same reason `StubPurchaseStore` is:
+    /// tests must never reach the network, and a walkthrough that had to wait
+    /// out a real seven-day clock would photograph nothing. Nil when there is
+    /// no proxy configured, which leaves the trial permanently `eligible` and
+    /// therefore granting nothing.
+    private static func makeTrialStore(purchases: any PurchaseStore) -> (any TrialStore)? {
+        if Self.isUITestReset {
+            return StubTrialStore(Self.uiTestTrial ?? .eligible)
+        }
+        guard let baseURL = ProxyConfiguration.baseURL() else { return nil }
+        return ProxyTrialStore(
+            transport: FoundationHTTPTransport(),
+            baseURL: baseURL,
+            deviceID: DeviceIdentity.current(),
+            receipt: { await purchases.currentReceipt() }
+        )
     }
 
     /// The proxy's attachment store, or one that attaches nothing.

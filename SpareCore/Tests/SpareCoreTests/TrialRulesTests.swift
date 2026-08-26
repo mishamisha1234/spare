@@ -1,0 +1,186 @@
+import XCTest
+@testable import SpareCore
+
+/// The client half of the reverse trial.
+///
+/// Everything here is about what the app *draws*. The server decides what it
+/// serves, and re-checks the same limits atomically before generating — so a
+/// disagreement between these two costs a misdrawn circle, not a lesson.
+final class TrialRulesTests: XCTestCase {
+
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func active(lessons: Int = 10, courses: Int = 2, daysLeft: Double = 7) -> EntitlementSnapshot {
+        EntitlementSnapshot(
+            tier: .trialing,
+            trial: TrialMirror(
+                status: .active,
+                remainingLessons: lessons,
+                remainingCourses: courses,
+                startedAt: now.addingTimeInterval(-(7 - daysLeft) * 86_400),
+                expiresAt: now.addingTimeInterval(daysLeft * 86_400)
+            )
+        )
+    }
+
+    // MARK: - Decoding what the server sends
+
+    func testDecodesTheServersShape() throws {
+        let json = """
+        {"status":"active","remainingLessons":6,"remainingCourses":1,
+         "startedAt":1800000000000,"expiresAt":1800604800000}
+        """
+        let mirror = try JSONDecoder().decode(TrialMirror.self, from: Data(json.utf8))
+
+        XCTAssertEqual(mirror.status, .active)
+        XCTAssertEqual(mirror.remainingLessons, 6)
+        XCTAssertEqual(mirror.remainingCourses, 1)
+        // Milliseconds on the wire, `Date` everywhere in Swift.
+        XCTAssertEqual(mirror.startedAt, Date(timeIntervalSince1970: 1_800_000_000))
+        XCTAssertEqual(mirror.expiresAt, Date(timeIntervalSince1970: 1_800_604_800))
+    }
+
+    func testRoundTripsThroughItsOwnEncoding() throws {
+        let original = active(lessons: 3, courses: 0, daysLeft: 2).trial
+        let data = try JSONEncoder().encode(original)
+        XCTAssertEqual(try JSONDecoder().decode(TrialMirror.self, from: data), original)
+    }
+
+    /// A server that grows a fourth status must not brick an older client.
+    /// `ended` is the safe reading of "I don't recognise this": it shows the
+    /// free tier, which always works.
+    func testAnUnknownStatusReadsAsEnded() throws {
+        let json = #"{"status":"paused","remainingLessons":4}"#
+        let mirror = try JSONDecoder().decode(TrialMirror.self, from: Data(json.utf8))
+        XCTAssertEqual(mirror.status, .ended)
+    }
+
+    func testAnUnreachableServerIsNotAnActiveTrial() {
+        XCTAssertEqual(TrialMirror.unavailable.status, .ended)
+        XCTAssertFalse(TrialMirror.unavailable.isActive)
+    }
+
+    // MARK: - Counting down
+
+    /// Rounded up, so the last part-day reads as "1 day left" rather than
+    /// "0 days left" on the morning somebody still has hours.
+    func testDaysRemainingRoundsUp() {
+        XCTAssertEqual(active(daysLeft: 3).trial.daysRemaining(now: now), 3)
+        XCTAssertEqual(active(daysLeft: 2.4).trial.daysRemaining(now: now), 3)
+        XCTAssertEqual(active(daysLeft: 0.1).trial.daysRemaining(now: now), 1)
+    }
+
+    func testAnEndedTrialHasNoDaysLeft() {
+        let ended = TrialMirror(status: .ended, expiresAt: now.addingTimeInterval(-3_600))
+        XCTAssertEqual(ended.daysRemaining(now: now), 0)
+    }
+
+    /// The day-4 nudge needs to know which day it is, and day 0 is the day
+    /// the trial started rather than the first whole day after it.
+    func testDayIndexCountsFromTheStart() {
+        XCTAssertEqual(active(daysLeft: 7).trial.dayIndex(now: now), 0)
+        XCTAssertEqual(active(daysLeft: 3).trial.dayIndex(now: now), 4)
+    }
+
+    // MARK: - What a trial opens
+
+    func testATrialOpensEveryLength() {
+        XCTAssertEqual(EntitlementRules.availableWindows(active()), TimeWindow.allCases)
+        for window in TimeWindow.allCases {
+            XCTAssertEqual(
+                EntitlementRules.canStartLesson(active(), window: window, now: now),
+                .allowed,
+                "\(window) should be open during a trial"
+            )
+        }
+    }
+
+    func testATrialIncludesTheTestAndGoingDeeper() {
+        XCTAssertEqual(EntitlementRules.canTakePostLessonTest(active()), .allowed)
+        XCTAssertEqual(EntitlementRules.canGoDeeper(active()), .allowed)
+    }
+
+    /// A trialist is premium for gating purposes, so the free daily counter
+    /// must not move under them. Their spending is counted on the server,
+    /// against the trial's own ten.
+    func testATrialDoesNotSpendTheFreeDailyAllowance() {
+        let before = active()
+        XCTAssertEqual(EntitlementRules.consumingLesson(before, now: now), before)
+    }
+
+    // MARK: - The two ceilings
+
+    func testTheLastTrialLessonIsAllowedAndTheNextIsNot() {
+        XCTAssertEqual(
+            EntitlementRules.canStartLesson(active(lessons: 1), window: .fifteen, now: now),
+            .allowed
+        )
+        XCTAssertEqual(
+            EntitlementRules.canStartLesson(active(lessons: 0), window: .fifteen, now: now),
+            .denied(.trialEnded)
+        )
+    }
+
+    /// Spending both course slots is not the trial ending, and must not be
+    /// reported as it. The reader still has lessons and most of a week.
+    func testSpendingBothCoursesIsACapAndNotAPaywall() {
+        let snapshot = active(lessons: 6, courses: 0)
+        let decision = EntitlementRules.canStartLesson(snapshot, window: .thirty, now: now)
+
+        XCTAssertEqual(decision, .capped(.trialCoursesThisWeek(used: 2, cap: 2)))
+        // The distinction that matters at the call site: a capped decision
+        // carries no paywall trigger, so "show the paywall for any denial"
+        // cannot reach it.
+        XCTAssertNil(decision.trigger)
+
+        XCTAssertEqual(
+            EntitlementRules.canStartLesson(snapshot, window: .seven, now: now),
+            .allowed,
+            "the shorter lengths still work"
+        )
+    }
+
+    /// Lessons running out beats courses running out: the trial is over, and
+    /// a course cap message would tell somebody the shorter lengths still
+    /// work when nothing does.
+    func testAnExhaustedTrialReportsTheTrialAndNotTheCourseCap() {
+        XCTAssertEqual(
+            EntitlementRules.canStartLesson(active(lessons: 0, courses: 0), window: .thirty, now: now),
+            .denied(.trialEnded)
+        )
+    }
+
+    // MARK: - The stub
+
+    func testTheStubGrantsExactlyOneTrial() async {
+        let store = StubTrialStore()
+        let first = await store.start()
+        XCTAssertTrue(first.started)
+        XCTAssertEqual(first.trial.remainingLessons, TrialLimits.lessons)
+        XCTAssertEqual(first.trial.remainingCourses, TrialLimits.courses)
+
+        let second = await store.start()
+        XCTAssertFalse(second.started)
+        XCTAssertEqual(second.reason, "alreadyUsed")
+        XCTAssertEqual(second.trial.startedAt, first.trial.startedAt)
+    }
+
+    func testTheStubCanBeginPartWayThroughAWeek() async {
+        let store = StubTrialStore(
+            TrialMirror(status: .active, remainingLessons: 4, remainingCourses: 1)
+        )
+        let refused = await store.start()
+        XCTAssertFalse(refused.started, "a running trial cannot be started again")
+        XCTAssertEqual(await store.status().remainingLessons, 4)
+    }
+
+    /// The numbers the copy states have to be the numbers the server enforces.
+    /// These are the mirror of `TRIAL_LESSONS` / `TRIAL_COURSES` /
+    /// `TRIAL_DAYS` in `server/src/limits.ts`.
+    func testTheAdvertisedLimitsMatchTheServer() {
+        XCTAssertEqual(TrialLimits.lessons, 10)
+        XCTAssertEqual(TrialLimits.courses, 2)
+        XCTAssertEqual(TrialLimits.days, 7)
+        XCTAssertEqual(TrialLimits.duration, 7 * 86_400)
+    }
+}

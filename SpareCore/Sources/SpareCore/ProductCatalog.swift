@@ -88,7 +88,10 @@ public enum ProductCatalog {
 
     private static func rank(_ tier: Tier) -> Int {
         switch tier {
-        case .free: 0
+        // No product grants a trial, so `.trialing` never reaches this
+        // function. Ranked with free rather than left to a default, so that
+        // if it ever did arrive here a real purchase would still win.
+        case .free, .trialing: 0
         case .monthly: 1
         case .yearly: 2
         }
