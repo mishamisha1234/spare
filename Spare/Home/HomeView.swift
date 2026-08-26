@@ -28,7 +28,7 @@ struct HomeView: View {
     /// revisited after a push/pop.
     @State private var pinnedRecallItem: StoredRecallItem?
     @State private var isRecallDismissed = false
-    @AppStorage(AppSettingsKey.hasDismissedTrialNudge) private var hasDismissedTrialNudge = false
+    @AppStorage(.hasDismissedTrialNudge) private var hasDismissedTrialNudge = false
 
     private var palette: Theme.Palette { Theme.palette(for: colorScheme) }
 

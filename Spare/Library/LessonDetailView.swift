@@ -11,7 +11,7 @@ struct LessonDetailView: View {
     var resumeChapterIndex: Int?
 
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(AppSettingsKey.textSizeStep) private var textSizeStepRaw = TextSizeStep.standard.rawValue
+    @AppStorage(.textSizeStep) private var textSizeStepRaw = TextSizeStep.standard.rawValue
 
     private var palette: Theme.Palette { Theme.palette(for: colorScheme) }
     private var textSizeStep: TextSizeStep { TextSizeStep(rawValue: textSizeStepRaw) ?? .standard }

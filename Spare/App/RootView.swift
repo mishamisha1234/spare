@@ -6,16 +6,16 @@ import SpareCore
 /// else; once it's done, Home is the permanent root and every other screen is
 /// a push.
 struct RootView: View {
-    @AppStorage(AppSettingsKey.hasCompletedOnboarding) private var hasCompletedOnboarding = false
+    @AppStorage(.hasCompletedOnboarding) private var hasCompletedOnboarding = false
     @Environment(\.modelContext) private var modelContext
     @Environment(\.lessonProvider) private var provider
     @Environment(\.attachmentStore) private var attachmentStore
     @Environment(\.pointsLedger) private var pointsLedger
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var entitlements: EntitlementService
-    @AppStorage(AppSettingsKey.hasShownFirstLessonPaywall) private var hasShownFirstLessonPaywall = false
-    @AppStorage(AppSettingsKey.hasOfferedTrial) private var hasOfferedTrial = false
-    @AppStorage(AppSettingsKey.hasShownTrialSummary) private var hasShownTrialSummary = false
+    @AppStorage(.hasShownFirstLessonPaywall) private var hasShownFirstLessonPaywall = false
+    @AppStorage(.hasOfferedTrial) private var hasOfferedTrial = false
+    @AppStorage(.hasShownTrialSummary) private var hasShownTrialSummary = false
 
     /// Whether anything has ever been finished. The ordering rule turns on
     /// this and nothing else: the paywall never appears before the first

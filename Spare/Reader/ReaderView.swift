@@ -9,7 +9,7 @@ struct ReaderView: View {
     var onContinue: (UUID) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(AppSettingsKey.textSizeStep) private var textSizeStepRaw = TextSizeStep.standard.rawValue
+    @AppStorage(.textSizeStep) private var textSizeStepRaw = TextSizeStep.standard.rawValue
 
     @State private var contentHeight: CGFloat = 0
     @State private var viewportHeight: CGFloat = 0

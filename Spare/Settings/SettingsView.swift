@@ -8,9 +8,9 @@ struct SettingsView: View {
     @Query(sort: \StoredUsageEvent.occurredAt, order: .reverse)
     private var usageEvents: [StoredUsageEvent]
 
-    @AppStorage(AppSettingsKey.appearanceMode) private var appearanceModeRaw = Theme.AppearanceMode.system.rawValue
-    @AppStorage(AppSettingsKey.textSizeStep) private var textSizeStepRaw = TextSizeStep.standard.rawValue
-    @AppStorage(AppSettingsKey.recallNotificationTimeMinutes) private var recallNotificationTimeMinutes = NotificationScheduler.defaultMinutesSinceMidnight
+    @AppStorage(.appearanceMode) private var appearanceModeRaw = Theme.AppearanceMode.system.rawValue
+    @AppStorage(.textSizeStep) private var textSizeStepRaw = TextSizeStep.standard.rawValue
+    @AppStorage(.recallNotificationTimeMinutes) private var recallNotificationTimeMinutes = NotificationScheduler.defaultMinutesSinceMidnight
 
     @EnvironmentObject private var entitlements: EntitlementService
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize

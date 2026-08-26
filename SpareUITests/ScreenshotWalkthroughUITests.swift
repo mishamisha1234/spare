@@ -309,6 +309,87 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
                 waitUntilGone(element(app, "home.allowanceLine")),
                 "t-04: the nudge did not go away when dismissed"
             )
+
+            // MARK: A course in progress, and the tap that resumes it.
+            //
+            // The seeded course is 40% read, and this is the one launch where
+            // the chaptered window is unlocked, so the circle offers a
+            // position rather than a lock. What is asserted is the *landing*:
+            // a resumable course sends the tap to the Reader, where a fresh
+            // one would send it to Suggestions. That distinction is the whole
+            // of the resume path and it is the part that has broken before.
+            try waitAndCapture(
+                app, "t-04a-home-course-in-progress", scheme: colorScheme,
+                identifier: "home.circle.thirty"
+            )
+            try tap(app, "home.circle.thirty", scheme: colorScheme, step: "t-04a-home-course-in-progress")
+            try waitAndCapture(
+                app, "t-04b-reader-resumed", scheme: colorScheme,
+                identifier: "reader.textSize", timeout: 60
+            )
+        } catch {
+            attachFailureDiagnostics(app, scheme: colorScheme)
+            throw error
+        }
+        app.terminate()
+
+        // MARK: Nothing finished yet — the ordering rule, and the ask that
+        // follows the first lesson.
+        //
+        // The two screens this whole change exists to position, and neither
+        // had ever been looked at. `-UITEST_EMPTY_STATE` seeds nothing, so the
+        // library really is empty and the paywall really is forbidden.
+        app = launchForTrial(
+            ["-UITEST_EMPTY_STATE", "-UITEST_TRIAL_ELIGIBLE"],
+            colorScheme: colorScheme,
+            accessibilityText: accessibilityText
+        )
+        do {
+            waitForHome(app, scheme: colorScheme)
+
+            // A locked length with nothing finished gets the note, not a
+            // price. No plan rows, no buy button -- it names Premium and asks
+            // for nothing, which is the point of the rule.
+            try tap(app, "home.circle.one", scheme: colorScheme, step: "t-08-home-nothing-finished")
+            let note = app.alerts.firstMatch
+            XCTAssertTrue(
+                note.waitForExistence(timeout: defaultTimeout),
+                "t-08: tapping a locked length with nothing finished showed nothing at all"
+            )
+            XCTAssertFalse(
+                element(app, "paywall.buy").exists,
+                "t-08: the paywall appeared before the first complete lesson"
+            )
+            capture(app, "t-08-pre-first-lesson-note", scheme: colorScheme)
+            note.buttons.firstMatch.tap()
+
+            // Then the first lesson, end to end, because the day-0 paywall is
+            // raised by finishing one and there is no other way to reach it.
+            try tap(app, "home.circle.three", scheme: colorScheme, step: "t-08-pre-first-lesson-note")
+            let firstSuggestion = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier BEGINSWITH 'suggestions.row.'"))
+                .firstMatch
+            XCTAssertTrue(
+                firstSuggestion.waitForExistence(timeout: defaultTimeout),
+                "t-08: no suggestions to pick from"
+            )
+            firstSuggestion.tap()
+
+            let continueButton = element(app, "reader.continue")
+            XCTAssertTrue(
+                continueButton.waitForExistence(timeout: 60),
+                "t-09: the lesson never finished streaming"
+            )
+            XCTAssertTrue(
+                scrollUntilHittable(app, continueButton),
+                "t-09: never scrolled far enough to reach Continue"
+            )
+            continueButton.tap()
+
+            try tap(app, "completion.markComplete", scheme: colorScheme, step: "t-09-completion")
+            try waitAndCapture(
+                app, "t-09-paywall-first-lesson", scheme: colorScheme, identifier: "paywall.buy"
+            )
         } catch {
             attachFailureDiagnostics(app, scheme: colorScheme)
             throw error
@@ -336,12 +417,18 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
                 "t-05-trial-summary: the free tier is not described"
             )
 
-            try tap(app, "trialSummary.continueFree", scheme: colorScheme, step: "t-05-trial-summary")
-            XCTAssertTrue(
-                waitUntilGone(element(app, "trialSummary.keepPremium")),
-                "t-05: the summary did not dismiss"
+            // The second ask, reached the way the reader reaches it. Its own
+            // trigger and its own headline -- "That was your week" rather than
+            // a refusal about a length they just tapped.
+            try tap(app, "trialSummary.keepPremium", scheme: colorScheme, step: "t-05-trial-summary")
+            try waitAndCapture(
+                app, "t-05a-paywall-trial-ended", scheme: colorScheme, identifier: "paywall.buy"
             )
-
+            try tap(app, "paywall.close", scheme: colorScheme, step: "t-05a-paywall-trial-ended")
+            XCTAssertTrue(
+                waitUntilGone(element(app, "paywall.buy")),
+                "t-05a: the paywall did not dismiss"
+            )
             // Post-trial Home. The lengths are locked again and the library is
             // untouched -- the second of those is the entire selling model, so
             // it is asserted rather than left to the screenshot.

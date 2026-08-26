@@ -38,6 +38,69 @@ jobs:
           fi
           echo "OK: no Apple-only imports in SpareCore."
 
+      # Every persisted preference has to go through `AppSettingsKey`, which is
+      # `CaseIterable` and therefore resettable by construction. This is the
+      # other half: the enum alone cannot stop somebody writing a raw literal
+      # at a call site, and a key that never reaches the registry is a key
+      # `-UITEST_RESET_STATE` will not clear. That is not hypothetical -- the
+      # trial's four flags were added straight to `@AppStorage` and the second
+      # and third launches of a UI test ran on the first one's leftovers.
+      #
+      # Deliberately not a Swift test: nothing can enumerate every
+      # `@AppStorage` key in a module at runtime. `AppStorage` does not expose
+      # its key, and `Mirror` would need an instance of every view that
+      # declares one. A source scan is the closest thing that actually holds,
+      # and it runs here on Linux rather than waiting for the macOS job.
+      - name: Every persisted key goes through AppSettingsKey
+        run: |
+          set -u
+          status=0
+
+          # Comment lines are dropped throughout: a comment cannot persist
+          # anything, and the documentation in AppSettings.swift necessarily
+          # quotes the patterns being banned. `:[0-9]+: *//` matches the
+          # content half of grep's `file:line:content` output.
+          drop_comments() { grep -vE ':[0-9]+: *//' || true; }
+
+          # 1. No string literal may name a defaults key.
+          literals=$(grep -rEn --include='*.swift' '@AppStorage\("' Spare | drop_comments)
+          if [ -n "$literals" ]; then
+            echo "$literals"
+            echo "::error::@AppStorage must take an AppSettingsKey case, not a string literal."
+            status=1
+          fi
+          literals=$(grep -rEn --include='*.swift' 'forKey: *"' Spare | drop_comments)
+          if [ -n "$literals" ]; then
+            echo "$literals"
+            echo "::error::forKey: must take an AppSettingsKey case, not a string literal."
+            status=1
+          fi
+
+          # 2. And no indirection past it either. Every `forKey:` in the app
+          #    must name the registry, except the two allowlisted below.
+          #
+          #    `DeviceIdentity` is excluded on purpose: its identifier lives in
+          #    the App Group suite, is not an app setting, and clearing it on a
+          #    UI-test reset would hand every launch a new device and a fresh
+          #    free allowance -- the opposite of a clean slate. `AppSettings`
+          #    itself is the file that does the unwrapping.
+          offenders=$(
+            grep -rEn --include='*.swift' 'forKey:' Spare \
+              | grep -v 'AppSettingsKey' \
+              | grep -v '^Spare/App/DeviceIdentity.swift:' \
+              | grep -v '^Spare/Theme/AppSettings.swift:' \
+              | drop_comments \
+              || true
+          )
+          if [ -n "$offenders" ]; then
+            echo "$offenders"
+            echo "::error::a defaults key bypasses AppSettingsKey (see matches above)."
+            status=1
+          fi
+
+          [ "$status" -eq 0 ] && echo "OK: every persisted key goes through AppSettingsKey."
+          exit "$status"
+
       # `canImport(Darwin)` is allowed for platform-conditional bodies, but the
       # FoundationNetworking shim must accompany any URLSession use.
       - name: Check FoundationNetworking guard on networking files

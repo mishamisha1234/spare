@@ -118,7 +118,11 @@ xcodebuild test -project Spare.xcodeproj -scheme Spare -destination 'platform=iO
 
 `.github/workflows/ci.yml` runs on pushes to `main` and on manual dispatch:
 
-- **`core`** — ubuntu-latest in a `swift:6.1` container: the banned-import check, the FoundationNetworking guard check, then `swift build` and `swift test`.
+- **`core`** — ubuntu-latest in a `swift:6.1` container: the banned-import check, the FoundationNetworking guard check, the persisted-key check, then `swift build` and `swift test`.
+
+The persisted-key check is worth naming, because it exists for a class of bug rather than an instance. `AppSettingsKey` is a `CaseIterable` enum and `-UITEST_RESET_STATE` clears `allCases`, so a declared key is resettable by construction. The guard is the other half: `@AppStorage("…")` and `forKey: "…"` string literals are banned in the app target, and every `forKey:` must name the registry — so a key cannot be persisted that the reset does not know about, by literal or by indirection. `DeviceIdentity` is the one exclusion, and deliberately: its identifier is not a preference, and clearing it would hand every UI-test launch a new device and a fresh free allowance.
+
+It is a grep and not a Swift test because nothing can enumerate every `@AppStorage` key in a module at runtime — `AppStorage` does not expose its key, and `Mirror` would need an instance of every view that declares one. `AppSettingsKeyTests` proves the half that is testable: reset clears everything the registry declares. What made both necessary: the trial's four flags went straight into `@AppStorage` and never reached the then-hand-written reset list, so the second and third launches of a UI test ran on the first one's leftovers, and it surfaced as three unrelated-looking flakes.
 - **`ios`** — macos-latest, gated on `core` passing: prints `xcrun simctl list devices available`, installs XcodeGen, generates the project, resolves a real simulator UDID from the runner's device list, and runs `xcodebuild test`. The `.xcresult` bundle is uploaded on failure as well as success.
 
 ---
