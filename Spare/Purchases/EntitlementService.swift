@@ -151,14 +151,6 @@ final class EntitlementService: ObservableObject {
         EntitlementRules.canTakePostLessonTest(snapshot)
     }
 
-    func visibleLibraryCount(totalEntries: Int) -> Int {
-        EntitlementRules.visibleLibraryCount(snapshot, totalEntries: totalEntries)
-    }
-
-    func hiddenLibraryCount(totalEntries: Int) -> Int {
-        EntitlementRules.hiddenLibraryCount(snapshot, totalEntries: totalEntries)
-    }
-
     var availableWindows: [TimeWindow] {
         EntitlementRules.availableWindows(snapshot)
     }

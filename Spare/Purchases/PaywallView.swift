@@ -27,7 +27,25 @@ struct PaywallView: View {
         let lessons = EntitlementRules.freeLessonsPerDay == 1
             ? "one lesson a day"
             : "\(EntitlementRules.freeLessonsPerDay) lessons a day"
-        return "Free gives you the 3- and 7-minute lengths, \(lessons), and your last \(EntitlementRules.freeLibraryLimit) library entries."
+        return "Free gives you the 3- and 7-minute lengths, \(lessons), and your whole library — nothing you have learned is ever hidden or deleted."
+    }
+
+    /// What Premium adds, in one sentence.
+    ///
+    /// It used to open with "keeps your whole library", back when the free
+    /// tier showed only its most recent ten entries. Free now keeps the whole
+    /// library too, so that clause would be selling something the reader
+    /// already has — a false differentiator rather than a false fact, but it
+    /// is still the sheet claiming a benefit that isn't one.
+    ///
+    /// Names the mini-course cap for the original reason: selling "unlocks
+    /// every length" while Settings shows "11 of 12 mini-courses left this
+    /// month" is a limit disclosed only after purchase, which is an App
+    /// Review problem before it is a copy problem.
+    static var premiumPitch: String {
+        "Premium unlocks every length, adds the post-lesson test and going deeper, "
+            + "and gives you \(EntitlementRules.premiumMiniCoursesPerMonth) mini-courses a month. "
+            + "Shorter lessons are unlimited."
     }
 
     let trigger: PaywallTrigger
@@ -92,11 +110,7 @@ struct PaywallView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("paywall.headline")
 
-            // States the mini-course cap. Selling "unlocks every length"
-            // while Settings shows "11 of 12 mini-courses left this month" is
-            // a limit disclosed only after purchase — an App Review problem
-            // before it is a copy problem.
-            Text("Premium unlocks every length, keeps your whole library, adds the post-lesson test, and gives you \(EntitlementRules.premiumMiniCoursesPerMonth) mini-courses a month. Shorter lessons are unlimited.")
+            Text(Self.premiumPitch)
                 .font(Theme.Font.label.font)
                 .foregroundStyle(palette.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)

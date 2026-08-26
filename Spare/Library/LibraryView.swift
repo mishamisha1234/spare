@@ -12,7 +12,6 @@ struct LibraryView: View {
 
     @Query(sort: \StoredLesson.generatedAt, order: .reverse)
     private var lessons: [StoredLesson]
-    @EnvironmentObject private var entitlements: EntitlementService
     @Query private var pointEvents: [StoredPointEvent]
 
     @State private var selectedDomain: String?
@@ -31,16 +30,10 @@ struct LibraryView: View {
         return Achievements.unlocked(events: pointEvents.map(\.event), library: library).count
     }
 
-    /// The free tier hides — never deletes — everything past the most
-    /// recent 10 entries. The rule itself lives in `EntitlementService`;
-    /// this view only asks.
-    private var visibleLessons: [StoredLesson] {
-        Array(lessons.prefix(entitlements.visibleLibraryCount(totalEntries: lessons.count)))
-    }
-
-    private var hiddenCount: Int {
-        entitlements.hiddenLibraryCount(totalEntries: lessons.count)
-    }
+    /// Everything, on every tier. The free tier limits how many new entries
+    /// arrive — one lesson a day — not how much of your own library you are
+    /// allowed to read back.
+    private var visibleLessons: [StoredLesson] { lessons }
 
     private var domains: [String] {
         var seen = Set<String>()
@@ -112,19 +105,6 @@ struct LibraryView: View {
                                     }
                                 }
                             }
-                        }
-
-                        if hiddenCount > 0 {
-                            // "hidden, not deleted" is a factual claim, and it
-                            // is true: nothing in this app ever deletes a
-                            // lesson. `visibleLibraryCount` caps what is
-                            // shown; the query behind it is unfiltered, so
-                            // upgrading restores every entry.
-                            Text("Free keeps your last \(EntitlementRules.freeLibraryLimit). Older entries are hidden, not deleted.")
-                                .font(Theme.Font.caption.font)
-                                .foregroundStyle(palette.secondaryText)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .padding(.horizontal, Theme.Spacing.m)
                         }
                     }
                     .padding(.vertical, Theme.Spacing.m)

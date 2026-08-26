@@ -67,7 +67,6 @@ public enum AccessDecision: Sendable, Equatable {
 public enum EntitlementRules {
 
     public static let freeLessonsPerDay = 1
-    public static let freeLibraryLimit = 10
     /// Fair-use ceiling on the most expensive thing to generate. A course is
     /// an outline call plus two calls per chapter; "unlimited" on that line
     /// would mean an unbounded per-user cost. Surfaced honestly in Settings
@@ -180,17 +179,21 @@ public enum EntitlementRules {
         return updated
     }
 
-    /// How many library entries are visible. Free sees the most recent 10;
-    /// older entries are hidden, never deleted, so upgrading restores them.
-    public static func visibleLibraryCount(_ snapshot: EntitlementSnapshot, totalEntries: Int) -> Int {
-        guard !snapshot.tier.hasPremiumAccess else { return totalEntries }
-        return min(totalEntries, freeLibraryLimit)
-    }
-
-    /// Entries hidden behind the free-tier library cap.
-    public static func hiddenLibraryCount(_ snapshot: EntitlementSnapshot, totalEntries: Int) -> Int {
-        max(0, totalEntries - visibleLibraryCount(snapshot, totalEntries: totalEntries))
-    }
+    // The free tier used to see only its most recent 10 library entries,
+    // through `visibleLibraryCount` / `hiddenLibraryCount` / `freeLibraryLimit`.
+    // All three are gone rather than made permissive, because a cap that
+    // returns `totalEntries` is a cap somebody will re-tighten.
+    //
+    // Two reasons, and the second is the load-bearing one:
+    //
+    //   1. The library is never truncated for anybody. No cap, no deletion.
+    //   2. The whole selling model is now loss aversion at the end of a free
+    //      week -- deciding whether to give up a 17-item library. Truncating
+    //      that library at the moment the trial ends takes away the thing the
+    //      reader is being asked to keep. The mechanism would eat itself.
+    //
+    // What the free tier limits is how many *new* entries arrive: one lesson
+    // a day. What it does not limit is reading back what is already there.
 
     /// Windows a user may choose without hitting the paywall.
     public static func availableWindows(_ snapshot: EntitlementSnapshot) -> [TimeWindow] {

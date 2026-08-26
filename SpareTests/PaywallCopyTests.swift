@@ -19,7 +19,45 @@ final class PaywallCopyTests: XCTestCase {
         XCTAssertEqual(EntitlementRules.freeLessonsPerDay, 1,
                        "the sentence below says 'one lesson a day'")
         XCTAssertTrue(copy.contains("one lesson a day"), copy)
-        XCTAssertTrue(copy.contains("\(EntitlementRules.freeLibraryLimit) library entries"), copy)
+    }
+
+    /// The free library is not capped, and the sentence has to say so
+    /// unconditionally.
+    ///
+    /// This replaces an assertion that the copy named a ten-entry limit. That
+    /// test was correct about the product it described; the product changed.
+    /// The reverse trial sells the reader on keeping a library they built
+    /// during a free week, so truncating that library at the moment the trial
+    /// ends would take away the very thing they are being asked to keep.
+    func testDisclosurePromisesTheWholeLibrary() {
+        let copy = PaywallView.freeTierDisclosure
+        XCTAssertTrue(copy.lowercased().contains("whole library"), copy)
+
+        // No surviving numeric library promise. A stale "your last 10" would
+        // still read as true to somebody skimming, which is the worst kind of
+        // wrong copy: plausible.
+        for stale in ["library entries", "last 10", "older entries"] {
+            XCTAssertFalse(copy.lowercased().contains(stale), "stale library limit: \(copy)")
+        }
+    }
+
+    /// Premium must not be sold on something the free tier also gives.
+    ///
+    /// The pitch used to open "unlocks every length, keeps your whole
+    /// library, ..." — true when free showed only its last ten entries, and a
+    /// false differentiator the moment that cap was removed.
+    func testPremiumPitchDoesNotSellBackTheLibrary() {
+        let pitch = PaywallView.premiumPitch.lowercased()
+        XCTAssertFalse(pitch.contains("library"), pitch)
+    }
+
+    /// The mini-course cap is the one limit that applies after paying, and it
+    /// is named on the sheet rather than discovered in Settings afterwards.
+    func testPremiumPitchStatesTheMiniCourseCap() {
+        XCTAssertTrue(
+            PaywallView.premiumPitch.contains("\(EntitlementRules.premiumMiniCoursesPerMonth) mini-courses"),
+            PaywallView.premiumPitch
+        )
     }
 
     /// The two lengths named must be exactly the ones the server allows. If a

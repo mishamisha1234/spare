@@ -242,27 +242,12 @@ final class EntitlementRulesTests: XCTestCase {
         XCTAssertTrue(upgraded.tier.hasPremiumAccess)
     }
 
-    // MARK: - Library cap
-
-    func testFreeLibraryIsCappedAtTen() {
-        XCTAssertEqual(EntitlementRules.visibleLibraryCount(.free, totalEntries: 47), 10)
-        XCTAssertEqual(EntitlementRules.hiddenLibraryCount(.free, totalEntries: 47), 37)
-    }
-
-    func testFreeLibraryBelowCapShowsEverything() {
-        XCTAssertEqual(EntitlementRules.visibleLibraryCount(.free, totalEntries: 4), 4)
-        XCTAssertEqual(EntitlementRules.hiddenLibraryCount(.free, totalEntries: 4), 0)
-    }
-
-    func testPremiumLibraryIsUncapped() {
-        XCTAssertEqual(EntitlementRules.visibleLibraryCount(.premium, totalEntries: 470), 470)
-        XCTAssertEqual(EntitlementRules.hiddenLibraryCount(.premium, totalEntries: 470), 0)
-    }
-
-    func testEmptyLibrary() {
-        XCTAssertEqual(EntitlementRules.visibleLibraryCount(.free, totalEntries: 0), 0)
-        XCTAssertEqual(EntitlementRules.hiddenLibraryCount(.free, totalEntries: 0), 0)
-    }
+    // The library cap tests lived here. There is no library cap on any tier
+    // now, so there is no function left to assert against -- the rule was
+    // deleted rather than relaxed. What replaces them is a copy test: the
+    // paywall must not promise a library limit that no longer exists, and
+    // must not sell the library back as a premium benefit. See
+    // `PaywallCopyTests`.
 
     // MARK: - Decision helpers
 
