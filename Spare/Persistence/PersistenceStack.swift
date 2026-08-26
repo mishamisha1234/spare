@@ -15,6 +15,7 @@ enum PersistenceStack {
             StoredEntitlement.self,
             StoredUsageEvent.self,
             StoredPointEvent.self,
+            StoredFunnelEvent.self,
         ])
     }
 

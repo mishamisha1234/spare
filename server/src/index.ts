@@ -49,9 +49,13 @@ import {
 } from "./cache";
 import {
   CHAPTERED_WINDOWS,
+  EMPTY_FUNNEL,
+  FunnelLedger,
   SpendLedger,
   UsageCounter,
   type Decision,
+  type FunnelCounter,
+  type FunnelState,
   type TrialView,
 } from "./limits";
 import type { Pool } from "./cache";
@@ -64,7 +68,7 @@ import {
   parseCompletedStream,
 } from "./upstream";
 
-export { SpendLedger, UsageCounter };
+export { FunnelLedger, SpendLedger, UsageCounter };
 
 export interface Env {
   ANTHROPIC_API_KEY: string;
@@ -83,6 +87,7 @@ export interface Env {
   ADMIN_TOKEN?: string;
   USAGE: DurableObjectNamespace;
   SPEND: DurableObjectNamespace;
+  FUNNEL: DurableObjectNamespace;
   LESSONS: KVNamespace;
 }
 
@@ -181,9 +186,16 @@ export default {
     // reasoning as attachments below.
     if (url.pathname === "/v1/trial/start" || url.pathname === "/v1/trial/status") {
       return withTrialHeader(
-        await handleTrial(url.pathname, env, deviceId, entitlement, now),
+        await handleTrial(url.pathname, env, deviceId, entitlement, ctx, now),
         trial,
       );
+    }
+
+    // Two events the server cannot see for itself. Not a generation call and
+    // not metered; see `FunnelLedger` for why five global integers with no
+    // device identifiers is a different thing from analytics.
+    if (url.pathname === "/v1/funnel") {
+      return handleFunnel(body, env, deviceId, ctx, now);
     }
 
     // A course whose outline was already paid for may finish, out of the pool
@@ -384,6 +396,9 @@ async function handleStatus(
     spentUSD: number;
   };
 
+  const funnel = await readFunnel(env);
+  const dismissed = funnel.paywallsDismissed;
+
   const payload: Record<string, unknown> = {
     month: spend.month,
     spentUSD: Number(spend.spentUSD.toFixed(6)),
@@ -392,6 +407,22 @@ async function handleStatus(
     // What a free request would be told right now, so the answer doesn't have
     // to be recomputed by eye from the two numbers above.
     freeGenerationPaused: !(spend.spentUSD < ceiling),
+    // The reverse trial's funnel. Five integers, no device identifiers --
+    // see `FunnelLedger` for why that is compatible with the no-tracking
+    // promise, and why a device-local log cannot answer this question.
+    funnel: {
+      ...funnel,
+      // The one number §6 is about: of the readers who dismissed the first
+      // paywall, what share went on to read enough to have an opinion. Above
+      // 40% the model works and the lever is pricing; under 15% the lessons
+      // are not good enough and no pricing change fixes that.
+      //
+      // Null rather than zero until somebody has dismissed a paywall. A
+      // percentage of nothing is not a small percentage.
+      engagedShare: dismissed > 0
+        ? Number(((funnel.trialsWithThreePlusLessons / dismissed) * 100).toFixed(1))
+        : null,
+    },
   };
 
   // Optional: one device's counters, for confirming a limit actually moved.
@@ -634,6 +665,11 @@ async function handleGeneration(
     if (!decision.allow) {
       return errorResponse(402, decision.reason, denialMessage(decision.reason));
     }
+    // Reported by the meter on the transition, so it counts devices rather
+    // than requests. See `FunnelLedger`.
+    if (decision.milestone === "trialThreeLessons") {
+      bumpFunnel(env, ctx, "trialsWithThreePlusLessons");
+    }
   }
 
   if (cachedEntry) {
@@ -842,6 +878,78 @@ async function passUpstreamError(upstream: Response): Promise<Response> {
  * round trip. Falls back to null on any failure -- a Durable Object hiccup
  * must not hand a free device the premium pool.
  */
+/**
+ * `POST /v1/funnel`.
+ *
+ * Two events, both of which happen on the device and neither of which reaches
+ * the server any other way: dismissing the first paywall, and buying. The
+ * second is resolved against this device's own trial state, so the client says
+ * *that* it converted and the server decides whether that was the day-7
+ * decision or a later one.
+ *
+ * Always answers 204. There is nothing useful to tell a client about a counter,
+ * and an error here must never surface as a failure in the app.
+ */
+async function handleFunnel(
+  body: Record<string, any>,
+  env: Env,
+  deviceId: string,
+  ctx: ExecutionContext,
+  now: number,
+): Promise<Response> {
+  const event = typeof body.event === "string" ? body.event : "";
+
+  if (event === "paywallDismissed") {
+    bumpFunnel(env, ctx, "paywallsDismissed");
+  } else if (event === "converted") {
+    ctx.waitUntil(recordConversion(env, deviceId, now));
+  }
+
+  return new Response(null, { status: 204 });
+}
+
+/**
+ * Counts a purchase once, on the side of expiry it actually fell.
+ *
+ * The Durable Object decides both, because it holds the trial and the
+ * already-counted flag -- a client that reported "I converted at day 7" would
+ * be reporting on the number the day-7 screen is being judged by.
+ */
+async function recordConversion(env: Env, deviceId: string, now: number): Promise<void> {
+  try {
+    const stub = env.USAGE.get(env.USAGE.idFromName(deviceId));
+    const response = await stub.fetch(`https://usage/trial/converted?now=${now}`);
+    const result = (await response.json()) as { recorded: "atDay7" | "afterDay7" | null };
+    if (result.recorded === "atDay7") await bumpFunnelNow(env, "convertedAtDay7");
+    if (result.recorded === "afterDay7") await bumpFunnelNow(env, "convertedAfterDay7");
+  } catch {
+    // A missed counter is a slightly wrong marketing number. Never a failure
+    // the reader sees.
+  }
+}
+
+function bumpFunnel(env: Env, ctx: ExecutionContext, counter: FunnelCounter): void {
+  ctx.waitUntil(bumpFunnelNow(env, counter));
+}
+
+async function bumpFunnelNow(env: Env, counter: FunnelCounter): Promise<void> {
+  try {
+    const stub = env.FUNNEL.get(env.FUNNEL.idFromName("global"));
+    await stub.fetch(`https://funnel/bump?counter=${encodeURIComponent(counter)}`);
+  } catch {
+    // Same reasoning as above.
+  }
+}
+
+async function readFunnel(env: Env): Promise<FunnelState> {
+  try {
+    const stub = env.FUNNEL.get(env.FUNNEL.idFromName("global"));
+    return (await (await stub.fetch("https://funnel/peek")).json()) as FunnelState;
+  } catch {
+    return { ...EMPTY_FUNNEL };
+  }
+}
+
 async function readCourseGrant(
   env: Env,
   deviceId: string,
@@ -900,6 +1008,7 @@ async function handleTrial(
   env: Env,
   deviceId: string,
   entitlement: VerifiedEntitlement,
+  ctx: ExecutionContext,
   now: number,
 ): Promise<Response> {
   const stub = env.USAGE.get(env.USAGE.idFromName(deviceId));
@@ -919,6 +1028,7 @@ async function handleTrial(
 
   const response = await stub.fetch(`https://usage/trial/start?now=${now}`);
   const result = (await response.json()) as { started: boolean; trial: TrialView };
+  if (result.started) bumpFunnel(env, ctx, "trialsStarted");
   return new Response(
     JSON.stringify(
       result.started ? result : { ...result, reason: "alreadyUsed" },

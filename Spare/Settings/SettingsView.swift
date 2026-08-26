@@ -67,6 +67,12 @@ struct SettingsView: View {
                 widgetSection
                 usageSection
                 aboutSection
+                // Excluded from Release for the same reason the API key field
+                // is: it exists to confirm the funnel events fire at the right
+                // moments, and it is not a statistic about the reader.
+                #if DEBUG
+                funnelDebugSection
+                #endif
             }
             .padding(Theme.Spacing.m)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -373,6 +379,29 @@ struct SettingsView: View {
     }
 
     // MARK: - About
+
+    #if DEBUG
+    private var funnelDebugSection: some View {
+        section("Instrumentation") {
+            NavigationLink {
+                FunnelDebugView()
+            } label: {
+                HStack {
+                    Text("Trial funnel")
+                        .font(Theme.Font.body.font)
+                        .foregroundStyle(palette.text)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(Theme.Font.caption.font)
+                        .foregroundStyle(palette.secondaryText)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("settings.funnelDebug")
+        }
+    }
+    #endif
 
     private var aboutSection: some View {
         section("About the key") {

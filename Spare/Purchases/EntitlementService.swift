@@ -31,16 +31,21 @@ final class EntitlementService: ObservableObject {
     /// URL, or previews. The trial then stays whatever the cache says, which
     /// for a fresh install is `eligible` and grants nothing.
     private let trialStore: (any TrialStore)?
+    /// Where funnel events go after they are written down locally. See
+    /// `FunnelEvent` for why only two of the six leave the device.
+    private let funnel: any FunnelReporter
     private let context: ModelContext
     private var updatesTask: Task<Void, Never>?
 
     init(
         store: any PurchaseStore,
         trialStore: (any TrialStore)? = nil,
+        funnel: any FunnelReporter = NoopFunnelReporter(),
         container: ModelContainer
     ) {
         self.store = store
         self.trialStore = trialStore
+        self.funnel = funnel
         self.context = ModelContext(container)
         loadCachedSnapshot()
         refreshMiniCourseUsage()
@@ -96,6 +101,27 @@ final class EntitlementService: ObservableObject {
         apply(trial: await trialStore.status())
     }
 
+    // MARK: - Instrumentation
+
+    /// Writes one funnel event down, and forwards it if the server needs it.
+    ///
+    /// Fire and forget in both directions. This is a wiring check and a
+    /// marketing number; neither is worth an error path in front of a reader,
+    /// and neither is worth blocking anything on.
+    func record(_ event: FunnelEvent) {
+        context.insert(StoredFunnelEvent(kind: event))
+        try? context.save()
+        guard event.isReportedToServer else { return }
+        Task { await funnel.report(event) }
+    }
+
+    /// This device's own funnel, for the DEBUG screen. One device cannot
+    /// compute a percentage; see `FunnelEvent`.
+    func funnelCounts() -> FunnelCounts {
+        let stored = (try? context.fetch(FetchDescriptor<StoredFunnelEvent>())) ?? []
+        return FunnelCounts.summarise(stored.compactMap(\.kind))
+    }
+
     /// Whether this device may still be offered a free week.
     var isTrialEligible: Bool { snapshot.trial.status == .eligible }
 
@@ -142,6 +168,9 @@ final class EntitlementService: ObservableObject {
             let outcome = try await store.purchase(kind)
             if outcome == .purchased {
                 await refreshEntitlements()
+                // Recorded here rather than at a call site, so a purchase made
+                // from any of the three sheets counts exactly once.
+                record(.converted)
             }
             return outcome
         } catch {

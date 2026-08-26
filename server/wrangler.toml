@@ -20,9 +20,19 @@ class_name = "UsageCounter"
 name = "SPEND"
 class_name = "SpendLedger"
 
+[[durable_objects.bindings]]
+name = "FUNNEL"
+class_name = "FunnelLedger"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["UsageCounter", "SpendLedger"]
+
+# Five global integers behind the reverse trial's one decision number. No
+# device identifiers and no per-user rows -- see `FunnelLedger`.
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["FunnelLedger"]
 
 [[kv_namespaces]]
 binding = "LESSONS"

@@ -171,7 +171,9 @@ final class TrialRulesTests: XCTestCase {
         )
         let refused = await store.start()
         XCTAssertFalse(refused.started, "a running trial cannot be started again")
-        XCTAssertEqual(await store.status().remainingLessons, 4)
+        // Hoisted: XCTAssert's arguments are autoclosures and cannot await.
+        let status = await store.status()
+        XCTAssertEqual(status.remainingLessons, 4)
     }
 
     /// The numbers the copy states have to be the numbers the server enforces.

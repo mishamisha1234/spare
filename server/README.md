@@ -226,6 +226,38 @@ mid-course has exactly the same shape. Bounded by `MAX_REQUESTS_PER_LESSON`,
 because a grant that outlives the day would otherwise be a generate-forever
 loop on one topic.
 
+## The five numbers, and why they are not analytics
+
+`FunnelLedger` is one global Durable Object holding five integers: trials
+started, trials in which at least three lessons were read, paywalls closed
+without a purchase, purchases around the end of a trial, and purchases later.
+No device identifiers, no per-user rows, nothing that can be traced back to
+anybody.
+
+It exists because §6 of the reverse-trial spec asks for *the percentage of
+users who dismiss the first paywall and then complete three or more lessons* —
+above 40% the model works and the lever is pricing, under 15% the lessons are
+not good enough and no pricing change fixes that. A device-local log cannot
+answer that. A percentage needs a denominator that spans devices, and one
+phone can only ever say yes or no for itself.
+
+So the DEBUG-only Settings screen shows this device's own events, which is a
+wiring check, and these five integers answer the question. Read them through
+the authenticated `GET /v1/status`, which also reports the derived share.
+
+Three of the five come from server state and cannot be spoofed. Two arrive
+from the client through `POST /v1/funnel` — closing a paywall, and buying —
+because the server cannot see either. Anyone who reads that endpoint can
+inflate them. That is accepted: these are internal decision numbers rather
+than billing, and the cost of a wrong one is a marketing judgement. A
+conversion is still *resolved* server-side, against that device's own trial,
+so the client says only that it converted and the object decides whether that
+was the day-7 decision or a later one — the day-7 screen does not get to
+report on the number it is judged by.
+
+`PRIVACY.md` states all five in the same terms. The two documents have to
+agree, and this is the only thing Spare counts across users.
+
 ## The honest limit on tier enforcement
 
 Moving limits server-side removes *client* enforcement, not *all* spoofing.

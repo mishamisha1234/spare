@@ -132,6 +132,7 @@ struct SpareApp: App {
         self.entitlements = EntitlementService(
             store: purchases,
             trialStore: Self.makeTrialStore(purchases: purchases),
+            funnel: Self.makeFunnelReporter(),
             container: container
         )
 
@@ -166,6 +167,23 @@ struct SpareApp: App {
             baseURL: baseURL,
             deviceID: DeviceIdentity.current(),
             receipt: { await purchases.currentReceipt() }
+        )
+    }
+
+    /// Where the two server-visible funnel events go.
+    ///
+    /// Noop under UI tests, for the same reason the purchase and trial stores
+    /// are stubbed: no test reaches the network. Noop with no proxy too, which
+    /// leaves the local log intact -- the DEBUG screen still works, and the
+    /// five global integers simply do not move.
+    private static func makeFunnelReporter() -> any FunnelReporter {
+        guard !Self.isUITestReset, let baseURL = ProxyConfiguration.baseURL() else {
+            return NoopFunnelReporter()
+        }
+        return ProxyFunnelReporter(
+            transport: FoundationHTTPTransport(),
+            baseURL: baseURL,
+            deviceID: DeviceIdentity.current()
         )
     }
 

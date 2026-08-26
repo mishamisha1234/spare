@@ -34,8 +34,19 @@ export const TRIAL_DAYS = 7;
 export const TRIAL_DURATION_MS = TRIAL_DAYS * 24 * 60 * 60 * 1000;
 
 export type Decision =
-  | { allow: true; servedFromCache: boolean }
+  | { allow: true; servedFromCache: boolean; milestone?: FunnelMilestone }
   | { allow: false; reason: DenialReason };
+
+/**
+ * A threshold crossed by this request, for the funnel counters.
+ *
+ * Reported out of the Durable Object rather than written from inside it: the
+ * object is the only place that can see the transition atomically, and the
+ * router is the only place that should be doing fire-and-forget writes to
+ * another object. Keeping the write in the router also keeps `UsageCounter`
+ * free of a second binding.
+ */
+export type FunnelMilestone = "trialThreeLessons";
 
 export type DenialReason =
   | "dailyLimitReached"
@@ -204,6 +215,15 @@ export interface TrialState {
   expiresAt: number | null;
   lessonsUsed: number;
   coursesUsed: number;
+  /**
+   * Whether this device's conversion has already been counted.
+   *
+   * A flag rather than a recomputation, because the thing being counted is an
+   * event and not a state: a subscriber stays a subscriber, so without this
+   * every launch would count another conversion and the denominator would
+   * mean nothing.
+   */
+  conversionRecorded?: boolean;
 }
 
 /** What the client is allowed to mirror. Display only; never an authority. */
@@ -220,6 +240,7 @@ export const NO_TRIAL: TrialState = {
   expiresAt: null,
   lessonsUsed: 0,
   coursesUsed: 0,
+  conversionRecorded: false,
 };
 
 /**
@@ -304,6 +325,13 @@ export class UsageCounter implements DurableObject {
       return Response.json(await this.startTrial(now));
     }
 
+    // Counts a conversion once, ever, and says which side of expiry it fell.
+    // Reported by the client at purchase time rather than polled, so a
+    // subscriber costs no extra read on any other request.
+    if (url.pathname === "/trial/converted") {
+      return Response.json(await this.recordConversion(now));
+    }
+
     // A plain read. It does not need to be an atomic claim any more: the router
     // meters before it serves, and `consume` already allows only one lesson a
     // day, so two simultaneous requests from one device cannot both be served.
@@ -362,6 +390,28 @@ export class UsageCounter implements DurableObject {
     };
     await this.state.storage.put<TrialState>("trial", started);
     return { started: true, trial: trialView(started, now) };
+  }
+
+  /**
+   * Marks this device as converted, if it had a trial and has not been
+   * counted yet.
+   *
+   * `atDay7` means within a couple of days either side of the trial ending --
+   * the decision made *because* of the day-7 screen. Anything later is a
+   * different thing worth knowing separately: a meaningful share of freemium
+   * conversions land six or more weeks after install, and folding those into
+   * the day-7 figure would make the screen look better than it is.
+   */
+  private async recordConversion(
+    now: number,
+  ): Promise<{ recorded: "atDay7" | "afterDay7" | null }> {
+    const trial = await this.loadTrial();
+    if (trial.startedAt === null || trial.conversionRecorded) return { recorded: null };
+
+    const expiry = trial.expiresAt ?? trial.startedAt;
+    const recorded = now - expiry <= CONVERSION_AT_DAY7_WINDOW_MS ? "atDay7" : "afterDay7";
+    await this.state.storage.put<TrialState>("trial", { ...trial, conversionRecorded: true });
+    return { recorded };
   }
 
   private async loadGrants(now: number): Promise<CourseGrant[]> {
@@ -485,7 +535,12 @@ export class UsageCounter implements DurableObject {
       return { allow: false, reason: "courseCapReached" };
     }
 
+    let milestone: FunnelMilestone | undefined;
     if (trial) {
+      // The one number §6 turns on: did somebody who was given a free week
+      // read enough to have an opinion about it. Reported on the transition,
+      // so it counts devices and not requests.
+      if (trial.lessonsUsed + 1 === FUNNEL_ENGAGED_LESSONS) milestone = "trialThreeLessons";
       await this.state.storage.put<TrialState>("trial", {
         ...trial,
         // Cache hits count. A reader cannot tell a cached lesson from a
@@ -517,7 +572,84 @@ export class UsageCounter implements DurableObject {
         : usage.chargedKeys,
     });
 
-    return { allow: true, servedFromCache: false };
+    return { allow: true, servedFromCache: false, milestone };
+  }
+}
+
+/**
+ * How many trial lessons count as having actually tried the thing.
+ *
+ * From §6: above 40% of paywall-dismissers reaching this, the model works and
+ * the lever is pricing; under 15%, the lessons are not good enough and no
+ * pricing change fixes that. Three is the number that makes those two
+ * thresholds mean something.
+ */
+export const FUNNEL_ENGAGED_LESSONS = 3;
+
+/** How close to expiry a purchase still counts as the day-7 decision. */
+export const CONVERSION_AT_DAY7_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
+
+/**
+ * Five integers, globally.
+ *
+ * No device identifiers, no per-user rows, nothing that can be traced back to
+ * anybody -- which is what lets this exist at all alongside a no-analytics,
+ * no-tracking promise. It answers one question: what share of the people who
+ * dismissed the first paywall went on to read enough to have an opinion.
+ * A device-local log cannot answer that, because a percentage needs a
+ * denominator that spans devices.
+ *
+ * Two of the five are client-reported (`paywallsDismissed`, and the trigger
+ * for a conversion) and are therefore inflatable by anyone who reads the
+ * endpoint. That is accepted: these are internal decision numbers, not
+ * billing, and the cost of a wrong one is a marketing judgement rather than
+ * money. The three derived from server state are not spoofable.
+ */
+export interface FunnelState {
+  trialsStarted: number;
+  trialsWithThreePlusLessons: number;
+  paywallsDismissed: number;
+  convertedAtDay7: number;
+  convertedAfterDay7: number;
+}
+
+export const EMPTY_FUNNEL: FunnelState = {
+  trialsStarted: 0,
+  trialsWithThreePlusLessons: 0,
+  paywallsDismissed: 0,
+  convertedAtDay7: 0,
+  convertedAfterDay7: 0,
+};
+
+export type FunnelCounter = keyof FunnelState;
+
+export class FunnelLedger implements DurableObject {
+  constructor(private readonly state: DurableObjectState) {}
+
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+
+    if (url.pathname === "/peek") {
+      return Response.json(await this.load());
+    }
+
+    if (url.pathname === "/bump") {
+      const counter = url.searchParams.get("counter") as FunnelCounter | null;
+      const current = await this.load();
+      // An unrecognised counter is dropped rather than created. This object
+      // holds a fixed set of five and nothing should be able to grow it from
+      // outside.
+      if (!counter || !(counter in current)) return Response.json(current);
+      const updated: FunnelState = { ...current, [counter]: current[counter] + 1 };
+      await this.state.storage.put<FunnelState>("funnel", updated);
+      return Response.json(updated);
+    }
+
+    return new Response("not found", { status: 404 });
+  }
+
+  private async load(): Promise<FunnelState> {
+    return { ...EMPTY_FUNNEL, ...(await this.state.storage.get<FunnelState>("funnel")) };
   }
 }
 

@@ -35,6 +35,8 @@ struct RootView: View {
     /// that sequencing explicit instead of a race.
     @State private var sheet: RootSheet?
     @State private var pendingSheet: RootSheet?
+    /// Which sheet was last presented, so `onDismiss` knows what just closed.
+    @State private var lastSheet: RootSheet?
     @State private var capTitle = ""
     @State private var capMessage: String?
 
@@ -147,12 +149,20 @@ struct RootView: View {
         // only place the day-0 paywall is raised, and it cannot fire earlier
         // because it is driven by the transition out of zero.
         .onChange(of: completedLessons.count) { previous, count in
-            guard previous == 0, count > 0 else { return }
+            guard count > previous else { return }
+            // Counted here rather than in the reader, so a lesson finished
+            // any way at all -- a course resumed, a widget deep link -- is one
+            // lesson of the week.
+            if entitlements.isTrialing { entitlements.record(.trialLessonCompleted) }
+            guard previous == 0 else { return }
             presentFirstLessonPaywall()
         }
-        .onChange(of: entitlements.hasTrialEnded) { _, ended in
-            if ended { presentTrialSummaryIfNeeded() }
+        .onChange(of: entitlements.hasTrialEnded) { wasEnded, ended in
+            guard ended, !wasEnded else { return }
+            entitlements.record(.trialEnded)
+            presentTrialSummaryIfNeeded()
         }
+
     }
 
     // MARK: - The trial's three moments
@@ -181,16 +191,36 @@ struct RootView: View {
         if entitlements.isTrialEligible, !hasOfferedTrial {
             pendingSheet = .trialOffer
         }
-        sheet = .paywall(trigger)
+        entitlements.record(.paywallShown)
+        present(.paywall(trigger))
+    }
+
+    /// The one place a sheet is raised.
+    ///
+    /// Records what it was on the way past, because `onDismiss` runs after
+    /// the item is already nil and cannot tell a closed paywall from a closed
+    /// summary -- and only one of those is worth counting.
+    private func present(_ next: RootSheet) {
+        lastSheet = next
+        sheet = next
     }
 
     /// Runs after any sheet closes.
     private func presentPendingSheet() {
+        // Dismissed without buying is the denominator of the one number §6 is
+        // about, and it is the only one of the six events the server cannot
+        // see for itself. Recorded before the branch below, because it is
+        // true whether or not a trial follows.
+        if case .paywall = lastSheet, !entitlements.hasPremiumAccess {
+            entitlements.record(.paywallDismissed)
+        }
+        lastSheet = nil
+
         guard let next = pendingSheet else { return }
         pendingSheet = nil
 
         guard case .trialOffer = next else {
-            sheet = next
+            present(next)
             return
         }
         // Somebody who bought does not need a free week offered to them, and
@@ -209,7 +239,8 @@ struct RootView: View {
     private func startAndAnnounceTrial() async {
         guard await entitlements.startTrial().started else { return }
         hasOfferedTrial = true
-        sheet = .trialOffer
+        entitlements.record(.trialStarted)
+        present(.trialOffer)
     }
 
     /// The day-7 collapse, on the first open after expiry.
@@ -220,7 +251,7 @@ struct RootView: View {
               sheet == nil
         else { return }
         hasShownTrialSummary = true
-        sheet = .trialSummary(trialSummary())
+        present(.trialSummary(trialSummary()))
     }
 
     /// The reader's own numbers. Counted from the trial's start where there is

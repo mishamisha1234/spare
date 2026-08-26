@@ -272,14 +272,24 @@ describe("the trial's two ceilings", () => {
     const stub = environment.USAGE.get(environment.USAGE.idFromName(device));
     await stub.fetch(`https://usage/trial/start?now=${NOW}`);
 
+    const milestones: Array<string | undefined> = [];
     for (let index = 0; index < TRIAL_LESSONS; index += 1) {
-      const decision = await (
+      const decision = (await (
         await stub.fetch(
           `https://usage/consume?tier=trialing&window=three&key=k${index}&now=${NOW}`,
         )
-      ).json();
-      expect(decision, `lesson ${index + 1}`).toEqual({ allow: true, servedFromCache: false });
+      ).json()) as { allow: boolean; milestone?: string };
+      expect(decision.allow, `lesson ${index + 1}`).toBe(true);
+      milestones.push(decision.milestone);
     }
+
+    // The funnel milestone fires on the transition, once. Reported on every
+    // lesson from the third onwards it would count requests rather than
+    // devices, and the one number §6 turns on would be meaningless.
+    expect(milestones).toEqual([
+      undefined, undefined, "trialThreeLessons",
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+    ]);
 
     const refused = await (
       await stub.fetch(`https://usage/consume?tier=trialing&window=three&key=k99&now=${NOW}`)

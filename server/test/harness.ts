@@ -134,7 +134,13 @@ export async function call(options: CallOptions): Promise<Response> {
   const { response, ctx } = await callRaw(options);
   const body = await response.arrayBuffer();
   await waitOnExecutionContext(ctx);
-  return new Response(body, { status: response.status, headers: response.headers });
+  // `null` rather than an empty buffer for a 204: workerd warns on every
+  // re-wrap of a null-body status otherwise, and the endpoints that answer 204
+  // are the ones called most often in a run.
+  return new Response(body.byteLength === 0 ? null : body, {
+    status: response.status,
+    headers: response.headers,
+  });
 }
 
 export const premiumReceipt = fakeJWS({ originalTransactionId: "2000000000000001" });

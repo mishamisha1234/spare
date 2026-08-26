@@ -10,6 +10,14 @@ having worked.
 Nothing here can be done for you: every step needs an account only you can log
 into.
 
+> **Do not deploy the reverse trial before the app that uses it is on the App
+> Store.** `POST /v1/trial/start` is public and unauthenticated by design —
+> there are no accounts — so a Worker carrying it with no client in the world
+> is a free-Opus endpoint for anyone who finds it. Bounded: one trial per
+> device id, ten lessons, two courses, and the global monthly spend ceiling
+> above all of it. Bounded is not the same as intended. One redeploy, after
+> the client ships, is the whole plan.
+>
 > **Already deployed?** The Worker running right now predates two fixes it needs.
 > Until you redeploy, the free tier cannot finish a single lesson (a lesson's
 > revision pass is refused as if it were a second lesson) and every 30-minute
