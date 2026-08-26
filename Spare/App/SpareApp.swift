@@ -109,6 +109,16 @@ struct SpareApp: App {
             defaults.removeObject(forKey: AppSettingsKey.recallNotificationTimeMinutes)
             defaults.removeObject(forKey: AppSettingsKey.wantsRecallReminders)
             defaults.removeObject(forKey: AppSettingsKey.hasRequestedNotificationPermission)
+            // The trial's four flags. Every one of them is "shown once, ever",
+            // which is exactly the kind of state that survives a relaunch and
+            // makes the *second* test in a run behave differently from the
+            // first. `-UITEST_RESET_STATE` promises the same clean slate every
+            // time; without these it was not keeping that promise, and the
+            // trial pass launches the app three times.
+            defaults.removeObject(forKey: AppSettingsKey.hasShownFirstLessonPaywall)
+            defaults.removeObject(forKey: AppSettingsKey.hasOfferedTrial)
+            defaults.removeObject(forKey: AppSettingsKey.hasDismissedTrialNudge)
+            defaults.removeObject(forKey: AppSettingsKey.hasShownTrialSummary)
             if Self.isUITestEmptyState {
                 // Straight past onboarding into an empty Home: the state a
                 // fresh install actually reaches, and where the recall card

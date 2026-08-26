@@ -37,6 +37,13 @@ struct RootView: View {
     @State private var pendingSheet: RootSheet?
     /// Which sheet was last presented, so `onDismiss` knows what just closed.
     @State private var lastSheet: RootSheet?
+    /// Whether the first render has happened and the queries have loaded.
+    ///
+    /// A `@Query` reports empty before it reports its rows, so the completed
+    /// count goes 0 -> n at launch for *every* install. Without this, that
+    /// looks exactly like a first lesson being finished, and somebody who
+    /// completed theirs weeks ago gets the day-0 paywall on a cold start.
+    @State private var hasSettled = false
     @State private var capTitle = ""
     @State private var capMessage: String?
 
@@ -143,13 +150,14 @@ struct RootView: View {
         // rather than an offer. Marked as already shown, silently.
         .task {
             if !completedLessons.isEmpty { hasShownFirstLessonPaywall = true }
+            hasSettled = true
             presentTrialSummaryIfNeeded()
         }
         // The moment the product has demonstrated itself once. This is the
         // only place the day-0 paywall is raised, and it cannot fire earlier
         // because it is driven by the transition out of zero.
         .onChange(of: completedLessons.count) { previous, count in
-            guard count > previous else { return }
+            guard hasSettled, count > previous else { return }
             // Counted here rather than in the reader, so a lesson finished
             // any way at all -- a course resumed, a widget deep link -- is one
             // lesson of the week.
@@ -157,9 +165,12 @@ struct RootView: View {
             guard previous == 0 else { return }
             presentFirstLessonPaywall()
         }
-        .onChange(of: entitlements.hasTrialEnded) { wasEnded, ended in
-            guard ended, !wasEnded else { return }
-            entitlements.record(.trialEnded)
+        // Keyed on the status rather than on a `hasTrialEnded` edge. The edge
+        // form only fires if the *first* value it sees is false, which is true
+        // today and is a fact about how fast the cached snapshot loads
+        // relative to the first network answer -- not something this screen
+        // should be depending on.
+        .onChange(of: entitlements.snapshot.trial.status) { _, _ in
             presentTrialSummaryIfNeeded()
         }
     }
@@ -250,6 +261,7 @@ struct RootView: View {
               sheet == nil
         else { return }
         hasShownTrialSummary = true
+        entitlements.record(.trialEnded)
         present(.trialSummary(trialSummary()))
     }
 
