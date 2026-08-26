@@ -186,7 +186,10 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
         accessibilityText: Bool
     ) -> XCUIApplication {
         let app = XCUIApplication()
-        var arguments = ["-UITEST_RESET_STATE"] + extraArguments
+        // Straight to Home with the seed intact. Onboarding is four taps and
+        // four screens this pass is not about, paid three times per pass --
+        // and every one of them is somewhere the run can fall over.
+        var arguments = ["-UITEST_RESET_STATE", "-UITEST_SKIP_ONBOARDING"] + extraArguments
         if accessibilityText {
             arguments += [
                 "-UIPreferredContentSizeCategoryName",
@@ -199,32 +202,14 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
         return app
     }
 
-    /// Onboarding, cleared as fast as it can be. Every screen in this pass is
-    /// behind it and none of them are about it.
-    ///
-    /// Waits on a screen-specific element between the two `onboarding.primary`
-    /// taps. The identifier is the same on every step, so back-to-back taps
-    /// can both land on the button of the screen that has not gone away yet --
-    /// the second one hits a stale element and the flow silently stalls one
-    /// screen back. Same sequence the AX3 pass already proves.
-    private func clearOnboarding(_ app: XCUIApplication, scheme: String) throws {
-        try tap(app, "onboarding.primary", scheme: scheme, step: "trial-onboarding-pitch")
-
-        let interestChip = element(app, "onboarding.chip.History")
-        XCTAssertTrue(
-            interestChip.waitForExistence(timeout: defaultTimeout),
-            "trial-onboarding-interests: never reached the interests step"
-        )
-        try tap(app, "onboarding.chip.History", scheme: scheme, step: "trial-onboarding-interests")
-        try tap(app, "onboarding.primary", scheme: scheme, step: "trial-onboarding-interests")
-
-        XCTAssertTrue(
-            element(app, "onboarding.work").waitForExistence(timeout: defaultTimeout),
-            "trial-onboarding-about: never reached the about step"
-        )
-        try tap(app, "onboarding.skip", scheme: scheme, step: "trial-onboarding-about")
-        try tap(app, "onboarding.primary", scheme: scheme, step: "trial-notifications")
+    /// Waits for Home. `-UITEST_SKIP_ONBOARDING` means there is nothing to
+    /// walk through first, but the notification prompt can still arrive.
+    private func waitForHome(_ app: XCUIApplication, scheme: String) {
         dismissNotificationPromptIfPresent()
+        XCTAssertTrue(
+            element(app, "home.circle.thirty").waitForExistence(timeout: defaultTimeout),
+            "\(scheme): never reached Home"
+        )
     }
 
     private func trialScreens(colorScheme: String, accessibilityText: Bool = false) throws {
@@ -250,7 +235,7 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             ["-UITEST_TRIAL_ELIGIBLE"], colorScheme: colorScheme, accessibilityText: accessibilityText
         )
         do {
-            try clearOnboarding(app, scheme: colorScheme)
+            waitForHome(app, scheme: colorScheme)
             try waitAndCapture(app, "t-01-home-eligible", scheme: colorScheme, identifier: "home.circle.thirty")
             try tap(app, "home.circle.thirty", scheme: colorScheme, step: "t-01-home-eligible")
             try waitAndCapture(app, "t-02-paywall", scheme: colorScheme, identifier: "paywall.buy")
@@ -278,7 +263,7 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             ["-UITEST_TRIAL_DAY4"], colorScheme: colorScheme, accessibilityText: accessibilityText
         )
         do {
-            try clearOnboarding(app, scheme: colorScheme)
+            waitForHome(app, scheme: colorScheme)
             try waitAndCapture(app, "t-04-home-day4-nudge", scheme: colorScheme, identifier: "home.trialLine")
             // Dismissible, and dismissed for good. A report that keeps coming
             // back is a nag.
@@ -298,7 +283,7 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             ["-UITEST_TRIAL_EXPIRED"], colorScheme: colorScheme, accessibilityText: accessibilityText
         )
         do {
-            try clearOnboarding(app, scheme: colorScheme)
+            waitForHome(app, scheme: colorScheme)
             try waitAndCapture(
                 app, "t-05-trial-summary", scheme: colorScheme, identifier: "trialSummary.keepPremium"
             )
@@ -684,7 +669,23 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             XCTFail("\(step): \"\(identifier)\" has a zero-sized frame — squeezed by layout, not scrolled past")
         }
 
-        target.tap()
+        // A coordinate tap rather than `target.tap()`.
+        //
+        // Everything above has already established that this element exists,
+        // is hittable, and has a real frame -- that is where the verification
+        // lives. What `target.tap()` adds on top is resolving an activation
+        // point at tap time, and inside a SwiftUI ScrollView that resolution
+        // races the scroll view's own layout: CI has produced "Activation
+        // point invalid and no suggested hit points based on element frame"
+        // on an element that passed every check a line earlier. The error is
+        // raised by XCTest directly, so it cannot be caught and retried, and
+        // it arrives with no accessibility dump attached.
+        //
+        // Tapping the centre of the frame we just validated skips that second
+        // resolution. It does not skip hit-testing of what is on top: a sheet
+        // covering the element still fails, at `waitUntilHittable` above,
+        // which is where that failure belongs.
+        target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
     }
 
     /// Waits for an element to actually go away.

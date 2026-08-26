@@ -21,6 +21,18 @@ struct SpareApp: App {
         ProcessInfo.processInfo.arguments.contains("-UITEST_EMPTY_STATE")
     }
 
+    /// Starts on Home with the seed intact.
+    ///
+    /// `-UITEST_EMPTY_STATE` also skips onboarding, but it skips the seed with
+    /// it. A pass that is about a screen *behind* onboarding and needs a
+    /// populated library -- the trial's four -- otherwise pays four taps and
+    /// four screens of flake surface per launch for something it is not
+    /// testing. The main walkthrough still walks onboarding, because that is
+    /// one of the things it is for.
+    private static var isUITestSkipOnboarding: Bool {
+        ProcessInfo.processInfo.arguments.contains("-UITEST_SKIP_ONBOARDING")
+    }
+
     /// Every provider call fails, so the error states render their real copy
     /// rather than something written for the screenshot.
     private static var isUITestFailingProvider: Bool {
@@ -103,6 +115,9 @@ struct SpareApp: App {
                 // used to appear with a question for a lesson nobody read.
                 defaults.set(true, forKey: AppSettingsKey.hasCompletedOnboarding)
             } else {
+                if Self.isUITestSkipOnboarding {
+                    defaults.set(true, forKey: AppSettingsKey.hasCompletedOnboarding)
+                }
                 Self.seedUITestState(container)
             }
         }
