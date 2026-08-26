@@ -162,7 +162,6 @@ struct RootView: View {
             entitlements.record(.trialEnded)
             presentTrialSummaryIfNeeded()
         }
-
     }
 
     // MARK: - The trial's three moments
@@ -304,25 +303,35 @@ struct RootView: View {
     static let preFirstLessonNote =
         "Start with 3 or 7 minutes. The other lengths are part of Premium."
 
+    /// The ordering rule, and the only place it is enforced.
+    ///
+    /// A reader who has finished nothing has not been shown that this works,
+    /// and a price is not the answer to their first tap. They get a note
+    /// instead: no price, no plan rows, no button. It names Premium, which is
+    /// the point -- the word arrives without anything being asked of them,
+    /// which is exactly what the rule is for.
+    ///
+    /// Every route to the paywall comes through here. There are two, and the
+    /// second is the one that matters: the completion screen's locked rows
+    /// used to raise the paywall directly, which meant a reader who reached a
+    /// finished lesson without marking it complete could be shown a price
+    /// before the app had a completed lesson to its name.
+    private func requestPaywall(_ trigger: PaywallTrigger) {
+        guard !completedLessons.isEmpty else {
+            capTitle = "Two lengths to start with"
+            capMessage = Self.preFirstLessonNote
+            return
+        }
+        presentPaywall(trigger)
+    }
+
     private func startLesson(in window: TimeWindow) {
         let decision = entitlements.canStartLesson(window: window)
         switch decision {
         case .allowed:
             path.append(.suggestions(window))
         case .denied(let trigger):
-            // The ordering rule, and the only place it is enforced.
-            //
-            // A reader who has finished nothing has not been shown that this
-            // works, and a price is not the answer to their first tap. They
-            // get a note instead: no price, no plan rows, no button. It names
-            // Premium, which is the point -- the word arrives without anything
-            // being asked of them, which is exactly what the rule is for.
-            guard !completedLessons.isEmpty else {
-                capTitle = "Two lengths to start with"
-                capMessage = Self.preFirstLessonNote
-                return
-            }
-            presentPaywall(trigger)
+            requestPaywall(trigger)
         case .capped(.miniCoursesThisMonth(_, let cap)):
             capTitle = "Mini-course limit reached"
             capMessage = "You've started all \(cap) mini-courses included this month. The count resets on the 1st — shorter lessons are unaffected."
@@ -367,7 +376,7 @@ struct RootView: View {
                 },
                 onReturnHome: { path.removeAll() },
                 onTakeTest: { path.append(.postLessonTest(lessonID: lessonID)) },
-                onPaywall: { trigger in paywall = PaywallPresentation(trigger: trigger) }
+                onPaywall: requestPaywall(_:)
             )
 
         case .library:
