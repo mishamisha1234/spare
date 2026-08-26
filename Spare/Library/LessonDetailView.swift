@@ -29,6 +29,13 @@ struct LessonDetailView: View {
                     Text(lesson.title)
                         .font(Theme.Font.largeTitle.font)
                         .foregroundStyle(palette.text)
+                        // The only identifier on this screen, and it earns its
+                        // place twice: it is how a test knows the course
+                        // opened, and -- because it sits at the very top --
+                        // whether it is *hittable* is how a test knows a
+                        // resumed course landed in the body rather than
+                        // restarting at the beginning.
+                        .accessibilityIdentifier("lessonDetail.title")
                     Text(lesson.subtitle)
                         .font(Theme.Font.label.font)
                         .foregroundStyle(palette.secondaryText)

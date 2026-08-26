@@ -324,8 +324,19 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
             )
             try tap(app, "home.circle.thirty", scheme: colorScheme, step: "t-04a-home-course-in-progress")
             try waitAndCapture(
-                app, "t-04b-reader-resumed", scheme: colorScheme,
-                identifier: "reader.textSize", timeout: 60
+                app, "t-04b-course-resumed", scheme: colorScheme,
+                identifier: "lessonDetail.title", timeout: 60
+            )
+
+            // Resumed, not restarted. The title sits at the very top of the
+            // course, so a reader dropped at the beginning would find it
+            // on screen. Being present but *not hittable* is what "opened
+            // where you left off" looks like from out here.
+            let courseTitle = element(app, "lessonDetail.title")
+            XCTAssertTrue(courseTitle.exists, "t-04b: the course did not open")
+            XCTAssertFalse(
+                courseTitle.isHittable,
+                "t-04b: the course opened at the top — the resume position was lost"
             )
         } catch {
             attachFailureDiagnostics(app, scheme: colorScheme)
