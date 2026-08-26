@@ -247,7 +247,7 @@ struct RootView: View {
     /// locked circles behind it. A failure leaves `hasOfferedTrial` false, so
     /// the next paywall dismissal tries again.
     private func startAndAnnounceTrial() async {
-        guard await entitlements.startTrial().started else { return }
+        guard let result = await entitlements.startTrial(), result.started else { return }
         hasOfferedTrial = true
         entitlements.record(.trialStarted)
         present(.trialOffer)

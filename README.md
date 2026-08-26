@@ -59,6 +59,36 @@ The earlier design — stream the draft immediately, swap in the revision later 
 
 ---
 
+## A failed read is not an answer
+
+**Anywhere the app cannot reach the proxy, it shows nothing — not a default, not a last-known value dressed up as fresh, and above all not a state nobody reported.** A lookup that failed carries no information, and encoding it as one is how a screen ends up making a confident claim out of a network error.
+
+This is a standing rule because it was broken, in the worst available way. `TrialStore.status()` used to answer `TrialMirror.unavailable`, defined as `status: .ended`, on any failure — reasoned at the time as "the free tier is the state that always works". It is not a neutral state: `.ended` is the one that fires the day-7 summary. So on any launch with no network — a plane, a captive portal, a Worker that predated the endpoint — a reader who had never had a trial was shown *"Your week with Premium"*, and because there was no `startedAt` to count from, the summary totalled their entire library and presented it as that week. Plausible, specific, and invented.
+
+The shape of the fix, which is the shape to copy:
+
+- The store returns `TrialMirror?`. Nil means "I could not ask", which is different from every answer the server can give.
+- `refreshTrial()` applies only a non-nil answer. A failed read leaves the cached mirror exactly as it was.
+- An unrecognised status **throws** rather than falling back, so an unparseable answer becomes nil too.
+- `hasEnded` requires `startedAt != nil`. A trial that ended has a start; anything else is noise that reached the property.
+- Server side, `readTrial` and `readFunnel` return null rather than a manufactured `ended` or five zeros, and `/v1/trial/status` answers 503 rather than inventing a state.
+
+### Every other place a failed read could become a state
+
+Audited in full when the rule was written. Nothing else in this class is outstanding.
+
+| Site | Behaviour | Verdict |
+|---|---|---|
+| `hasSeenLesson` catch → `true` | Falls through to generation | **Kept.** Costs a regeneration and serves a correct lesson; the failure is money, not a false statement to the reader. |
+| `readCourseGrant` catch → `null` | No grant, so refuse | **Kept.** Fail-closed: denies rather than grants. |
+| `bumpFunnelNow` / `recordConversion` catch → nothing | A dropped counter | **Kept.** A slightly wrong marketing number, never a reader-visible failure. |
+| `verifyEntitlement` failure → 503 | Retryable, no downgrade | **Kept.** This is the good example — it refuses to answer rather than answering "free". |
+| `isCompleteMessage`, `upstreamErrorType`, `bodyWordCount`, `decodeUnverifiedPayload` catches | `false` / `"unreadable"` / `null` | **Kept.** Parse failures of a body we already hold, reported as the absences they are. |
+| `StoredEntitlement.tier` → `?? .free` on an unknown raw value | Downgrade | **Kept, with a legacy map and a test.** Not a failed read — a stored value this build cannot interpret — and granting on an unknown tier is the worse direction to be wrong in. |
+| `loadCachedSnapshot` → `?? .free`, `trialJSON` → `?? .eligible` | Empty store reads as a fresh install | **Kept.** A genuine absence: nothing has been written yet. Neither grants anything. |
+
+---
+
 ## Requirements
 
 - **SpareCore:** any Swift 6 toolchain (Linux, macOS, Windows).

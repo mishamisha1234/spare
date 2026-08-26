@@ -286,3 +286,61 @@ describe("operator bypass", () => {
     expect(second.status).toBe(402);
   });
 });
+
+/**
+ * The funnel block on the status page is read by a human deciding whether the
+ * reverse trial works. That makes an honest absence load-bearing.
+ */
+describe("the funnel block", () => {
+  it("reports the counters and the share they imply", async () => {
+    const response = await status({ token: TOKEN });
+    const body = (await response.json()) as {
+      funnel: { paywallsDismissed: number; engagedShare: number | null } | null;
+    };
+
+    // `toBeDefined` as well as `not.toBeNull`: an absent key satisfies the
+    // second on its own, which is how the first version of this test passed
+    // while asserting against a 401 body.
+    expect(body.funnel).toBeDefined();
+    expect(body.funnel).not.toBeNull();
+    // Null rather than zero until somebody has dismissed a paywall. A
+    // percentage of nothing is not a small percentage, and the thresholds this
+    // number is read against would treat 0% as a verdict.
+    expect(body.funnel?.engagedShare).toBeNull();
+  });
+
+  /**
+   * The counters used to fall back to five zeros when the object could not be
+   * reached, which turns a broken binding into "nobody started a trial" --
+   * a finding, reported with the same confidence as a real one.
+   */
+  it("reports nothing rather than zeros when the counters cannot be read", async () => {
+    const broken = testEnv({ ADMIN_TOKEN: TOKEN });
+    // A namespace whose `get` throws is the closest stand-in for an
+    // unreachable object that does not require breaking the binding.
+    (broken as any).FUNNEL = {
+      idFromName() {
+        throw new Error("unreachable");
+      },
+      get() {
+        throw new Error("unreachable");
+      },
+    };
+
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(
+      new Request("https://proxy.spare.app/v1/status", {
+        method: "GET",
+        headers: { "x-spare-admin": TOKEN },
+      }),
+      broken,
+      ctx,
+      { now: () => NOW },
+    );
+    const body = (await response.json()) as { funnel: unknown };
+    await waitOnExecutionContext(ctx);
+
+    expect(response.status).toBe(200);
+    expect(body.funnel).toBeNull();
+  });
+});

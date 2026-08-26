@@ -418,3 +418,52 @@ describe("a course started under the trial", () => {
     expect(other.status).toBe(402);
   });
 });
+
+/**
+ * A failed read is not an answer.
+ *
+ * The client half of this bug shipped: an unreachable proxy resolved to "your
+ * free week is over" and the day-7 summary fired at readers who had never had
+ * a trial. The server had the same defect in two places, and these hold the
+ * shape of the fix rather than the fix itself -- what must never happen is a
+ * state nobody reported appearing on the wire.
+ */
+describe("an unreadable trial", () => {
+  /**
+   * The header is a mirror of server state. A device with no trial gets no
+   * header at all, which is what "I have nothing to tell you" looks like --
+   * as distinct from a header saying the week is over.
+   */
+  it("never puts a manufactured trial on the wire", async () => {
+    const response = await lesson("device-trial-noheader-2", "Nothing to mirror");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-spare-trial")).toBeNull();
+  });
+
+  /**
+   * `status` answers 503 rather than inventing a state, so a client reads it
+   * as "could not ask" and keeps whatever it already had. A 200 carrying
+   * `{"status":"ended"}` would be indistinguishable from a real finished week.
+   */
+  it("answers status with a real trial or not at all", async () => {
+    const device = "device-trial-status-shape";
+    const before = await trialStatus(device);
+    expect(before.status).toBe("eligible");
+    expect(before.startedAt).toBeNull();
+
+    await startTrial(device);
+    const after = await trialStatus(device);
+    expect(after.status).toBe("active");
+    // Every non-eligible status the client can act on carries the start it is
+    // measured from. `hasEnded` on the client requires exactly this.
+    expect(after.startedAt).not.toBeNull();
+  });
+
+  it("reports an ended trial with the start it ended from", async () => {
+    const device = "device-trial-ended-has-start";
+    await startTrial(device);
+    const ended = await trialStatus(device, NOW + TRIAL_DURATION_MS + DAY);
+    expect(ended.status).toBe("ended");
+    expect(ended.startedAt).toBe(NOW);
+  });
+});

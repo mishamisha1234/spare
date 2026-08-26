@@ -84,21 +84,28 @@ final class EntitlementService: ObservableObject {
     /// Returns the result so the caller can distinguish "here is your week"
     /// from "you have already had one" -- the second must not be presented as
     /// a grant, and there is no second trial to fall back on.
+    /// Nil when there was nobody to ask -- no proxy configured, or the call
+    /// failed. Distinct from a result whose `started` is false, which is the
+    /// server refusing.
     @discardableResult
-    func startTrial() async -> TrialStartResult {
-        guard let trialStore else {
-            return TrialStartResult(started: false, reason: "unavailable", trial: snapshot.trial)
-        }
-        let result = await trialStore.start()
+    func startTrial() async -> TrialStartResult? {
+        guard let trialStore, let result = await trialStore.start() else { return nil }
         apply(trial: result.trial)
         return result
     }
 
     /// Re-reads the mirror. Cheap, and called after anything that spends a
     /// trial lesson so the remaining count on screen is not a lesson behind.
+    ///
+    /// A failed read changes nothing. The cached mirror stands, which for a
+    /// fresh install grants nothing and for a trialist mid-week keeps the
+    /// affordances they had -- and the server refuses anything they are not
+    /// entitled to regardless, which is the entire point of this being a
+    /// mirror. Writing a fabricated state here is what produced the day-7
+    /// summary firing at people who had never had a trial.
     func refreshTrial() async {
-        guard let trialStore else { return }
-        apply(trial: await trialStore.status())
+        guard let trialStore, let mirror = await trialStore.status() else { return }
+        apply(trial: mirror)
     }
 
     // MARK: - Instrumentation
@@ -128,7 +135,11 @@ final class EntitlementService: ObservableObject {
     var isTrialing: Bool { snapshot.tier == .trialing }
 
     /// The trial has been had and is over. What the day-7 summary waits for.
-    var hasTrialEnded: Bool { snapshot.trial.status == .ended }
+    ///
+    /// `TrialMirror.hasEnded`, which requires a recorded start: "ended" with
+    /// no `startedAt` is not a finished week, it is noise that reached this
+    /// property.
+    var hasTrialEnded: Bool { snapshot.trial.hasEnded }
 
     var trialLessonsRemaining: Int { snapshot.trial.remainingLessons }
 

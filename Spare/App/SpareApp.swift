@@ -167,6 +167,12 @@ struct SpareApp: App {
     /// therefore granting nothing.
     private static func makeTrialStore(purchases: any PurchaseStore) -> (any TrialStore)? {
         if Self.isUITestReset {
+            // A store that answers nothing, which is not the same as no store
+            // at all: this one gets asked and fails, which is the case that
+            // has to be photographed.
+            if ProcessInfo.processInfo.arguments.contains("-UITEST_TRIAL_UNREACHABLE") {
+                return UnreachableTrialStore()
+            }
             // Nil unless the test named a state. See `uiTestTrial`.
             guard let mirror = Self.uiTestTrial else { return nil }
             return StubTrialStore(mirror)

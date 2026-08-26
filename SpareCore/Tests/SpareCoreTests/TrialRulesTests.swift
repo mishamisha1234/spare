@@ -46,18 +46,45 @@ final class TrialRulesTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(TrialMirror.self, from: data), original)
     }
 
-    /// A server that grows a fourth status must not brick an older client.
-    /// `ended` is the safe reading of "I don't recognise this": it shows the
-    /// free tier, which always works.
-    func testAnUnknownStatusReadsAsEnded() throws {
+    /// An unrecognised status fails to decode rather than falling back.
+    ///
+    /// It used to fall back to `ended`, on the reasoning that a server growing
+    /// a fourth state must not brick an older client. That was backwards:
+    /// `ended` is the status that fires the day-7 summary, so the "safe"
+    /// default was the one that invents a finished week. Throwing gives the
+    /// caller nil, and nil means the app keeps what it had.
+    func testAnUnknownStatusFailsToDecodeRatherThanGuessing() {
         let json = #"{"status":"paused","remainingLessons":4}"#
-        let mirror = try JSONDecoder().decode(TrialMirror.self, from: Data(json.utf8))
-        XCTAssertEqual(mirror.status, .ended)
+        XCTAssertThrowsError(try JSONDecoder().decode(TrialMirror.self, from: Data(json.utf8)))
     }
 
-    func testAnUnreachableServerIsNotAnActiveTrial() {
-        XCTAssertEqual(TrialMirror.unavailable.status, .ended)
-        XCTAssertFalse(TrialMirror.unavailable.isActive)
+    // MARK: - A failed read is not an answer
+
+    /// The bug this whole guard exists for.
+    ///
+    /// A mirror claiming `ended` with no recorded start is not a finished
+    /// week; it is noise that reached the property. Before `hasEnded` required
+    /// a start, that noise fired the day-7 summary at readers who had never
+    /// had a trial -- and with no `startedAt` to count from, the summary
+    /// totalled their entire library and presented it as their week.
+    func testEndedWithoutAStartIsNotAFinishedWeek() {
+        let noise = TrialMirror(status: .ended)
+        XCTAssertFalse(noise.hasEnded)
+
+        let real = TrialMirror(
+            status: .ended,
+            startedAt: now.addingTimeInterval(-8 * 86_400),
+            expiresAt: now.addingTimeInterval(-86_400)
+        )
+        XCTAssertTrue(real.hasEnded)
+    }
+
+    func testAnUnreachableStoreAnswersNothingAtAll() async {
+        let store = UnreachableTrialStore()
+        let status = await store.status()
+        let started = await store.start()
+        XCTAssertNil(status, "a failed read must not resolve to a state")
+        XCTAssertNil(started, "a failed claim must not resolve to a refusal")
     }
 
     // MARK: - Counting down
@@ -152,27 +179,28 @@ final class TrialRulesTests: XCTestCase {
 
     // MARK: - The stub
 
-    func testTheStubGrantsExactlyOneTrial() async {
+    func testTheStubGrantsExactlyOneTrial() async throws {
         let store = StubTrialStore()
-        let first = await store.start()
+        let first = try XCTUnwrap(await store.start())
         XCTAssertTrue(first.started)
         XCTAssertEqual(first.trial.remainingLessons, TrialLimits.lessons)
         XCTAssertEqual(first.trial.remainingCourses, TrialLimits.courses)
 
-        let second = await store.start()
+        // Non-nil: a refusal is an answer. Only an unreachable store is nil.
+        let second = try XCTUnwrap(await store.start())
         XCTAssertFalse(second.started)
         XCTAssertEqual(second.reason, "alreadyUsed")
         XCTAssertEqual(second.trial.startedAt, first.trial.startedAt)
     }
 
-    func testTheStubCanBeginPartWayThroughAWeek() async {
+    func testTheStubCanBeginPartWayThroughAWeek() async throws {
         let store = StubTrialStore(
             TrialMirror(status: .active, remainingLessons: 4, remainingCourses: 1)
         )
-        let refused = await store.start()
+        let refused = try XCTUnwrap(await store.start())
         XCTAssertFalse(refused.started, "a running trial cannot be started again")
         // Hoisted: XCTAssert's arguments are autoclosures and cannot await.
-        let status = await store.status()
+        let status = try XCTUnwrap(await store.status())
         XCTAssertEqual(status.remainingLessons, 4)
     }
 

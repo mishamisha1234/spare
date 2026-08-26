@@ -46,19 +46,26 @@ public struct TrialMirror: Sendable, Equatable, Codable {
         self.expiresAt = expiresAt
     }
 
-    /// Nothing claimed yet. Also what a failed lookup becomes: see
-    /// ``TrialMirror/unavailable``.
+    /// Nothing claimed yet.
+    ///
+    /// There is deliberately no `unavailable` beside this. A lookup that
+    /// failed is not a state and must not be turned into one — see the type's
+    /// own documentation, and `TrialStore`, which returns nil instead.
     public static let eligible = TrialMirror(status: .eligible)
 
-    /// What the app assumes when it cannot reach the server.
-    ///
-    /// `ended`, not `eligible` and not `active`. Guessing `active` would draw
-    /// unlocked circles the server will refuse; guessing `eligible` would
-    /// offer a free week somebody may already have spent. `ended` shows the
-    /// free tier, which is the state that always works.
-    public static let unavailable = TrialMirror(status: .ended)
-
     public var isActive: Bool { status == .active }
+
+    /// The week ran out. Requires a start, and that is not belt and braces.
+    ///
+    /// `status == .ended` alone was the whole of this check once, and it was
+    /// wrong in the worst available way: a fabricated `ended` — from a failed
+    /// lookup, or from a status this build could not parse — satisfied it, and
+    /// the day-7 summary fired for somebody who had never had a trial. With no
+    /// `startedAt` to count from it then summed their entire library and told
+    /// them it was their week. Plausible, specific, and invented.
+    ///
+    /// A trial that ended has a start. Anything claiming otherwise is noise.
+    public var hasEnded: Bool { status == .ended && startedAt != nil }
 
     /// Whole days left, rounded up, so the last part-day reads as "1 day left"
     /// rather than "0".
@@ -80,11 +87,22 @@ public struct TrialMirror: Sendable, Equatable, Codable {
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        // An unrecognised status decodes to `ended` rather than throwing. A
-        // server that grows a fourth state must not brick an older client into
-        // showing nothing; the free tier is the safe reading of "I don't know".
-        let raw = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
-        status = TrialStatus(rawValue: raw) ?? .ended
+        // An unrecognised status throws rather than falling back.
+        //
+        // It fell back to `ended` once, on the reasoning that a server growing
+        // a fourth state must not brick an older client. That reasoning was
+        // backwards: `ended` is not a neutral reading of "I don't know", it is
+        // the reading that triggers the day-7 summary. Throwing here means the
+        // caller gets nil, which is what "I don't know" actually looks like,
+        // and the app keeps whatever it already had.
+        let raw = try container.decode(String.self, forKey: .status)
+        guard let status = TrialStatus(rawValue: raw) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .status, in: container,
+                debugDescription: "unrecognised trial status \"\(raw)\""
+            )
+        }
+        self.status = status
         remainingLessons = try container.decodeIfPresent(Int.self, forKey: .remainingLessons) ?? 0
         remainingCourses = try container.decodeIfPresent(Int.self, forKey: .remainingCourses) ?? 0
         startedAt = Self.date(try container.decodeIfPresent(Double.self, forKey: .startedAt))
@@ -130,14 +148,16 @@ public struct TrialStartResult: Sendable, Equatable {
 /// talks to the proxy, and a stub drives the trial screens in UI tests and
 /// previews. CI can then screenshot the day-4 nudge and the day-7 summary
 /// without a network, a clock, or a seven-day wait.
+/// Both methods answer `nil` for "I could not ask", which is the whole of the
+/// contract that matters. A failed read is not an answer: the caller keeps
+/// whatever it already had rather than being handed a state nobody reported.
 public protocol TrialStore: Sendable {
     /// Claims this device's one trial. Idempotent server-side, so calling it
-    /// twice cannot extend anything.
-    func start() async -> TrialStartResult
-    /// Re-reads the mirror. Never throws: an unreachable server yields
-    /// ``TrialMirror/unavailable``, because the app has to draw something and
-    /// the free tier is the reading that always works.
-    func status() async -> TrialMirror
+    /// twice cannot extend anything. Nil when the proxy could not be reached —
+    /// distinct from a result saying the trial was refused.
+    func start() async -> TrialStartResult?
+    /// Re-reads the mirror. Nil when the proxy could not be reached.
+    func status() async -> TrialMirror?
 }
 
 /// The real store. One small POST per call, to the same proxy as everything
@@ -168,25 +188,24 @@ public struct ProxyTrialStore: TrialStore {
         self.receipt = receipt
     }
 
-    public func start() async -> TrialStartResult {
-        guard let body = await post("/v1/trial/start") else {
-            return TrialStartResult(started: false, reason: "unavailable", trial: .unavailable)
-        }
-        let root = try? JSONDecoder().decode(JSONValue.self, from: body)
-        let trial = (try? JSONDecoder().decode(TrialMirror.self, from: nested(body, key: "trial")))
-            ?? .unavailable
+    public func start() async -> TrialStartResult? {
+        guard let body = await post("/v1/trial/start"),
+              let root = try? JSONDecoder().decode(JSONValue.self, from: body),
+              let trial = try? JSONDecoder().decode(
+                  TrialMirror.self, from: nested(body, key: "trial")
+              )
+        else { return nil }
+
         return TrialStartResult(
-            started: root?["started"]?.boolValue ?? false,
-            reason: root?["reason"]?.stringValue,
+            started: root["started"]?.boolValue ?? false,
+            reason: root["reason"]?.stringValue,
             trial: trial
         )
     }
 
-    public func status() async -> TrialMirror {
-        guard let body = await post("/v1/trial/status"),
-              let mirror = try? JSONDecoder().decode(TrialMirror.self, from: body)
-        else { return .unavailable }
-        return mirror
+    public func status() async -> TrialMirror? {
+        guard let body = await post("/v1/trial/status") else { return nil }
+        return try? JSONDecoder().decode(TrialMirror.self, from: body)
     }
 
     /// The `trial` object out of a start response, as its own JSON document.
@@ -239,7 +258,7 @@ public actor StubTrialStore: TrialStore {
         self.mirror = mirror
     }
 
-    public func start() async -> TrialStartResult {
+    public func start() async -> TrialStartResult? {
         guard mirror.status == .eligible else {
             return TrialStartResult(started: false, reason: "alreadyUsed", trial: mirror)
         }
@@ -254,7 +273,19 @@ public actor StubTrialStore: TrialStore {
         return TrialStartResult(started: true, trial: mirror)
     }
 
-    public func status() async -> TrialMirror { mirror }
+    public func status() async -> TrialMirror? { mirror }
+}
+
+/// A proxy that cannot be reached.
+///
+/// Exists so the screenshot walkthrough can photograph what a device with no
+/// network sees, which is the case that produced the worst bug in this
+/// feature: an unreachable server used to read as "your free week is over",
+/// and the day-7 summary fired for somebody who had never had one.
+public struct UnreachableTrialStore: TrialStore {
+    public init() {}
+    public func start() async -> TrialStartResult? { nil }
+    public func status() async -> TrialMirror? { nil }
 }
 
 /// The trial's shape, mirroring `TRIAL_LESSONS` / `TRIAL_COURSES` /

@@ -49,7 +49,6 @@ import {
 } from "./cache";
 import {
   CHAPTERED_WINDOWS,
-  EMPTY_FUNNEL,
   FunnelLedger,
   SpendLedger,
   UsageCounter,
@@ -178,7 +177,7 @@ export default {
     let effectiveTier: EffectiveTier = entitlement.tier;
     if (entitlement.tier === "free") {
       trial = await readTrial(env, deviceId, now);
-      if (trial.status === "active") effectiveTier = "trialing";
+      if (trial?.status === "active") effectiveTier = "trialing";
     }
 
     // Starting and reading the trial are not generation calls and carry no
@@ -397,7 +396,6 @@ async function handleStatus(
   };
 
   const funnel = await readFunnel(env);
-  const dismissed = funnel.paywallsDismissed;
 
   const payload: Record<string, unknown> = {
     month: spend.month,
@@ -410,7 +408,7 @@ async function handleStatus(
     // The reverse trial's funnel. Five integers, no device identifiers --
     // see `FunnelLedger` for why that is compatible with the no-tracking
     // promise, and why a device-local log cannot answer this question.
-    funnel: {
+    funnel: funnel === null ? null : {
       ...funnel,
       // The one number §6 is about: of the readers who dismissed the first
       // paywall, what share went on to read enough to have an opinion. Above
@@ -419,8 +417,10 @@ async function handleStatus(
       //
       // Null rather than zero until somebody has dismissed a paywall. A
       // percentage of nothing is not a small percentage.
-      engagedShare: dismissed > 0
-        ? Number(((funnel.trialsWithThreePlusLessons / dismissed) * 100).toFixed(1))
+      engagedShare: funnel.paywallsDismissed > 0
+        ? Number(
+            ((funnel.trialsWithThreePlusLessons / funnel.paywallsDismissed) * 100).toFixed(1),
+          )
         : null,
     },
   };
@@ -868,8 +868,11 @@ async function passUpstreamError(upstream: Response): Promise<Response> {
  * from the same state, and `UsageCounter.consume` re-checks it atomically
  * before a single token is generated.
  *
- * Falls back to "ended" if the lookup itself fails. A Durable Object hiccup
- * must not hand out Opus, and the free tier still works.
+ * Null when the object could not be reached. Not "ended", which it used to be:
+ * that is a real state with a real meaning, and manufacturing it here put a
+ * fabricated `x-spare-trial` header on the wire saying a reader's week was
+ * over. Refusing to answer is the honest failure, and the caller already
+ * treats "no trial" as free -- so nothing is granted either way.
  */
 /**
  * The pool a started course may keep drawing from, or null.
@@ -941,12 +944,22 @@ async function bumpFunnelNow(env: Env, counter: FunnelCounter): Promise<void> {
   }
 }
 
-async function readFunnel(env: Env): Promise<FunnelState> {
+/**
+ * Null when the counters could not be read.
+ *
+ * Not five zeros, which it used to be. `/v1/status` is read by a human
+ * deciding whether the reverse trial is working, and "0 trials started" is a
+ * finding. Reporting an unreachable object as an empty one turns a broken
+ * binding into a business conclusion.
+ */
+async function readFunnel(env: Env): Promise<FunnelState | null> {
   try {
     const stub = env.FUNNEL.get(env.FUNNEL.idFromName("global"));
-    return (await (await stub.fetch("https://funnel/peek")).json()) as FunnelState;
+    const response = await stub.fetch("https://funnel/peek");
+    if (!response.ok) return null;
+    return (await response.json()) as FunnelState;
   } catch {
-    return { ...EMPTY_FUNNEL };
+    return null;
   }
 }
 
@@ -982,13 +995,14 @@ function courseIdentity(body: Record<string, any>): Omit<LessonIdentity, "pool">
   };
 }
 
-async function readTrial(env: Env, deviceId: string, now: number): Promise<TrialView> {
+async function readTrial(env: Env, deviceId: string, now: number): Promise<TrialView | null> {
   try {
     const stub = env.USAGE.get(env.USAGE.idFromName(deviceId));
     const response = await stub.fetch(`https://usage/trial?now=${now}`);
+    if (!response.ok) return null;
     return (await response.json()) as TrialView;
   } catch {
-    return { status: "ended", remainingLessons: 0, remainingCourses: 0, startedAt: null, expiresAt: null };
+    return null;
   }
 }
 
@@ -1015,11 +1029,20 @@ async function handleTrial(
 
   if (pathname === "/v1/trial/status") {
     const trial = await readTrial(env, deviceId, now);
+    // 503 rather than a manufactured answer. The client reads a non-2xx as
+    // "I could not ask" and keeps whatever it already had, which is the only
+    // honest thing either side can do with a failed read.
+    if (!trial) {
+      return errorResponse(503, "trialUnavailable", "Couldn't read your trial. Try again shortly.");
+    }
     return new Response(JSON.stringify(trial), { status: 200, headers: JSON_HEADERS });
   }
 
   if (isPaying(entitlement.tier)) {
     const trial = await readTrial(env, deviceId, now);
+    if (!trial) {
+      return errorResponse(503, "trialUnavailable", "Couldn't read your trial. Try again shortly.");
+    }
     return new Response(
       JSON.stringify({ started: false, reason: "alreadySubscribed", trial }),
       { status: 200, headers: JSON_HEADERS },

@@ -225,13 +225,50 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
         }
         defer { removeUIInterruptionMonitor(notificationMonitor) }
 
+        // MARK: No trial, and no server to ask.
+        //
+        // The case that produced the worst bug in this feature. An unreachable
+        // proxy used to resolve to "your free week is over", so the day-7
+        // summary fired for somebody who had never had a trial -- and with no
+        // start date to count from it totalled their whole library and called
+        // it their week. Plausible, specific, and invented.
+        //
+        // Photographed rather than only unit-tested because what makes it bad
+        // is what it looks like: a screen nobody would question.
+        var app = launchForTrial(
+            ["-UITEST_TRIAL_UNREACHABLE"], colorScheme: colorScheme, accessibilityText: accessibilityText
+        )
+        do {
+            waitForHome(app, scheme: colorScheme)
+
+            // A real wait, not an immediate check. The summary is presented
+            // after the first status call resolves, so asserting absence in
+            // the same frame would prove nothing at all.
+            XCTAssertFalse(
+                element(app, "trialSummary.keepPremium").waitForExistence(timeout: 6),
+                "t-00: a device that never had a trial was shown the day-7 summary"
+            )
+            // And the app is alive rather than merely quiet.
+            XCTAssertTrue(
+                element(app, "home.circle.three").isHittable,
+                "t-00: Home is not interactive, so the absence above proves nothing"
+            )
+            try waitAndCapture(
+                app, "t-00-home-no-trial-offline", scheme: colorScheme, identifier: "home.circle.thirty"
+            )
+        } catch {
+            attachFailureDiagnostics(app, scheme: colorScheme)
+            throw error
+        }
+        app.terminate()
+
         // MARK: The offer, reached the way a reader reaches it.
         //
         // Not a debug entry point: this taps a locked length, gets the real
         // paywall, closes it, and the offer is what the app does next. The
         // seeded state already contains a finished lesson, so the ordering
         // rule is satisfied and the paywall is allowed to appear at all.
-        var app = launchForTrial(
+        app = launchForTrial(
             ["-UITEST_TRIAL_ELIGIBLE"], colorScheme: colorScheme, accessibilityText: accessibilityText
         )
         do {
