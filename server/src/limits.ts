@@ -8,13 +8,30 @@
  * for a given id, so read-check-increment is atomic with no protocol.
  */
 
-import { hasPremiumAccess, type Tier } from "./appstore";
+import { hasPremiumAccess, type EffectiveTier } from "./appstore";
 
 /** Mirrors `EntitlementRules` in SpareCore. Kept in step by a shared test. */
 export const FREE_LESSONS_PER_DAY = 1;
 export const PREMIUM_COURSES_PER_MONTH = 12;
 export const FREE_WINDOWS = ["three", "seven"] as const;
 export const CHAPTERED_WINDOWS = ["thirty"] as const;
+
+/**
+ * The reverse trial: seven days of premium, bounded.
+ *
+ * Uncapped premium for a week is a real exposure. The premium pool is Opus, a
+ * 15-minute lesson costs roughly $0.53 and a course roughly $1.40, so an
+ * enthusiastic trialist who then declines can run to $20 of inference. Ten
+ * lessons of which at most two are courses bounds the worst case near $8, and
+ * in practice well under that because most trial reading is short.
+ *
+ * A course counts against *both* ceilings: it is one of the ten and one of
+ * the two.
+ */
+export const TRIAL_LESSONS = 10;
+export const TRIAL_COURSES = 2;
+export const TRIAL_DAYS = 7;
+export const TRIAL_DURATION_MS = TRIAL_DAYS * 24 * 60 * 60 * 1000;
 
 export type Decision =
   | { allow: true; servedFromCache: boolean }
@@ -24,7 +41,24 @@ export type DenialReason =
   | "dailyLimitReached"
   | "lockedWindow"
   | "courseCapReached"
-  | "spendCeilingReached";
+  | "spendCeilingReached"
+  /**
+   * The trial is over: seven days elapsed, or ten lessons used, whichever
+   * came first.
+   *
+   * Distinct from `dailyLimitReached` so a client whose mirror is stale
+   * self-heals into the day-7 summary rather than a generic paywall. The
+   * mirror going stale is normal -- it is display state, and the server is
+   * the authority -- so the refusal has to carry enough for the app to
+   * correct itself.
+   */
+  | "trialEnded"
+  /**
+   * Both course slots are spent, but trial lessons remain. Deliberately not
+   * `trialEnded`: the shorter lengths still work, and telling somebody their
+   * trial is over when it is not would cost them the rest of it.
+   */
+  | "trialCourseCapReached";
 
 export interface ChargedLesson {
   key: string;
@@ -104,6 +138,25 @@ export const CHARGED_HISTORY_LIMIT = 100;
  */
 export const MAX_REQUESTS_PER_LESSON = 24;
 
+/**
+ * How long a started course may still draw chapters after the entitlement
+ * that started it has gone.
+ *
+ * A course is an outline and four chapters, read over days. Without this, a
+ * trialist who starts a course on day 6 and opens chapter 3 on day 8 is
+ * refused mid-read -- the last thing the product does before asking for money
+ * is break a feature they were enjoying. `chargedKeys` almost covers it, but
+ * rolls over with the UTC day, so it only helps inside twenty-four hours.
+ *
+ * Thirty days is generous for finishing four chapters and still bounded: it
+ * is not a standing grant of free generation, and at two courses per trial the
+ * exposure it can carry past expiry is two courses.
+ */
+export const GRANT_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** How many started courses a device remembers. Bounds the stored value. */
+export const GRANT_HISTORY_LIMIT = 8;
+
 /** Keeps the most recent `SEEN_HISTORY_LIMIT` entries, dropping the oldest. */
 function trimSeen(keys: string[]): string[] {
   return keys.length <= SEEN_HISTORY_LIMIT ? keys : keys.slice(-SEEN_HISTORY_LIMIT);
@@ -114,6 +167,85 @@ function trimCharged(charged: ChargedLesson[]): ChargedLesson[] {
   return charged.length <= CHARGED_HISTORY_LIMIT
     ? charged
     : charged.slice(-CHARGED_HISTORY_LIMIT);
+}
+
+/**
+ * A course whose outline was paid for, and which may therefore finish.
+ *
+ * Separate from `chargedKeys` because it must outlive the day it was granted
+ * on and the entitlement that granted it. See `GRANT_LIFETIME_MS`.
+ */
+export interface CourseGrant {
+  /** `courseGrantKey`: the course's identity without its pool. */
+  key: string;
+  /** The pool it was generated into, and must keep being read from. */
+  pool: string;
+  grantedAt: number;
+  requests: number;
+}
+
+/** Drops grants that have run out of time, then bounds what is left. */
+function liveGrants(grants: CourseGrant[], now: number): CourseGrant[] {
+  const live = grants.filter((grant) => now - grant.grantedAt < GRANT_LIFETIME_MS);
+  return live.length <= GRANT_HISTORY_LIMIT ? live : live.slice(-GRANT_HISTORY_LIMIT);
+}
+
+/**
+ * Trial state for one device.
+ *
+ * `startedAt` is the eligibility flag as well as the clock. There is no
+ * separate `hasUsedTrial` boolean, because two fields that must agree are two
+ * fields that can disagree -- and the one that would win is the one that
+ * hands out Opus.
+ */
+export interface TrialState {
+  /** Non-null means this device has consumed its one trial, ever. */
+  startedAt: number | null;
+  expiresAt: number | null;
+  lessonsUsed: number;
+  coursesUsed: number;
+}
+
+/** What the client is allowed to mirror. Display only; never an authority. */
+export interface TrialView {
+  status: "eligible" | "active" | "ended";
+  remainingLessons: number;
+  remainingCourses: number;
+  startedAt: number | null;
+  expiresAt: number | null;
+}
+
+export const NO_TRIAL: TrialState = {
+  startedAt: null,
+  expiresAt: null,
+  lessonsUsed: 0,
+  coursesUsed: 0,
+};
+
+/**
+ * Whether the trial still entitles anything.
+ *
+ * Both ceilings end it, whichever arrives first: seven days, or ten lessons.
+ * Written as one function so the router, the meter, and the status endpoint
+ * cannot answer it three different ways.
+ */
+export function isTrialActive(trial: TrialState, now: number): boolean {
+  if (trial.startedAt === null || trial.expiresAt === null) return false;
+  if (now >= trial.expiresAt) return false;
+  return trial.lessonsUsed < TRIAL_LESSONS;
+}
+
+export function trialView(trial: TrialState, now: number): TrialView {
+  const status = trial.startedAt === null ? "eligible" : isTrialActive(trial, now) ? "active" : "ended";
+  return {
+    status,
+    // Zero once it is over, whichever ceiling ended it. A remaining count
+    // that survives expiry would be shown to somebody who cannot spend it.
+    remainingLessons: status === "active" ? Math.max(0, TRIAL_LESSONS - trial.lessonsUsed) : 0,
+    remainingCourses: status === "active" ? Math.max(0, TRIAL_COURSES - trial.coursesUsed) : 0,
+    startedAt: trial.startedAt,
+    expiresAt: trial.expiresAt,
+  };
 }
 
 export function dayKey(now: number): string {
@@ -143,11 +275,33 @@ export class UsageCounter implements DurableObject {
     }
 
     if (url.pathname === "/consume") {
-      const tier = (url.searchParams.get("tier") ?? "free") as Tier;
+      const tier = (url.searchParams.get("tier") ?? "free") as EffectiveTier;
       const window = url.searchParams.get("window") ?? "three";
       const key = url.searchParams.get("key") ?? "";
-      const decision = await this.consume(tier, window, key, now);
+      const courseKey = url.searchParams.get("courseKey") ?? "";
+      const pool = url.searchParams.get("pool") ?? "free";
+      const decision = await this.consume(tier, window, key, courseKey, pool, now);
       return Response.json(decision);
+    }
+
+    // Whether a started course may still draw chapters, and out of which
+    // pool. Read by the router before it picks a pool, which is earlier than
+    // metering can happen; `consume` re-checks the same list.
+    if (url.pathname === "/grant") {
+      const grants = await this.loadGrants(now);
+      const grant = grants.find((entry) => entry.key === (url.searchParams.get("key") ?? ""));
+      return Response.json({ pool: grant?.pool ?? null });
+    }
+
+    // Read-only. The router needs it before it can pick a pool and a model,
+    // which is earlier than any atomic claim can happen. See `consume` for
+    // why that ordering is safe.
+    if (url.pathname === "/trial") {
+      return Response.json(trialView(await this.loadTrial(), now));
+    }
+
+    if (url.pathname === "/trial/start") {
+      return Response.json(await this.startTrial(now));
     }
 
     // A plain read. It does not need to be an atomic claim any more: the router
@@ -175,6 +329,43 @@ export class UsageCounter implements DurableObject {
     const seen = await this.seenKeys();
     if (seen.includes(key)) return;
     await this.state.storage.put("seenLessons", trimSeen([...seen, key]));
+  }
+
+  private async loadTrial(): Promise<TrialState> {
+    return (await this.state.storage.get<TrialState>("trial")) ?? NO_TRIAL;
+  }
+
+  /**
+   * Claims this device's one trial.
+   *
+   * Idempotent, and deliberately so: a retry, a double-tap, or a second
+   * install must not extend anything. A device that already has a trial --
+   * running or long finished -- gets its existing state back with
+   * `started: false`, and `startedAt` is never written twice.
+   *
+   * Atomic because it is a Durable Object method: read-check-write for a
+   * given device id cannot interleave with another request for that device.
+   * Two simultaneous taps therefore produce one trial, not two overlapping
+   * clocks.
+   */
+  private async startTrial(now: number): Promise<{ started: boolean; trial: TrialView }> {
+    const existing = await this.loadTrial();
+    if (existing.startedAt !== null) {
+      return { started: false, trial: trialView(existing, now) };
+    }
+
+    const started: TrialState = {
+      startedAt: now,
+      expiresAt: now + TRIAL_DURATION_MS,
+      lessonsUsed: 0,
+      coursesUsed: 0,
+    };
+    await this.state.storage.put<TrialState>("trial", started);
+    return { started: true, trial: trialView(started, now) };
+  }
+
+  private async loadGrants(now: number): Promise<CourseGrant[]> {
+    return liveGrants((await this.state.storage.get<CourseGrant[]>("grants")) ?? [], now);
   }
 
   private async load(now: number): Promise<UsageState> {
@@ -208,12 +399,16 @@ export class UsageCounter implements DurableObject {
    * bug this class exists to prevent.
    */
   private async consume(
-    tier: Tier,
+    tier: EffectiveTier,
     window: string,
     key: string,
+    /** `courseGrantKey`, or "" for anything that is not a course. */
+    courseKey: string,
+    pool: string,
     now: number,
   ): Promise<Decision> {
     const usage = await this.load(now);
+    const isTrialing = tier === "trialing";
     const isPremium = hasPremiumAccess(tier);
     const isChaptered = (CHAPTERED_WINDOWS as readonly string[]).includes(window);
 
@@ -239,7 +434,47 @@ export class UsageCounter implements DurableObject {
       return { allow: true, servedFromCache: false };
     }
 
-    if (!isPremium) {
+    // A course whose outline was paid for may finish, whatever has happened
+    // to the entitlement since. Checked before the tier gates on purpose:
+    // that is the entire point of a grant.
+    //
+    // Bounded the same way a charged lesson is. Without a ceiling this is a
+    // generate-forever loop on one topic for anyone who noticed it -- worse
+    // than the daily one, because a grant outlives the day.
+    if (courseKey) {
+      const grants = await this.loadGrants(now);
+      const grant = grants.find((entry) => entry.key === courseKey);
+      if (grant) {
+        if (grant.requests >= MAX_REQUESTS_PER_LESSON) {
+          return { allow: false, reason: "dailyLimitReached" };
+        }
+        await this.state.storage.put<CourseGrant[]>(
+          "grants",
+          grants.map((entry) =>
+            entry.key === courseKey ? { ...entry, requests: entry.requests + 1 } : entry,
+          ),
+        );
+        return { allow: true, servedFromCache: false };
+      }
+    }
+
+    // The trial's two ceilings, checked here and nowhere else.
+    //
+    // The router reads trial state earlier, to pick a pool and a model, and
+    // that read is not atomic with this one. It does not need to be. The
+    // worst a race can do is route a request to Opus and then refuse it here
+    // before a single token is generated -- a refusal, not a leak. This is
+    // the only place the counters move.
+    let trial: TrialState | null = null;
+    if (isTrialing) {
+      trial = await this.loadTrial();
+      if (!isTrialActive(trial, now)) {
+        return { allow: false, reason: "trialEnded" };
+      }
+      if (isChaptered && trial.coursesUsed >= TRIAL_COURSES) {
+        return { allow: false, reason: "trialCourseCapReached" };
+      }
+    } else if (!isPremium) {
       if (!(FREE_WINDOWS as readonly string[]).includes(window)) {
         return { allow: false, reason: "lockedWindow" };
       }
@@ -248,6 +483,29 @@ export class UsageCounter implements DurableObject {
       }
     } else if (isChaptered && usage.coursesThisMonth >= PREMIUM_COURSES_PER_MONTH) {
       return { allow: false, reason: "courseCapReached" };
+    }
+
+    if (trial) {
+      await this.state.storage.put<TrialState>("trial", {
+        ...trial,
+        // Cache hits count. A reader cannot tell a cached lesson from a
+        // generated one, so a cap that only counted generations would be a
+        // cap nobody could describe -- the same reasoning that made the free
+        // daily limit count cached reads.
+        lessonsUsed: trial.lessonsUsed + 1,
+        coursesUsed: isChaptered ? trial.coursesUsed + 1 : trial.coursesUsed,
+      });
+    }
+
+    // A started course may finish, whatever happens to the entitlement that
+    // started it. Recorded for every tier, not just the trial: a monthly
+    // subscription lapsing mid-course has exactly the same shape.
+    if (isChaptered && courseKey) {
+      const grants = await this.loadGrants(now);
+      await this.state.storage.put<CourseGrant[]>(
+        "grants",
+        liveGrants([...grants, { key: courseKey, pool, grantedAt: now, requests: 1 }], now),
+      );
     }
 
     await this.state.storage.put<UsageState>("usage", {

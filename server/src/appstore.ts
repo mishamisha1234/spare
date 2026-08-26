@@ -17,19 +17,36 @@
 export type Tier = "free" | "monthly" | "yearly";
 
 /**
+ * What a device is entitled to right now, which is not always what Apple
+ * says.
+ *
+ * `Tier` is Apple's answer: the tier behind a verified receipt. `trialing` is
+ * the one entitlement the server grants itself -- the reverse trial, held in
+ * this device's `UsageCounter` alongside its metering, with no transaction
+ * anywhere. Everything downstream of verification (the pool, the model, the
+ * meter, the ceiling) works in `EffectiveTier`; only `verifyEntitlement` and
+ * the App Store plumbing work in `Tier`.
+ *
+ * They are separate types so a trial cannot be mistaken for a purchase by a
+ * function that only ever meant to ask about purchases.
+ */
+export type EffectiveTier = Tier | "trialing";
+
+/**
  * Grants the premium *experience*: every window, go-deeper, the premium cache
  * pool, and the expensive model.
  *
  * Mirrors `Tier.hasPremiumAccess` in SpareCore, and is written as an
  * exhaustive switch rather than `tier !== "free"` for the same reason. A tier
- * that grants access without money behind it would inherit *yes* from
- * `!== "free"` at every call site, including the ones asking the other
- * question -- see `isPaying`. Adding a member must break this switch.
+ * that grants access without money behind it -- which `trialing` is -- would
+ * inherit *yes* from `!== "free"` at every call site, including the ones
+ * asking the other question. See `isPaying`.
  */
-export function hasPremiumAccess(tier: Tier): boolean {
+export function hasPremiumAccess(tier: EffectiveTier): boolean {
   switch (tier) {
     case "free":
       return false;
+    case "trialing":
     case "monthly":
     case "yearly":
       return true;
@@ -40,14 +57,16 @@ export function hasPremiumAccess(tier: Tier): boolean {
  * There is a verified purchase behind this tier.
  *
  * This is the one that guards the global spend ceiling. The ceiling exists so
- * that a runaway month cannot outrun revenue, and the reason paying readers
- * pass through it is precisely that their requests are funded. A tier holding
- * access without a receipt is not funded and must stop at the ceiling like
- * anyone else.
+ * a runaway month cannot outrun revenue, and the reason paying readers pass
+ * through it is precisely that their requests are funded. A trialist is not
+ * funded and stops at the ceiling like anyone else -- this is the single line
+ * where `trialing` differs from a subscription, and getting it wrong would
+ * let a month of free Opus outrun the one number protecting the money.
  */
-export function isPaying(tier: Tier): boolean {
+export function isPaying(tier: EffectiveTier): boolean {
   switch (tier) {
     case "free":
+    case "trialing":
       return false;
     case "monthly":
     case "yearly":

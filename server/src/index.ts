@@ -32,9 +32,11 @@ import {
   isPaying,
   verifyEntitlement,
   type AppStoreConfig,
+  type EffectiveTier,
   type VerifiedEntitlement,
 } from "./appstore";
 import {
+  courseGrantKey,
   lessonCacheKey,
   lessonPoolKey,
   poolFor,
@@ -45,7 +47,13 @@ import {
   writeCachedLesson,
   type LessonIdentity,
 } from "./cache";
-import { SpendLedger, UsageCounter, type Decision } from "./limits";
+import {
+  CHAPTERED_WINDOWS,
+  SpendLedger,
+  UsageCounter,
+  type Decision,
+  type TrialView,
+} from "./limits";
 import type { Pool } from "./cache";
 import { applyPolicy, hardWordFloor, POOL_MODELS } from "./policy";
 import {
@@ -152,15 +160,55 @@ export default {
       }
     }
 
-    // Which pool this reader belongs to, from the entitlement the server
-    // verified with Apple — never from anything the client said.
-    const pool = poolFor(entitlement.tier);
+    // The reverse trial, which is an entitlement with no transaction behind
+    // it. Only a device Apple says is free can be trialing: somebody with a
+    // live subscription has nothing to gain from it, and burning their one
+    // trial while they are already paying would be taking something away.
+    //
+    // Read here, before the pool and the model are chosen, because those
+    // decisions cannot wait for the atomic claim. The claim happens later in
+    // `UsageCounter.consume`, and a race between the two can only route a
+    // request to Opus and then refuse it -- see the note there.
+    let trial: TrialView | null = null;
+    let effectiveTier: EffectiveTier = entitlement.tier;
+    if (entitlement.tier === "free") {
+      trial = await readTrial(env, deviceId, now);
+      if (trial.status === "active") effectiveTier = "trialing";
+    }
+
+    // Starting and reading the trial are not generation calls and carry no
+    // model request, so they are answered before the policy layer -- the same
+    // reasoning as attachments below.
+    if (url.pathname === "/v1/trial/start" || url.pathname === "/v1/trial/status") {
+      return withTrialHeader(
+        await handleTrial(url.pathname, env, deviceId, entitlement, now),
+        trial,
+      );
+    }
+
+    // A course whose outline was already paid for may finish, out of the pool
+    // it was written into.
+    //
+    // Looked up here rather than at metering time because the pool decision
+    // happens here, and a course started under a trial lives in the premium
+    // pool: serving its remaining chapters out of the free pool would drop a
+    // Sonnet chapter into an Opus course and miss the cached outline entirely.
+    const grantedPool = hasPremiumAccess(effectiveTier)
+      ? null
+      : await readCourseGrant(env, deviceId, body, now);
+
+    // Which pool this reader belongs to, from what the server decided --
+    // never from anything the client said.
+    const pool = grantedPool ?? poolFor(effectiveTier);
 
     // Attachments carry no model request and cost nothing to serve, so they
     // are answered before the policy layer, which exists to decide what a
     // generation may spend.
     if (url.pathname === "/v1/attachments" || url.pathname === "/v1/attach") {
-      return handleAttachments(url.pathname, body, pool, env, deviceId, now);
+      return withTrialHeader(
+        await handleAttachments(url.pathname, body, pool, env, deviceId, now),
+        trial,
+      );
     }
 
     // The client builds the Anthropic request; the proxy decides what it is
@@ -184,22 +232,34 @@ export default {
       case "/v1/suggestions":
       case "/v1/recall":
       case "/v1/post-lesson-test":
-        return handleUnmetered(modelRequest, env, entitlement, ctx, hooks, now);
+        return withTrialHeader(
+          await handleUnmetered(modelRequest, env, effectiveTier, ctx, hooks, now),
+          trial,
+        );
 
       case "/v1/lesson":
       case "/v1/outline":
       case "/v1/chapter":
-        return handleGeneration(
-          body, modelRequest, url.pathname, pool, env, entitlement, deviceId,
-          ctx, hooks, now, isOperator,
+        return withTrialHeader(
+          await handleGeneration(
+            body, modelRequest, url.pathname, pool, env, effectiveTier, deviceId,
+            ctx, hooks, now, isOperator,
+          ),
+          // Re-read after metering: this is the response that just spent a
+          // trial lesson, and a count taken before the spend would be one
+          // ahead of the truth on the reader's screen.
+          effectiveTier === "trialing" ? await readTrial(env, deviceId, now) : trial,
         );
 
       case "/v1/go-deeper":
         // Premium-only, and cheap enough not to meter separately.
-        if (!hasPremiumAccess(entitlement.tier)) {
+        if (!hasPremiumAccess(effectiveTier)) {
           return errorResponse(402, "goDeeperLocked", "Going deeper is part of Premium.");
         }
-        return handleUnmetered(modelRequest, env, entitlement, ctx, hooks, now);
+        return withTrialHeader(
+          await handleUnmetered(modelRequest, env, effectiveTier, ctx, hooks, now),
+          trial,
+        );
 
       default:
         return errorResponse(404, "unknownEndpoint", "No such endpoint.");
@@ -398,13 +458,13 @@ function appStoreConfig(env: Env): AppStoreConfig {
 async function handleUnmetered(
   modelRequest: Record<string, unknown>,
   env: Env,
-  entitlement: VerifiedEntitlement,
+  tier: EffectiveTier,
   ctx: ExecutionContext,
   hooks: Hooks,
   now: number,
 ): Promise<Response> {
   const ceiling = await spendCheck(env, hooks, now);
-  if (!ceiling.withinCeiling && !isPaying(entitlement.tier)) {
+  if (!ceiling.withinCeiling && !isPaying(tier)) {
     return errorResponse(429, "spendCeilingReached", "Spare is at its monthly limit. Try later.");
   }
 
@@ -433,10 +493,10 @@ async function handleGeneration(
   /** Which generation endpoint this is. Decides the word floor: a chapter is
    * measured against a chapter's budget, not the whole course's. */
   pathname: string,
-  /** Which pool to read from and write to. From the verified entitlement. */
+  /** Which pool to read from and write to. Decided by the server, never sent. */
   pool: Pool,
   env: Env,
-  entitlement: VerifiedEntitlement,
+  tier: EffectiveTier,
   deviceId: string,
   ctx: ExecutionContext,
   hooks: Hooks,
@@ -532,7 +592,7 @@ async function handleGeneration(
     const ceiling = await spendCheck(env, hooks, now);
     // `isPaying`, not "not premium": the ceiling is lifted for funded
     // requests, and only for those.
-    if (!ceiling.withinCeiling && !isPaying(entitlement.tier)) {
+    if (!ceiling.withinCeiling && !isPaying(tier)) {
       return errorResponse(
         429,
         "spendCeilingReached",
@@ -564,7 +624,12 @@ async function handleGeneration(
     // twelve. `ProxyProviderTests` already asserted this contract from the
     // client side; nothing asserted it here.
     const decision = await consume(
-      env, deviceId, entitlement.tier, window, chargeKey, hooks, now,
+      env, deviceId, tier, window, chargeKey,
+      // The grant key, for a course. Pool-independent, so a course started
+      // under an entitlement that has since gone still resolves to the same
+      // grant. Empty for anything that is not chaptered.
+      format === "chaptered" ? courseGrantKey({ window, format, topic, interest }) : "",
+      pool, hooks, now,
     );
     if (!decision.allow) {
       return errorResponse(402, decision.reason, denialMessage(decision.reason));
@@ -688,6 +753,10 @@ function denialMessage(reason: Decision extends { allow: false } ? never : strin
       return "That length is part of Premium.";
     case "courseCapReached":
       return "You've started every course included this month.";
+    case "trialEnded":
+      return "Your free week is over.";
+    case "trialCourseCapReached":
+      return "That's both courses from your free week. The shorter lengths still work.";
     default:
       return "Not available right now.";
   }
@@ -755,12 +824,137 @@ async function passUpstreamError(upstream: Response): Promise<Response> {
   );
 }
 
+/**
+ * This device's trial, as the client is allowed to see it.
+ *
+ * Read-only and display-only. Nothing the app does with this answer can grant
+ * anything: the pool, the model, and the counters are all decided server-side
+ * from the same state, and `UsageCounter.consume` re-checks it atomically
+ * before a single token is generated.
+ *
+ * Falls back to "ended" if the lookup itself fails. A Durable Object hiccup
+ * must not hand out Opus, and the free tier still works.
+ */
+/**
+ * The pool a started course may keep drawing from, or null.
+ *
+ * Only asked for chaptered requests, so an ordinary lesson costs no extra
+ * round trip. Falls back to null on any failure -- a Durable Object hiccup
+ * must not hand a free device the premium pool.
+ */
+async function readCourseGrant(
+  env: Env,
+  deviceId: string,
+  body: Record<string, any>,
+  now: number,
+): Promise<Pool | null> {
+  const window = typeof body.window === "string" ? body.window : "";
+  if (!CHAPTERED_WINDOWS.includes(window as (typeof CHAPTERED_WINDOWS)[number])) return null;
+
+  try {
+    const key = courseGrantKey(courseIdentity(body));
+    const stub = env.USAGE.get(env.USAGE.idFromName(deviceId));
+    const response = await stub.fetch(
+      `https://usage/grant?key=${encodeURIComponent(key)}&now=${now}`,
+    );
+    const grant = (await response.json()) as { pool: Pool | null };
+    return grant.pool === "premium" || grant.pool === "free" ? grant.pool : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The pool-independent half of a lesson identity, straight off the body. */
+function courseIdentity(body: Record<string, any>): Omit<LessonIdentity, "pool"> {
+  return {
+    window: typeof body.window === "string" ? body.window : "three",
+    format: typeof body.format === "string" ? body.format : "oneThing",
+    topic: typeof body.topic === "string" ? body.topic : "",
+    interest: typeof body.interest === "string" ? body.interest : "",
+  };
+}
+
+async function readTrial(env: Env, deviceId: string, now: number): Promise<TrialView> {
+  try {
+    const stub = env.USAGE.get(env.USAGE.idFromName(deviceId));
+    const response = await stub.fetch(`https://usage/trial?now=${now}`);
+    return (await response.json()) as TrialView;
+  } catch {
+    return { status: "ended", remainingLessons: 0, remainingCourses: 0, startedAt: null, expiresAt: null };
+  }
+}
+
+/**
+ * `POST /v1/trial/start` and `POST /v1/trial/status`.
+ *
+ * Eligibility is once per device, forever, and it is the Durable Object that
+ * decides -- `startedAt` is both the clock and the consumed flag, so there is
+ * no second field to disagree with it.
+ *
+ * A device with a live subscription is refused rather than started. It has
+ * nothing to gain, and consuming its one trial while it is already paying
+ * would quietly take something away from a customer.
+ */
+async function handleTrial(
+  pathname: string,
+  env: Env,
+  deviceId: string,
+  entitlement: VerifiedEntitlement,
+  now: number,
+): Promise<Response> {
+  const stub = env.USAGE.get(env.USAGE.idFromName(deviceId));
+
+  if (pathname === "/v1/trial/status") {
+    const trial = await readTrial(env, deviceId, now);
+    return new Response(JSON.stringify(trial), { status: 200, headers: JSON_HEADERS });
+  }
+
+  if (isPaying(entitlement.tier)) {
+    const trial = await readTrial(env, deviceId, now);
+    return new Response(
+      JSON.stringify({ started: false, reason: "alreadySubscribed", trial }),
+      { status: 200, headers: JSON_HEADERS },
+    );
+  }
+
+  const response = await stub.fetch(`https://usage/trial/start?now=${now}`);
+  const result = (await response.json()) as { started: boolean; trial: TrialView };
+  return new Response(
+    JSON.stringify(
+      result.started ? result : { ...result, reason: "alreadyUsed" },
+    ),
+    { status: 200, headers: JSON_HEADERS },
+  );
+}
+
+/**
+ * Attaches the trial mirror to a response.
+ *
+ * A header rather than a body field because the lesson path is SSE and has no
+ * JSON body to put it in, and because a remaining count that only arrived on
+ * some endpoints would be a count the app had to guess about. Every response
+ * a trialing device gets carries the current one, so the number on their
+ * screen is never a round trip behind what they have actually spent.
+ */
+function withTrialHeader(response: Response, trial: TrialView | null): Response {
+  if (!trial || trial.status === "eligible") return response;
+  const headers = new Headers(response.headers);
+  headers.set("x-spare-trial", JSON.stringify(trial));
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 async function consume(
   env: Env,
   deviceId: string,
-  tier: string,
+  tier: EffectiveTier,
   window: string,
   lessonKey: string,
+  courseKey: string,
+  pool: Pool,
   hooks: Hooks,
   now: number,
 ): Promise<Decision> {
@@ -768,7 +962,9 @@ async function consume(
   const response = await stub.fetch(
     `https://usage/consume?tier=${encodeURIComponent(tier)}` +
       `&window=${encodeURIComponent(window)}` +
-      `&key=${encodeURIComponent(lessonKey)}&now=${now}`,
+      `&key=${encodeURIComponent(lessonKey)}` +
+      `&courseKey=${encodeURIComponent(courseKey)}` +
+      `&pool=${encodeURIComponent(pool)}&now=${now}`,
   );
   return (await response.json()) as Decision;
 }

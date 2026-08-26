@@ -148,6 +148,84 @@ mirror is now asserted from both ends: `ProxyRoute.streamingPaths` in SpareCore,
 and a test there that every request the pipeline sends streams if and only if
 its endpoint does.
 
+## The reverse trial
+
+Seven days of premium with no card and no account, bounded at **10 lessons of
+which at most 2 may be 30-minute courses**. A course counts against both
+ceilings. Whichever ceiling arrives first ends the trial.
+
+```
+POST /v1/trial/start    claims this device's one trial; idempotent
+POST /v1/trial/status   reads it
+```
+
+Both are answered before the policy layer, like attachments: neither carries a
+model request.
+
+**The server is the authority and the client is a mirror.** Trial state lives
+in the same `UsageCounter` Durable Object as the device's metering, under a
+`trial` key, so the trial caps and the daily limit share one serialisation
+point. A client that decided whether its own trial was live would be the same
+hole as a client that picked its own model, and this one hands out Opus.
+
+`startedAt` is both the clock and the once-per-device flag. There is no
+separate "has used a trial" boolean, because two fields that must agree are two
+fields that can disagree, and the one that would win is the one that hands out
+Opus. Starting a trial on a device that already has one -- running or long
+finished -- returns the existing state with `started: false` and writes
+nothing.
+
+A device with a live subscription is refused with `alreadySubscribed` rather
+than started. It has nothing to gain, and consuming its one trial while it is
+already paying would quietly take something away from a customer.
+
+### Where the caps are enforced, and why the earlier read is safe
+
+The router reads trial state before it can pick a pool and a model. That read
+is *not* atomic with the claim. It does not need to be: the counters move only
+inside `UsageCounter.consume`, and the worst a race can do is route a request
+to Opus and then refuse it there, before a single token is generated. A
+refusal, not a leak.
+
+Cache hits count against the trial, for the same reason they count against the
+free daily limit: a reader cannot tell a cached lesson from a generated one, so
+a cap that only counted generations would be a cap nobody could describe.
+
+Every response to a trialing device carries `x-spare-trial`, a JSON mirror of
+the current state. A header rather than a body field because the lesson path is
+SSE and has no JSON body to put it in. It rides refusals too, so a client whose
+mirror has gone stale learns the week is over from the same response that
+refused it, rather than showing a paywall for a length it believes it owns.
+
+### A trialist is not a payer
+
+`hasPremiumAccess("trialing")` is true; `isPaying("trialing")` is false. The
+second is the load-bearing one: the global spend ceiling is lifted for funded
+requests only, so a trialist stops at the ceiling like a free device does. That
+is also what bounds the device-spoofing exposure below, which the trial makes
+worth roughly $8 a reset instead of one lesson a day.
+
+### A started course finishes
+
+A course is an outline and four chapters, read over days. Start one on day 6,
+open chapter 3 on day 8, and the entitlement that paid for it is gone: the last
+thing the product would do before asking for money is break a feature the
+reader was enjoying. `chargedKeys` almost covers this and rolls over with the
+UTC day, so it only helps inside twenty-four hours.
+
+So charging a chaptered lesson also records a **course grant**: the course's
+identity, the pool it was written into, and a timestamp. For thirty days
+afterwards that course's remaining chapters are allowed whatever the tier, and
+are read from the pool they were generated in -- serving chapter 3 out of the
+free pool would drop a Sonnet chapter into an Opus course and miss the cached
+outline entirely. The grant key deliberately excludes the pool, because the
+pool is the thing that changes when the entitlement does.
+
+Recorded for every tier, not just the trial: a monthly subscription lapsing
+mid-course has exactly the same shape. Bounded by `MAX_REQUESTS_PER_LESSON`,
+because a grant that outlives the day would otherwise be a generate-forever
+loop on one topic.
+
 ## The honest limit on tier enforcement
 
 Moving limits server-side removes *client* enforcement, not *all* spoofing.

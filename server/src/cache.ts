@@ -16,19 +16,25 @@
  * double-counts anything.
  */
 
-import type { Tier } from "./appstore";
+import type { EffectiveTier } from "./appstore";
 
 /** Which pool an entry belongs to. Never mixed: different models, different
  * attached artifacts, different readers. */
 export type Pool = "free" | "premium";
 
-export function poolFor(tier: Tier): Pool {
+export function poolFor(tier: EffectiveTier): Pool {
   // An explicit switch, not `tier === "free" ? ... : "premium"`. This function
   // decides who gets Opus, and defaulting an unrecognised tier into the
   // premium pool is the expensive direction to be wrong in.
+  //
+  // A trialist reads and writes the premium pool. That is the point of the
+  // trial -- Opus lessons with a test attached -- and it means every trialist
+  // is a premium-pool generator for a week. The free pool's seed does nothing
+  // for them.
   switch (tier) {
     case "free":
       return "free";
+    case "trialing":
     case "monthly":
     case "yearly":
       return "premium";
@@ -99,6 +105,24 @@ export function lessonPoolKey(identity: LessonIdentity): string {
     ? `${normaliseInterest(identity.interest)}:`
     : "";
   return `lesson:v2:${identity.pool}:${identity.format}:${identity.window}:`
+    + `${interest}${normaliseTopic(identity.topic)}`;
+}
+
+/**
+ * A course's identity, independent of which pool it was generated into.
+ *
+ * `lessonPoolKey` puts the pool in the key, which is right for metering and
+ * caching and exactly wrong here. A course started under a trial lives in the
+ * premium pool; the point of a grant is that it survives the trial ending, at
+ * which moment the same request would derive a *free* pool key and match
+ * nothing. So the grant records the pool alongside the key rather than
+ * encoding it into one -- and the recorded pool is then what the remaining
+ * chapters are read from, because serving chapter 3 out of the free pool
+ * would put a Sonnet chapter in the middle of an Opus course.
+ */
+export function courseGrantKey(identity: Omit<LessonIdentity, "pool">): string {
+  const interest = identity.interest ? `${normaliseInterest(identity.interest)}:` : "";
+  return `course:v1:${identity.format}:${identity.window}:`
     + `${interest}${normaliseTopic(identity.topic)}`;
 }
 
