@@ -14,7 +14,7 @@
  * signature we checked.
  */
 
-export type Tier = "free" | "monthly" | "yearly" | "lifetime";
+export type Tier = "free" | "monthly" | "yearly";
 
 /**
  * Grants the premium *experience*: every window, go-deeper, the premium cache
@@ -32,7 +32,6 @@ export function hasPremiumAccess(tier: Tier): boolean {
       return false;
     case "monthly":
     case "yearly":
-    case "lifetime":
       return true;
   }
 }
@@ -52,7 +51,6 @@ export function isPaying(tier: Tier): boolean {
       return false;
     case "monthly":
     case "yearly":
-    case "lifetime":
       return true;
   }
 }
@@ -91,19 +89,27 @@ export interface AppStoreConfig {
   privateKeyPem: string;
 }
 
-/** Product identifiers, mirroring `ProductCatalog` in SpareCore. */
+/**
+ * Product identifiers, mirroring `ProductCatalog` in SpareCore.
+ *
+ * The withdrawn lifetime identifier still resolves, to `yearly`, matching
+ * `ProductCatalog.tier(forProductID:)` on the client. It never shipped, so no
+ * production receipt carries it -- but a receipt is Apple's record, not ours,
+ * and refusing to recognise a product we once configured would mean answering
+ * "free" to somebody holding a transaction for it. Wrong in the direction
+ * that takes something away.
+ */
 const PRODUCT_TIERS: Record<string, Tier> = {
   "app.spare.premium.monthly": "monthly",
   "app.spare.premium.yearly": "yearly",
-  "app.spare.premium.lifetime": "lifetime",
+  "app.spare.premium.lifetime": "yearly",
 };
 
-/** Strongest wins, so a lifetime buyer with a lapsing subscription keeps it. */
+/** Strongest wins, so an annual buyer with a lapsing monthly keeps the annual. */
 const TIER_RANK: Record<Tier, number> = {
   free: 0,
   monthly: 1,
   yearly: 2,
-  lifetime: 3,
 };
 
 function base64UrlToBytes(value: string): Uint8Array {
@@ -310,7 +316,9 @@ export function deriveEntitlement(
 
       const candidate: VerifiedEntitlement = {
         tier,
-        expiresAt: tier === "lifetime" ? null : expiresAt,
+        // Every product is now a subscription, so every entitlement expires.
+        // The null case that used to be here was the lifetime purchase.
+        expiresAt,
         originalTransactionId,
         environment,
       };

@@ -22,8 +22,14 @@ final class StoredEntitlement {
         self.lastFreeLessonDate = lastFreeLessonDate
     }
 
+    /// `Tier.stored(rawValue:)` rather than `Tier(rawValue:)`.
+    ///
+    /// The lifetime product was withdrawn, and a plain `init(rawValue:)`
+    /// returns nil for a row still holding it — which the `?? .free` below
+    /// would turn into a silent downgrade on the next launch. The same trap
+    /// `TimeWindow` already has a table for.
     var tier: Tier {
-        get { Tier(rawValue: tierRaw) ?? .free }
+        get { Tier.stored(rawValue: tierRaw) ?? .free }
         set { tierRaw = newValue.rawValue }
     }
 

@@ -31,7 +31,6 @@ export function poolFor(tier: Tier): Pool {
       return "free";
     case "monthly":
     case "yearly":
-    case "lifetime":
       return "premium";
   }
 }

@@ -236,7 +236,7 @@ Locked premium features render as **visibly locked rows that open the paywall**,
 
 ### StoreKit
 
-`Transaction.currentEntitlements` is the authority on what someone owns — already OS-validated, already excluding expired and refunded purchases, and it survives a reinstall without a restore. The tier cached in SwiftData exists only so a cold launch knows the answer before StoreKit replies. `ProductCatalog.resolvedTier` takes the *strongest* of several owned identifiers, because a lifetime buyer who previously subscribed still has that subscription in `currentEntitlements` until it lapses and must not be downgraded.
+`Transaction.currentEntitlements` is the authority on what someone owns — already OS-validated, already excluding expired and refunded purchases, and it survives a reinstall without a restore. The tier cached in SwiftData exists only so a cold launch knows the answer before StoreKit replies. `ProductCatalog.resolvedTier` takes the *strongest* of several owned identifiers, because an annual subscriber who previously paid monthly still has that transaction in `currentEntitlements` until it lapses and must not be downgraded. The withdrawn lifetime identifier still resolves, to yearly: Apple's records are not ours to edit, and answering "free" to somebody holding a transaction is wrong in the direction that takes something away.
 
 Purchases go through a `PurchaseStore` protocol, the same shape as `LessonProvider`: `StoreKitPurchaseStore` for real, `StubPurchaseStore` for UI tests and previews. CI screenshots the entire paywall and purchase flow with **no StoreKit configuration, no sandbox account, and no way to trigger a real charge**. `Products.storekit` is wired into the scheme's run action for local testing on a Mac only.
 
@@ -299,7 +299,7 @@ Things this codebase cannot verify about itself, and which need a signed run on 
 3. **Notification fire-time verification** (see Known deviations) — a notification firing for an already-answered item is a real bug.
 4. **Prompt quality has been measured once.** Every provider test runs against recorded fixtures; `spare-batch` (below) is the only thing that puts the real prompts in front of the real API. The first batch of twelve produced a full editorial read, and the rules that came out of it are in `Prompts.swift` now. What is not yet known is whether they worked — the second batch is the check. Read the output before deciding the prompts are done.
 5. **StoreKit has only run against `StubPurchaseStore`.** The real purchase, restore, and lapse paths need a sandbox account.
-6. **Prices are placeholders** (`$4.99` / `$39.99` / `$99.99`) and exist only in `Products.storekit`.
+6. **The introductory offer has only been seen through `StubPurchaseStore`.** `isEligibleForIntroOffer` is a real network-backed lookup against the subscription group, and the stub always answers yes. What a *returning* subscriber sees — the standard £89.00 with no first-year claim anywhere on the sheet — has never been rendered on a device.
 
 ## Judging the prompts: `spare-batch`
 

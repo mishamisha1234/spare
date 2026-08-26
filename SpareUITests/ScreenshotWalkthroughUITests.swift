@@ -289,9 +289,14 @@ final class ScreenshotWalkthroughUITests: XCTestCase {
 
             // Buying through StubPurchaseStore: no StoreKit configuration, no
             // sandbox account, and no possibility of a real charge in CI.
-            try tap(app, "paywall.option.lifetime", scheme: colorScheme, step: "09b-paywall")
-            try waitAndCapture(app, "09c-paywall-lifetime", scheme: colorScheme, identifier: "paywall.buy")
-            try tap(app, "paywall.buy", scheme: colorScheme, step: "09c-paywall-lifetime")
+            //
+            // Monthly rather than the pre-selected annual, so the capture
+            // shows a deliberate change of selection and the button re-reads
+            // the price. The annual row is the one carrying the introductory
+            // first-year price, and 09b above is where that copy is captured.
+            try tap(app, "paywall.option.monthly", scheme: colorScheme, step: "09b-paywall")
+            try waitAndCapture(app, "09c-paywall-monthly", scheme: colorScheme, identifier: "paywall.buy")
+            try tap(app, "paywall.buy", scheme: colorScheme, step: "09c-paywall-monthly")
 
             // The paywall dismisses itself once the entitlement lands, which
             // is also the assertion that the purchase actually took effect.

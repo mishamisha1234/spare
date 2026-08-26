@@ -8,14 +8,14 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { hasPremiumAccess, isPaying, type Tier } from "../src/appstore";
+import { deriveEntitlement, hasPremiumAccess, isPaying, type Tier } from "../src/appstore";
 import { poolFor } from "../src/cache";
+import { subscriptionStatus } from "./fixtures";
 
 const TIERS: Record<Tier, { access: boolean; paying: boolean; pool: "free" | "premium" }> = {
   free: { access: false, paying: false, pool: "free" },
   monthly: { access: true, paying: true, pool: "premium" },
   yearly: { access: true, paying: true, pool: "premium" },
-  lifetime: { access: true, paying: true, pool: "premium" },
 };
 
 describe("tier predicates", () => {
@@ -43,5 +43,37 @@ describe("tier predicates", () => {
     for (const tier of Object.keys(TIERS) as Tier[]) {
       if (poolFor(tier) === "premium") expect(hasPremiumAccess(tier)).toBe(true);
     }
+  });
+});
+
+/**
+ * The lifetime product was withdrawn. Apple's records are not ours to edit,
+ * so a receipt naming it has to keep meaning something.
+ */
+describe("the retired lifetime product", () => {
+  function entitlementFor(productId: string) {
+    const body = JSON.parse(
+      subscriptionStatus({ productId, status: 1, expiresDate: 4_000_000_000_000 }),
+    );
+    return deriveEntitlement(body, "tx-1", "production", 1_000_000_000_000);
+  }
+
+  it("still grants access, as yearly", () => {
+    const entitlement = entitlementFor("app.spare.premium.lifetime");
+    expect(entitlement?.tier).toBe("yearly");
+    expect(hasPremiumAccess(entitlement!.tier)).toBe(true);
+  });
+
+  /**
+   * It used to be the one entitlement with no expiry. Now that it resolves to
+   * a subscription tier it carries the transaction's real expiry like any
+   * other -- a `null` here would be an entitlement nothing could ever end.
+   */
+  it("expires like the subscription it now resolves to", () => {
+    expect(entitlementFor("app.spare.premium.lifetime")?.expiresAt).toBe(4_000_000_000_000);
+  });
+
+  it("grants nothing for a product identifier that was never ours", () => {
+    expect(entitlementFor("app.spare.premium.weekly")).toBeNull();
   });
 });

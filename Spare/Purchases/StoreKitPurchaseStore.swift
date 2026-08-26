@@ -20,12 +20,13 @@ actor StoreKitPurchaseStore: PurchaseStore {
             cachedProducts[product.id] = product
         }
 
-        return products
-            .compactMap { product -> PurchaseProduct? in
-                // An identifier the catalog doesn't recognise would grant an
-                // unknown entitlement; drop it rather than guess.
-                guard let kind = ProductCatalog.kind(forProductID: product.id) else { return nil }
-                return PurchaseProduct(
+        var loaded: [PurchaseProduct] = []
+        for product in products {
+            // An identifier the catalog doesn't recognise would grant an
+            // unknown entitlement; drop it rather than guess.
+            guard let kind = ProductCatalog.kind(forProductID: product.id) else { continue }
+            loaded.append(
+                PurchaseProduct(
                     id: product.id,
                     kind: kind,
                     displayName: product.displayName,
@@ -33,10 +34,35 @@ actor StoreKitPurchaseStore: PurchaseStore {
                     // `price` by hand, which would get currency and locale
                     // wrong in most of the world.
                     displayPrice: product.displayPrice,
-                    price: product.price
+                    price: product.price,
+                    introductoryOffer: await introductoryOffer(for: product)
                 )
-            }
-            .sorted { orderIndex($0.kind) < orderIndex($1.kind) }
+            )
+        }
+        return loaded.sorted { orderIndex($0.kind) < orderIndex($1.kind) }
+    }
+
+    /// The first-year price, but only when this Apple Account can actually
+    /// have it.
+    ///
+    /// Both halves are required and neither is optional. `introductoryOffer`
+    /// is a property of the product and is present for everybody;
+    /// `isEligibleForIntroOffer` is a property of the account, and is false
+    /// for anyone who has subscribed in this group before. Quoting "$44.50
+    /// for the first year" to somebody who will be charged $89.00 is a false
+    /// price — the same class of problem as an undisclosed cap, and one the
+    /// App Store rejects for.
+    ///
+    /// The await is not incidental: eligibility is a network-backed lookup on
+    /// the subscription group, which is why this cannot be a plain property
+    /// read at the view layer.
+    private func introductoryOffer(for product: Product) async -> IntroductoryOffer? {
+        guard let subscription = product.subscription,
+              let offer = subscription.introductoryOffer,
+              await subscription.isEligibleForIntroOffer
+        else { return nil }
+
+        return IntroductoryOffer(displayPrice: offer.displayPrice, price: offer.price)
     }
 
     func purchase(_ kind: PurchaseProductKind) async throws -> PurchaseOutcome {
@@ -99,9 +125,9 @@ actor StoreKitPurchaseStore: PurchaseStore {
     /// tampering attempt into a confusing server error rather than a plain
     /// free tier.
     ///
-    /// Where several products are owned — a subscription plus lifetime — the
-    /// first is enough. Every one of them entitles the same thing, and the
-    /// server only needs one transaction to ask Apple about.
+    /// Where several products are owned — an annual bought while a monthly
+    /// is still running — the first is enough. Both entitle the same thing,
+    /// and the server only needs one transaction to ask Apple about.
     func currentReceipt() async -> String? {
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result else { continue }
@@ -135,7 +161,6 @@ actor StoreKitPurchaseStore: PurchaseStore {
         switch kind {
         case .monthly: 0
         case .yearly: 1
-        case .lifetime: 2
         }
     }
 }

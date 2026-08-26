@@ -37,9 +37,10 @@ struct PaywallView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
 
-    /// Yearly at every entry point. It was defaulting to whichever plan the
-    /// enum happened to order first from some triggers, so the post-lesson
-    /// lock opened on Lifetime and the duration lock on Yearly.
+    /// Yearly at every entry point, and stated here rather than inferred from
+    /// the enum's order: it was once defaulting to whichever plan happened to
+    /// come first, so two different triggers opened on two different plans.
+    /// It is also the plan carrying the introductory first year.
     @State private var selected: PurchaseProductKind = .yearly
 
     private var palette: Theme.Palette { Theme.palette(for: colorScheme) }
@@ -208,9 +209,15 @@ struct PaywallView: View {
         .accessibilityIdentifier("paywall.option.\(product.kind.rawValue)")
     }
 
-    /// The per-month equivalent and saving for the yearly plan; the honest
-    /// "one payment" note for lifetime. Both derived, never hardcoded — if a
-    /// price changes in App Store Connect these follow it.
+    /// The per-month equivalent, the annual saving, and — when this account
+    /// is eligible for it — the first-year price. All derived, never
+    /// hardcoded: if a price changes in App Store Connect these follow it.
+    ///
+    /// The two discounts are stated separately and never multiplied. "Save
+    /// 42%" compares the annual plan to twelve monthly payments; "50% off
+    /// your first year" compares year one to year two. Combining them would
+    /// produce a percentage larger than either is, out of two prices that
+    /// are individually true.
     private func detail(for product: PurchaseProduct) -> String? {
         switch product.kind {
         case .monthly:
@@ -222,9 +229,18 @@ struct PaywallView: View {
                let saving = PricingSummary.savingPercent(yearly: product.price, monthly: monthly.price) {
                 text += " Save \(saving)%."
             }
+            if let intro = product.introductoryOffer {
+                // Both prices, in order, in one sentence. A first-year price
+                // shown without what it reverts to is the thing people mean
+                // by a dark pattern.
+                text += " \(intro.displayPrice) for your first year, then \(product.displayPrice)."
+                if let off = PricingSummary.introductorySavingPercent(
+                    introductory: intro.price, standard: product.price
+                ) {
+                    text += " \(off)% off year one."
+                }
+            }
             return text
-        case .lifetime:
-            return "One payment, yours for good."
         }
     }
 
@@ -237,18 +253,42 @@ struct PaywallView: View {
         return "\(symbol)\(String(format: "%.2f", number))"
     }
 
+    private var selectedProduct: PurchaseProduct? {
+        entitlements.products.first(where: { $0.kind == selected })
+    }
+
+    /// The auto-renewal sentence. Both products renew now that there is no
+    /// one-off purchase, so the only variation left is whether a first year
+    /// at a different price has to be named before the renewal price.
+    static func renewalDisclosure(for product: PurchaseProduct?) -> String {
+        let base = "Manage or cancel in your Apple Account settings."
+        guard let product, let intro = product.introductoryOffer else {
+            return "Renews automatically until cancelled. " + base
+        }
+        return "\(intro.displayPrice) for the first year, then \(product.displayPrice) a year, "
+            + "renewing automatically until cancelled. " + base
+    }
+
     /// Names the plan and its price rather than saying "Continue" — the
     /// reader should know what they are about to be charged before the
     /// system sheet appears, not after.
     private var purchaseButtonTitle: String {
         if entitlements.isPurchasing { return "Working…" }
-        guard let product = entitlements.products.first(where: { $0.kind == selected }) else {
+        guard let product = selectedProduct else {
             return "Continue"
         }
         switch product.kind {
-        case .monthly: return "Continue — \(product.displayPrice) a month"
-        case .yearly: return "Continue — \(product.displayPrice) a year"
-        case .lifetime: return "Continue — \(product.displayPrice) once"
+        case .monthly:
+            return "Continue — \(product.displayPrice) a month"
+        case .yearly:
+            // The amount about to be charged, which for an eligible account
+            // is the introductory price and not the headline one. The
+            // renewal price is stated in the row above and in the footer;
+            // the button has to be true about *this* transaction.
+            if let intro = product.introductoryOffer {
+                return "Continue — \(intro.displayPrice) for your first year"
+            }
+            return "Continue — \(product.displayPrice) a year"
         }
     }
 
@@ -293,9 +333,7 @@ struct PaywallView: View {
                     .accessibilityIdentifier("paywall.error")
             }
 
-            Text(selected.isSubscription
-                 ? "Renews automatically until cancelled. Manage or cancel in your Apple Account settings."
-                 : "A single purchase. No subscription, nothing to cancel.")
+            Text(Self.renewalDisclosure(for: selectedProduct))
                 .font(Theme.Font.caption.font)
                 .foregroundStyle(palette.secondaryText)
                 .multilineTextAlignment(.center)

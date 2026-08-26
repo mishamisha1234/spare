@@ -34,10 +34,12 @@ final class ProductCatalogTests: XCTestCase {
         XCTAssertEqual(ProductCatalog.resolvedTier(forOwnedProductIDs: ["nonsense"]), .free)
     }
 
-    func testOnlyLifetimeIsANonSubscription() {
-        XCTAssertTrue(PurchaseProductKind.monthly.isSubscription)
-        XCTAssertTrue(PurchaseProductKind.yearly.isSubscription)
-        XCTAssertFalse(PurchaseProductKind.lifetime.isSubscription)
+    /// There is no non-subscription product, and adding one would be a
+    /// decision rather than an oversight: a one-time payment against a
+    /// permanent per-use inference cost cannot be unwound. `isSubscription`
+    /// used to live on this enum and is gone with the case that needed it.
+    func testEverythingSoldIsASubscription() {
+        XCTAssertEqual(PurchaseProductKind.allCases, [.monthly, .yearly])
     }
 
     // MARK: - Resolving several owned products at once
@@ -46,15 +48,29 @@ final class ProductCatalogTests: XCTestCase {
         XCTAssertEqual(ProductCatalog.resolvedTier(forOwnedProductIDs: []), .free)
     }
 
-    /// A lifetime buyer who previously subscribed still has the subscription
-    /// in `currentEntitlements` until it lapses. They must not be downgraded.
-    func testLifetimeWinsOverAConcurrentSubscription() {
+    /// The lifetime product was withdrawn, but a device that bought one
+    /// against a local StoreKit configuration still reports owning it. It
+    /// resolves to yearly rather than to nothing: silently downgrading
+    /// somebody who holds a transaction is the worse of the two failures.
+    func testRetiredLifetimePurchaseStillResolvesToYearly() {
+        XCTAssertEqual(
+            ProductCatalog.tier(forProductID: ProductCatalog.retiredLifetimeID),
+            .yearly
+        )
         XCTAssertEqual(
             ProductCatalog.resolvedTier(forOwnedProductIDs: [
-                ProductCatalog.monthlyID, ProductCatalog.lifetimeID,
+                ProductCatalog.monthlyID, ProductCatalog.retiredLifetimeID,
             ]),
-            .lifetime
+            .yearly
         )
+    }
+
+    /// It is honoured, but never offered. Asking StoreKit for a product that
+    /// no longer exists in App Store Connect is how a paywall ends up with a
+    /// row nobody can buy.
+    func testTheRetiredProductIsNeverRequestedFromStoreKit() {
+        XCTAssertFalse(ProductCatalog.allIDs.contains(ProductCatalog.retiredLifetimeID))
+        XCTAssertNil(ProductCatalog.kind(forProductID: ProductCatalog.retiredLifetimeID))
     }
 
     func testYearlyWinsOverMonthly() {
@@ -156,5 +172,81 @@ final class ProductCatalogTests: XCTestCase {
     func testSavingBelowOnePercentIsNotClaimedAtAll() {
         // 12 x 10 = 120; 119.5 is a 0.4% saving -> nothing worth a badge.
         XCTAssertNil(PricingSummary.savingPercent(yearly: money("119.5"), monthly: money("10")))
+    }
+
+    // MARK: - The introductory first year
+
+    func testIntroductorySavingIsMeasuredAgainstThePriceItRevertsTo() {
+        XCTAssertEqual(
+            PricingSummary.introductorySavingPercent(
+                introductory: money("44.50"), standard: money("89.00")
+            ),
+            50
+        )
+    }
+
+    func testIntroductorySavingRoundsDown() {
+        // 100 -> 67.10 is 32.9% off, which must not read as 33%.
+        XCTAssertEqual(
+            PricingSummary.introductorySavingPercent(
+                introductory: money("67.10"), standard: money("100")
+            ),
+            32
+        )
+    }
+
+    func testNoIntroductoryClaimWhenThereIsNoDiscount() {
+        XCTAssertNil(
+            PricingSummary.introductorySavingPercent(
+                introductory: money("89.00"), standard: money("89.00")
+            ),
+            "same price"
+        )
+        XCTAssertNil(
+            PricingSummary.introductorySavingPercent(
+                introductory: money("99.00"), standard: money("89.00")
+            ),
+            "dearer than what it reverts to"
+        )
+        XCTAssertNil(
+            PricingSummary.introductorySavingPercent(introductory: money("10"), standard: 0),
+            "no baseline"
+        )
+    }
+
+    /// The two discounts describe different comparisons and are never
+    /// combined. Stated as an assertion because the tempting arithmetic --
+    /// 42% off monthly billing, then 50% off that -- yields 71%, a number
+    /// nobody is being offered.
+    func testTheTwoDiscountsAreNotCompounded() {
+        let annual = PricingSummary.savingPercent(yearly: money("89.00"), monthly: money("12.99"))
+        let firstYear = PricingSummary.introductorySavingPercent(
+            introductory: money("44.50"), standard: money("89.00")
+        )
+        XCTAssertEqual(annual, 42)
+        XCTAssertEqual(firstYear, 50)
+
+        // 44.50 against twelve monthly payments really is 71% off, and that
+        // is a true sentence about a first year only. It is not the annual
+        // saving, and the paywall must never present it as one.
+        XCTAssertEqual(
+            PricingSummary.savingPercent(yearly: money("44.50"), monthly: money("12.99")),
+            71
+        )
+    }
+
+    // MARK: - The shipping prices
+    //
+    // The arithmetic tests above use whatever numbers exercise an edge. These
+    // use the real ones, so a price change in App Store Connect that is not
+    // mirrored into `Products.storekit` and the stub store fails here rather
+    // than in a screenshot nobody re-reads.
+
+    func testShippingPricesProduceTheAdvertisedFigures() {
+        XCTAssertEqual(PricingSummary.perMonth(yearly: money("89.00")), money("7.42"))
+        XCTAssertEqual(
+            PricingSummary.savingPercent(yearly: money("89.00"), monthly: money("12.99")),
+            42
+        )
     }
 }

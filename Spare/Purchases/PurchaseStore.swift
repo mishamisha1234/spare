@@ -59,32 +59,41 @@ protocol PurchaseStore: Sendable {
 /// same walkthrough can then exercise the unlocked path.
 actor StubPurchaseStore: PurchaseStore {
     private var owned: Set<String>
+    private let introEligible: Bool
     private let continuation: AsyncStream<Void>.Continuation
     private let stream: AsyncStream<Void>
 
-    init(owned: Set<String> = []) {
+    /// - Parameter introEligible: whether this fake Apple Account has ever
+    ///   subscribed. `false` drops the introductory offer, which is what a
+    ///   returning subscriber really sees — the paywall must then quote the
+    ///   standard price with no first-year claim anywhere on it.
+    init(owned: Set<String> = [], introEligible: Bool = true) {
         self.owned = owned
+        self.introEligible = introEligible
         var escaped: AsyncStream<Void>.Continuation!
         self.stream = AsyncStream { escaped = $0 }
         self.continuation = escaped
     }
 
-    /// Prices chosen to exercise the real pricing arithmetic: 12 x 4.99 is
-    /// 59.88, so the 39.99 yearly shows a genuine 33% saving rather than a
-    /// hardcoded badge.
+    /// The real shipping prices, not round numbers.
+    ///
+    /// The walkthrough screenshots are the only place a human reads this
+    /// paywall before it ships, so the numbers in them have to be the numbers
+    /// a customer will see: 12 x 12.99 is 155.88 against an 89.00 year, and
+    /// the 42% that falls out of that is computed by the same code that will
+    /// compute it in production rather than typed in here.
     func loadProducts() async throws -> [PurchaseProduct] {
         [
             PurchaseProduct(
                 id: ProductCatalog.monthlyID, kind: .monthly,
-                displayName: "Monthly", displayPrice: "$4.99", price: 4.99
+                displayName: "Monthly", displayPrice: "$12.99", price: 12.99
             ),
             PurchaseProduct(
                 id: ProductCatalog.yearlyID, kind: .yearly,
-                displayName: "Yearly", displayPrice: "$39.99", price: 39.99
-            ),
-            PurchaseProduct(
-                id: ProductCatalog.lifetimeID, kind: .lifetime,
-                displayName: "Lifetime", displayPrice: "$99.99", price: 99.99
+                displayName: "Yearly", displayPrice: "$89.00", price: 89.00,
+                introductoryOffer: introEligible
+                    ? IntroductoryOffer(displayPrice: "$44.50", price: 44.50)
+                    : nil
             ),
         ]
     }

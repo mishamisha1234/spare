@@ -191,9 +191,20 @@ final class PersistenceConversionTests: XCTestCase {
     }
 
     func testUnknownTierFallsBackToFree() {
-        let stored = StoredEntitlement(tier: .lifetime)
+        let stored = StoredEntitlement(tier: .yearly)
         stored.tierRaw = "platinum"
         XCTAssertEqual(stored.tier, .free)
+    }
+
+    /// The withdrawn lifetime tier is not unknown, it is retired. A row
+    /// written before it was removed must not take the `.free` path above:
+    /// that would downgrade a paying reader on the launch after an update,
+    /// with nothing logged and nothing to notice.
+    func testRetiredLifetimeTierIsHonouredRatherThanDowngraded() {
+        let stored = StoredEntitlement(tier: .yearly)
+        stored.tierRaw = "lifetime"
+        XCTAssertEqual(stored.tier, .yearly)
+        XCTAssertTrue(stored.tier.hasPremiumAccess)
     }
 
     func testGatingDecisionsComeFromCoreRules() {

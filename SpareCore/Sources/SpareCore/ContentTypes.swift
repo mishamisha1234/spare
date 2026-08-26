@@ -260,7 +260,25 @@ public enum Tier: String, Codable, Sendable, CaseIterable {
     case free
     case monthly
     case yearly
-    case lifetime
+
+    /// The raw value a stored entitlement may carry from before the lifetime
+    /// product was withdrawn, and what it now means.
+    ///
+    /// Same shape as `TimeWindow.legacyRawValues`, for the same reason: a
+    /// removed case turns every row holding it into a decode failure, and the
+    /// default for a failed entitlement decode is `.free`. Somebody would be
+    /// silently downgraded by an app update. `.yearly` is the closest thing
+    /// still sold; nobody holds one in production, because the product never
+    /// shipped.
+    public static let legacyRawValues: [String: Tier] = ["lifetime": .yearly]
+
+    /// Decodes a stored raw value, honouring withdrawn cases. Same name and
+    /// shape as `TimeWindow.stored(rawValue:)` so the two are recognisably
+    /// the same mechanism.
+    public static func stored(rawValue: String) -> Tier? {
+        if let tier = Tier(rawValue: rawValue) { return tier }
+        return legacyRawValues[rawValue]
+    }
 
     /// Grants the premium *experience*: every length, the post-lesson test,
     /// go-deeper, the premium cache pool.
@@ -274,7 +292,7 @@ public enum Tier: String, Codable, Sendable, CaseIterable {
     public var hasPremiumAccess: Bool {
         switch self {
         case .free: false
-        case .monthly, .yearly, .lifetime: true
+        case .monthly, .yearly: true
         }
     }
 
@@ -287,7 +305,7 @@ public enum Tier: String, Codable, Sendable, CaseIterable {
     public var isPaying: Bool {
         switch self {
         case .free: false
-        case .monthly, .yearly, .lifetime: true
+        case .monthly, .yearly: true
         }
     }
 }

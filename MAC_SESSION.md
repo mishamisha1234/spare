@@ -216,8 +216,12 @@ time shown. If any looked short, the first and last sentence too.
 ### Check 3 — StoreKit purchase and restore
 
 The scheme is already wired to `Products.storekit`, so pressing ▶ from Xcode
-gives you three fake products with no account and no charge:
-monthly £4.99, yearly £39.99, lifetime £99.99.
+gives you two fake products with no account and no charge: monthly £12.99 and
+yearly £89.00. The yearly carries an introductory first year at £44.50, which
+a fresh install is eligible for — so the row should read *"£44.50 for your
+first year, then £89.00"* and the button should quote £44.50, not £89.00. If
+it quotes £89.00 on a device that has never subscribed, the eligibility check
+is reading the wrong way round and that is worth telling me about.
 
 **Do:**
 1. Trigger the paywall — tap the **1-minute** circle, or **Take the test** on a
@@ -251,7 +255,7 @@ re-run from Xcode. Then:
 1. Read one 3-minute lesson all the way to the completion screen.
 2. On that screen, tap **Take a 3-question test**. It is locked, so the paywall
    opens.
-3. Buy **Lifetime**.
+3. Buy **Monthly**.
 4. The paywall dismisses and you are back on the same completion screen.
 5. Wait about five seconds, then tap the test button again.
 

@@ -1,23 +1,7 @@
 {
   "identifier" : "A1B2C3D4",
   "nonRenewingSubscriptions" : [],
-  "products" : [
-    {
-      "displayPrice" : "99.99",
-      "familyShareable" : false,
-      "internalID" : "3001",
-      "localizations" : [
-        {
-          "description" : "Every length, unlimited lessons, your whole library, and the post-lesson test. One payment.",
-          "displayName" : "Lifetime",
-          "locale" : "en_US"
-        }
-      ],
-      "productID" : "app.spare.premium.lifetime",
-      "referenceName" : "Spare Premium Lifetime",
-      "type" : "NonConsumable"
-    }
-  ],
+  "products" : [],
   "settings" : {
     "_applicationInternalID" : "1000",
     "_developerTeamID" : "SPARE0000",
@@ -36,7 +20,7 @@
         {
           "adHocOffers" : [],
           "codeOffers" : [],
-          "displayPrice" : "4.99",
+          "displayPrice" : "12.99",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "2101",
@@ -57,11 +41,17 @@
         {
           "adHocOffers" : [],
           "codeOffers" : [],
-          "displayPrice" : "39.99",
+          "displayPrice" : "89.00",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "2102",
-          "introductoryOffer" : null,
+          "introductoryOffer" : {
+            "displayPrice" : "44.50",
+            "internalID" : "2201",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "payUpFront",
+            "subscriptionPeriod" : "P1Y"
+          },
           "localizations" : [
             {
               "description" : "Every length, unlimited lessons, your whole library, and the post-lesson test.",

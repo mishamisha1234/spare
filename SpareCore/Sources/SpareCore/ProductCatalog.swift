@@ -1,12 +1,15 @@
 import Foundation
 
-/// What a user can buy. Three options, no tiers-within-tiers: every one of
-/// these grants exactly the same premium access, they differ only in how
-/// it's paid for.
+/// What a user can buy. Two options, no tiers-within-tiers: both grant
+/// exactly the same premium access, they differ only in how it's paid for.
+///
+/// There was a lifetime product. It is gone deliberately: a one-time payment
+/// against a permanent per-use inference cost is a liability that compounds
+/// forever and cannot be unwound. If a no-subscription option is wanted later
+/// it should be a bounded credit pack, not unlimited access.
 public enum PurchaseProductKind: String, Codable, Sendable, CaseIterable, Identifiable {
     case monthly
     case yearly
-    case lifetime
 
     public var id: String { rawValue }
 
@@ -15,35 +18,36 @@ public enum PurchaseProductKind: String, Codable, Sendable, CaseIterable, Identi
         switch self {
         case .monthly: .monthly
         case .yearly: .yearly
-        case .lifetime: .lifetime
         }
     }
-
-    /// True for the auto-renewing subscriptions, false for the one-off buy.
-    /// Drives whether "cancel anytime" applies.
-    public var isSubscription: Bool { self != .lifetime }
 }
 
 /// Product identifiers, and the mapping from a purchased identifier back to
 /// the tier it grants.
 ///
 /// Lives in SpareCore rather than beside the StoreKit code so the mapping is
-/// testable on Linux: getting `lifetime` wrong here would silently hand a
-/// paying customer the wrong entitlement, which is exactly the kind of thing
-/// that should not depend on a Mac to verify.
+/// testable on Linux: getting one wrong here would silently hand a paying
+/// customer the wrong entitlement, which is exactly the kind of thing that
+/// should not depend on a Mac to verify.
 public enum ProductCatalog {
     public static let monthlyID = "app.spare.premium.monthly"
     public static let yearlyID = "app.spare.premium.yearly"
-    public static let lifetimeID = "app.spare.premium.lifetime"
+
+    /// The withdrawn lifetime product.
+    ///
+    /// Kept only so a stored entitlement written before it was withdrawn is
+    /// still recognised rather than decoding to nothing. It is not in
+    /// `allIDs`, so StoreKit is never asked for it and it can never be bought
+    /// again.
+    public static let retiredLifetimeID = "app.spare.premium.lifetime"
 
     /// Every identifier the app asks StoreKit to load.
-    public static let allIDs: [String] = [monthlyID, yearlyID, lifetimeID]
+    public static let allIDs: [String] = [monthlyID, yearlyID]
 
     public static func kind(forProductID id: String) -> PurchaseProductKind? {
         switch id {
         case monthlyID: .monthly
         case yearlyID: .yearly
-        case lifetimeID: .lifetime
         default: nil
         }
     }
@@ -52,22 +56,27 @@ public enum ProductCatalog {
         switch kind {
         case .monthly: monthlyID
         case .yearly: yearlyID
-        case .lifetime: lifetimeID
         }
     }
 
     /// The tier granted by an owned product identifier. `nil` for anything
     /// unrecognised, which is treated as granting nothing.
+    ///
+    /// The retired lifetime identifier still resolves, to `.yearly`. Nobody
+    /// holds one in production -- it never shipped -- but a local StoreKit
+    /// configuration on a development Mac can have granted one, and silently
+    /// downgrading a held entitlement to free is a worse failure than
+    /// honouring a product we no longer sell.
     public static func tier(forProductID id: String) -> Tier? {
-        kind(forProductID: id)?.tier
+        if id == retiredLifetimeID { return .yearly }
+        return kind(forProductID: id)?.tier
     }
 
     /// The strongest tier implied by a set of owned product identifiers.
     ///
-    /// Someone can legitimately hold more than one: a lifetime buyer who
-    /// previously subscribed still has that subscription in
-    /// `currentEntitlements` until it lapses. Lifetime wins, then yearly,
-    /// then monthly.
+    /// Someone can legitimately hold more than one: an annual subscriber who
+    /// previously paid monthly still has that transaction in
+    /// `currentEntitlements` until it lapses. Yearly wins, then monthly.
     public static func resolvedTier(forOwnedProductIDs ids: some Sequence<String>) -> Tier {
         var best = Tier.free
         for id in ids {
@@ -82,8 +91,27 @@ public enum ProductCatalog {
         case .free: 0
         case .monthly: 1
         case .yearly: 2
-        case .lifetime: 3
         }
+    }
+}
+
+/// A reduced price for the first billing period of a subscription.
+///
+/// Its presence means *this account can actually have it*. StoreKit's
+/// introductory offer is a property of the product, but eligibility is a
+/// property of the Apple Account: somebody who has subscribed before is
+/// shown the standard price no matter what the product carries. Modelling
+/// eligibility as absence rather than as a separate flag is deliberate —
+/// there is then no way for a view to display an offer it forgot to check,
+/// because an ineligible reader has nothing to display.
+public struct IntroductoryOffer: Sendable, Equatable {
+    /// Already localized by StoreKit — never assembled from `price` by hand.
+    public var displayPrice: String
+    public var price: Decimal
+
+    public init(displayPrice: String, price: Decimal) {
+        self.displayPrice = displayPrice
+        self.price = price
     }
 }
 
@@ -96,19 +124,24 @@ public struct PurchaseProduct: Sendable, Equatable, Identifiable {
     /// Already localized by StoreKit — never assembled from `price` by hand.
     public var displayPrice: String
     public var price: Decimal
+    /// The first-period price, when the product has one *and* this account
+    /// is eligible for it. See ``IntroductoryOffer``.
+    public var introductoryOffer: IntroductoryOffer?
 
     public init(
         id: String,
         kind: PurchaseProductKind,
         displayName: String,
         displayPrice: String,
-        price: Decimal
+        price: Decimal,
+        introductoryOffer: IntroductoryOffer? = nil
     ) {
         self.id = id
         self.kind = kind
         self.displayName = displayName
         self.displayPrice = displayPrice
         self.price = price
+        self.introductoryOffer = introductoryOffer
     }
 }
 
@@ -147,6 +180,31 @@ public enum PricingSummary {
         let percent = ((twelveMonths - yearlyValue) / twelveMonths) * 100
         // Scrub float dust before flooring, so a saving that is exactly 33%
         // can't land as 32 because the division came back 32.999999999999996.
+        let cleaned = (percent * 1e6).rounded() / 1e6
+        let floored = Int(cleaned.rounded(.down))
+        return floored > 0 ? floored : nil
+    }
+
+    /// Whole-percent discount of an introductory price against the price it
+    /// reverts to.
+    ///
+    /// Separate from ``savingPercent(yearly:monthly:)`` and never combined
+    /// with it. The annual saving is a claim about annual versus monthly
+    /// billing; this is a claim about year one versus year two. Multiplying
+    /// them together would produce a number larger than either discount
+    /// actually is, which is the specific way a truthful pair of prices
+    /// becomes a false advertisement.
+    ///
+    /// Rounds down, and returns `nil` when there is nothing honest to claim.
+    public static func introductorySavingPercent(
+        introductory: Decimal,
+        standard: Decimal
+    ) -> Int? {
+        let standardValue = double(standard)
+        let introValue = double(introductory)
+        guard standardValue > 0, introValue >= 0, introValue < standardValue else { return nil }
+
+        let percent = ((standardValue - introValue) / standardValue) * 100
         let cleaned = (percent * 1e6).rounded() / 1e6
         let floored = Int(cleaned.rounded(.down))
         return floored > 0 ? floored : nil

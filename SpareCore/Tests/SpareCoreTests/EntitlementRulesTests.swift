@@ -95,7 +95,7 @@ final class EntitlementRulesTests: XCTestCase {
     // MARK: - Premium
 
     func testEveryPaidTierIsUnlimited() {
-        for tier in [Tier.monthly, .yearly, .lifetime] {
+        for tier in [Tier.monthly, .yearly] {
             let snapshot = EntitlementSnapshot(tier: tier, freeLessonsUsedToday: 99, lastFreeLessonDate: now)
             for window in TimeWindow.allCases {
                 XCTAssertEqual(
@@ -109,7 +109,7 @@ final class EntitlementRulesTests: XCTestCase {
     }
 
     func testConsumingDoesNotTouchPremiumCounters() {
-        let premium = EntitlementSnapshot(tier: .lifetime, freeLessonsUsedToday: 0, lastFreeLessonDate: .distantPast)
+        let premium = EntitlementSnapshot(tier: .yearly, freeLessonsUsedToday: 0, lastFreeLessonDate: .distantPast)
         XCTAssertEqual(EntitlementRules.consumingLesson(premium, now: now, calendar: calendar), premium)
     }
 
@@ -124,7 +124,7 @@ final class EntitlementRulesTests: XCTestCase {
             EntitlementRules.canTakePostLessonTest(.free),
             .denied(.postLessonTestLocked)
         )
-        for tier in [Tier.monthly, .yearly, .lifetime] {
+        for tier in [Tier.monthly, .yearly] {
             XCTAssertEqual(
                 EntitlementRules.canTakePostLessonTest(EntitlementSnapshot(tier: tier)),
                 .allowed

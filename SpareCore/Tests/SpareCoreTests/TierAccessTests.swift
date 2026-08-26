@@ -13,7 +13,6 @@ final class TierAccessTests: XCTestCase {
         .free: (access: false, paying: false),
         .monthly: (access: true, paying: true),
         .yearly: (access: true, paying: true),
-        .lifetime: (access: true, paying: true),
     ]
 
     func testEveryTierIsAnsweredExplicitly() {
