@@ -358,6 +358,87 @@ describe("readings the ledger never saw", () => {
   });
 });
 
+describe("rate limiting", () => {
+  /** Records every key it was asked about, and answers as told. */
+  function limiter(succeed: boolean) {
+    const keys: string[] = [];
+    return {
+      keys,
+      binding: {
+        limit: async ({ key }: { key: string }) => {
+          keys.push(key);
+          return { success: succeed };
+        },
+      },
+    };
+  }
+
+  it("refuses a blocked caller before anything else runs", async () => {
+    const { binding, keys } = limiter(false);
+    const response = await raw({
+      path: "/v1/status",
+      method: "GET",
+      env: testEnv({ ADMIN_TOKEN, RATE_LIMITER: binding }),
+      headers: { "x-spare-admin": ADMIN_TOKEN, "cf-connecting-ip": "203.0.113.7" },
+    });
+    expect(response.status).toBe(429);
+    expect(await response.json()).toMatchObject({ error: { code: "tooManyRequests" } });
+    // Keyed on the address Cloudflare sets, not on anything the caller chose.
+    expect(keys).toEqual(["203.0.113.7"]);
+  });
+
+  it("covers the status endpoint, which nothing else here does", async () => {
+    // Every other control lets `/v1/status` through: it has its own token, and
+    // it is how you check whether the other controls are up. That makes it the
+    // one endpoint an unauthenticated scanner can hammer, so the rate limiter
+    // deliberately runs ahead of it.
+    const { binding } = limiter(false);
+    const response = await raw({
+      path: "/v1/status",
+      method: "GET",
+      env: testEnv({ ADMIN_TOKEN: undefined, RATE_LIMITER: binding }),
+      headers: { "cf-connecting-ip": "203.0.113.8" },
+    });
+    expect(response.status).toBe(429);
+  });
+
+  it("lets an allowed caller through", async () => {
+    const { binding, keys } = limiter(true);
+    const response = await raw({
+      path: "/v1/trial/status",
+      body: {},
+      env: testEnv({ RATE_LIMITER: binding }),
+      headers: { "cf-connecting-ip": "203.0.113.9" },
+    });
+    expect(response.status).toBe(200);
+    expect(keys).toHaveLength(1);
+  });
+
+  it("is skipped when there is no client address, so it cannot bucket everyone together", async () => {
+    // No `cf-connecting-ip` means we are not behind Cloudflare, which off a
+    // deployed Worker means a test. Keying on a constant would rate-limit the
+    // whole world as one caller.
+    const { binding, keys } = limiter(false);
+    const response = await raw({
+      path: "/v1/trial/status",
+      body: {},
+      env: testEnv({ RATE_LIMITER: binding }),
+    });
+    expect(response.status).toBe(200);
+    expect(keys).toHaveLength(0);
+  });
+
+  it("serves normally on a deploy that has no limiter bound", async () => {
+    const response = await raw({
+      path: "/v1/trial/status",
+      body: {},
+      env: testEnv({ RATE_LIMITER: undefined }),
+      headers: { "cf-connecting-ip": "203.0.113.10" },
+    });
+    expect(response.status).toBe(200);
+  });
+});
+
 describe("what the status endpoint says about the window", () => {
   it("reports both switches, so neither has to be assumed", async () => {
     const response = await raw({

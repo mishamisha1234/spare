@@ -46,6 +46,27 @@ new_sqlite_classes = ["UsageCounter", "SpendLedger"]
 tag = "v2"
 new_sqlite_classes = ["FunnelLedger"]
 
+# Workers-level rate limiting: 30 requests a minute per IP.
+#
+# A stopgap, and weaker than the WAF rate-limiting rules it stands in for.
+# Those run at Cloudflare's edge and refuse a request before it reaches any
+# Worker; this one is checked *inside* the Worker, so a blocked request has
+# already been routed, billed as an invocation, and given a chance to run. It
+# also counts per colo rather than globally, so the real ceiling is somewhat
+# above 30. Replace it with a WAF rule once the proxy is on a domain -- see
+# "Rate limiting" in DEPLOY.md.
+#
+# `period` accepts only 10 or 60. 60 with a limit of 30 is the requested
+# 30/minute; there is no way to express a smoother 5-per-10-seconds.
+#
+# `namespace_id` is a string that names the counter, not a resource to create.
+# Changing it resets every count, which is the only way to clear a limit.
+[[unsafe.bindings]]
+name = "RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 30, period = 60 }
+
 [[kv_namespaces]]
 binding = "LESSONS"
 id = "9f9666e87aa04162b04dd97b9edc363f"

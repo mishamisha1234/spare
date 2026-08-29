@@ -307,12 +307,18 @@ the two is a number rather than a hope. The `catch` is still a `catch`: a
 reading lost after the reader already has their lesson is the right thing to
 trade away.
 
-**There is no per-IP throttling in this repository.** An earlier version of
-this section claimed there was, as "a second, cruder backstop". There is no
-code and no `wrangler.toml` entry behind that sentence and there never was.
-Rate limiting on the Worker's route is a Cloudflare dashboard rule, it has to
-be configured by hand, and until somebody has done it and checked, the correct
-thing to write here is that it does not exist. See `DEPLOY.md`.
+**Per-IP rate limiting is the crude backstop in front of all of it**, and it is
+worth saying exactly what kind, because an earlier version of this section
+claimed a throttle that did not exist in any form. What exists now is the
+Workers rate-limiting binding — `RATE_LIMITER` in `wrangler.toml`, 30 requests
+a minute keyed on `cf-connecting-ip`, checked at the top of `fetch` ahead of
+even `/v1/status`. It is a stopgap for a proxy that has no domain yet: a WAF
+rule refuses a request at the edge, this one refuses it after the Worker has
+already been invoked, and it counts per colo rather than globally, so the real
+ceiling is approximately rather than exactly 30. It bounds what reaches
+Anthropic, which is what matters here, and it does not bound what reaches
+Cloudflare. Replace it with a WAF rule when the proxy moves to a domain — see
+"Rate limiting" in `DEPLOY.md`.
 
 `GET /v1/status`, authenticated with `ADMIN_TOKEN`, reports the month's spend
 against the ceiling and optionally one device's counters. It exists because that

@@ -174,6 +174,16 @@ npx wrangler secret put SPARE_CLIENT_TOKEN
 ✨ Success! Uploaded secret SPARE_CLIENT_TOKEN
 ```
 
+**Keep your own copy.** Cloudflare secrets are write-only: nothing, including
+`wrangler`, can read one back. Losing the value means setting a new one and
+updating the app, not recovering it.
+
+**A secret is not a deploy.** `wrangler secret put` stores the value against
+the Worker; the code that reads it arrives with `npx wrangler deploy`. Until
+that deploy has run, the secret is set and the gate is not up, and
+`/v1/status` will keep reporting `clientTokenRequired: false`. That field is
+how you tell the two states apart.
+
 From the next deploy onwards, every endpoint except `GET /v1/status` answers
 **404** unless the request carries `x-spare-client: <that string>`. The batch
 tool doesn't need it — the operator token is accepted on its own, so the probe
@@ -540,8 +550,11 @@ and closing that gap is on the list in Step 4b.
 
 ## Rate limiting
 
-There is none, and there never has been. If you have read a claim to the
-contrary in `server/README.md`, it was wrong and has been corrected.
+For a long time there was none, despite `server/README.md` claiming per-IP
+throttling as "a second, cruder backstop". There was no code and no
+`wrangler.toml` entry behind that sentence. There is now — the Workers binding
+described below — and the claim has been rewritten to describe what actually
+exists.
 
 **Check which of these two you are on before following either.** Cloudflare's
 rate-limiting *rules* — the dashboard ones — are a WAF feature and belong to a
@@ -563,15 +576,44 @@ before planning around it.
    scripting slow, not to punish anybody.
 6. Deploy.
 
-### If the Worker is on workers.dev
+### If the Worker is on workers.dev — this is what is configured today
 
-Either put it on a domain first — which is the better answer anyway, because a
-proxy URL that contains the account name is one the app is stuck with — or use
-Cloudflare's **Workers rate-limiting binding**, which is configured in
-`wrangler.toml` and enforced from inside the Worker. That is code and a deploy
-rather than a dashboard rule, and it is checked after the request has already
-reached the Worker, so it is a weaker version of the same idea. It is still
-worth having over nothing.
+The **Workers rate-limiting binding**, in `wrangler.toml`:
+
+```toml
+[[unsafe.bindings]]
+name = "RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 30, period = 60 }
+```
+
+Nothing to click. It takes effect on the next `npx wrangler deploy`, keyed on
+`cf-connecting-ip`, which Cloudflare sets at its edge and overwrites if a
+caller sends their own — so it cannot be spoofed from outside.
+
+**It is a stopgap, and weaker than the WAF rule it stands in for.** Three ways,
+all worth knowing before trusting it:
+
+- **It runs inside the Worker.** A WAF rule refuses a request at Cloudflare's
+  edge, before any Worker is invoked. This one is checked after the request has
+  been routed and the Worker has started, so a blocked request still costs an
+  invocation. It bounds spend on Anthropic, which is the point, but it does not
+  bound requests.
+- **It counts per location, not globally.** Each Cloudflare colo keeps its own
+  counter, so a caller spread across several sees a real ceiling somewhat above
+  30 a minute. Approximately 30 is the honest description.
+- **`period` accepts only 10 or 60.** 30-per-60 is the requested rate but a
+  coarse shape: one caller can spend all thirty in the first second of a
+  minute. There is no way to ask for a smoother five-per-ten-seconds.
+
+**Replace it with a WAF rule once the proxy is on a domain**, using the steps
+above, and delete the binding in the same change — running both would count the
+same request twice.
+
+Putting the proxy on a domain is worth doing for its own sake: a URL containing
+the account name is one the app is stuck with for the life of every build that
+ships it.
 
 Thirty a minute is far above any reader. A lesson is a handful of requests and
 the app is not a thing you can hold down. It is well below what scripting new

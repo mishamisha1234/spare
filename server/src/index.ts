@@ -112,10 +112,23 @@ export interface Env {
    * configures it does not advertise that it exists.
    */
   ADMIN_TOKEN?: string;
+  /**
+   * Workers-level rate limiting, 30 requests a minute per IP.
+   *
+   * Optional in the type because the binding does not exist in the test
+   * runner, and because a deploy that predates it should serve rather than
+   * fail. See `wrangler.toml` for why this is a stopgap and not the answer.
+   */
+  RATE_LIMITER?: RateLimiter;
   USAGE: DurableObjectNamespace;
   SPEND: DurableObjectNamespace;
   FUNNEL: DurableObjectNamespace;
   LESSONS: KVNamespace;
+}
+
+/** Cloudflare's rate-limiting binding. Not in the ambient Worker types yet. */
+export interface RateLimiter {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
 }
 
 /** Test seam: swapped for fixture handlers so no test makes a network call. */
@@ -137,6 +150,27 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext, hooks: Hooks = {}): Promise<Response> {
     const now = hooks.now?.() ?? Date.now();
     const url = new URL(request.url);
+
+    // Rate limiting, ahead of everything including `/v1/status`.
+    //
+    // It is the crudest control here and deliberately the first: it costs one
+    // binding call, it does not care who is asking, and it is the thing that
+    // makes scripting new device ids slow rather than free. Thirty a minute is
+    // far above a reader -- a lesson is a handful of requests and the app is
+    // not something you can hold down -- and far below what abuse needs.
+    //
+    // Keyed on `cf-connecting-ip`, which Cloudflare sets at the edge and
+    // overwrites if a client sends its own, so it cannot be spoofed from
+    // outside. Its absence means we are not behind Cloudflare at all, which
+    // off a deployed Worker means a test, so the limiter is skipped rather
+    // than given a key that would bucket every caller together.
+    const clientIP = request.headers.get("cf-connecting-ip");
+    if (env.RATE_LIMITER && clientIP) {
+      const { success } = await env.RATE_LIMITER.limit({ key: clientIP });
+      if (!success) {
+        return errorResponse(429, "tooManyRequests", "Too many requests. Try again shortly.");
+      }
+    }
 
     // Handled before the method guard, because a status read is a GET. It is
     // the only endpoint that is not a generation call, and the only one that
