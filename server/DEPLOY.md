@@ -543,23 +543,43 @@ and closing that gap is on the list in Step 4b.
 There is none, and there never has been. If you have read a claim to the
 contrary in `server/README.md`, it was wrong and has been corrected.
 
-It is a dashboard rule rather than anything in this repository:
+**Check which of these two you are on before following either.** Cloudflare's
+rate-limiting *rules* — the dashboard ones — are a WAF feature and belong to a
+**zone**, which means a domain you have added to Cloudflare. A
+`*.workers.dev` URL is not a zone, so if the proxy is still at
+`spare-proxy.<account>.workers.dev` those rules are not available to it and
+there will be no **Rate limiting** section to find. Open the dashboard and look
+before planning around it.
 
-1. [dash.cloudflare.com](https://dash.cloudflare.com) → your account.
-2. **Workers & Pages** → **spare-proxy** → **Settings**.
-3. Find **Rate limiting** and add a rule.
-4. Match requests where **URI Path** *starts with* `/v1/`.
-5. Set the rate to **30 requests** per **1 minute**, counted by **IP address**.
-6. Action: **Block**, for the shortest duration offered — the point is to make
+### If the Worker is on a custom domain
+
+1. [dash.cloudflare.com](https://dash.cloudflare.com) → the **domain**, not the
+   Worker.
+2. **Security** → **WAF** → **Rate limiting rules** → **Create rule**.
+3. Match requests where **URI Path** *starts with* `/v1/`.
+4. Rate: **30 requests** per **10 seconds** (or per minute, if that is the
+   shortest period offered), counted by **IP**.
+5. Action: **Block**, for the shortest duration offered — the point is to make
    scripting slow, not to punish anybody.
-7. Deploy the rule.
+6. Deploy.
+
+### If the Worker is on workers.dev
+
+Either put it on a domain first — which is the better answer anyway, because a
+proxy URL that contains the account name is one the app is stuck with — or use
+Cloudflare's **Workers rate-limiting binding**, which is configured in
+`wrangler.toml` and enforced from inside the Worker. That is code and a deploy
+rather than a dashboard rule, and it is checked after the request has already
+reached the Worker, so it is a weaker version of the same idea. It is still
+worth having over nothing.
 
 Thirty a minute is far above any reader. A lesson is a handful of requests and
 the app is not a thing you can hold down. It is well below what scripting new
 device ids needs to be worth doing.
 
-Check it took effect by sending 40 quick requests to `/v1/status` with no token
-and watching the last of them come back blocked rather than 401.
+Whichever route: check it took effect by sending 40 quick requests to
+`/v1/status` with no token and watching the last of them come back blocked
+rather than 401.
 
 ## Checking what it has cost
 
