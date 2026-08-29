@@ -80,6 +80,32 @@ export interface Env {
   /** Monthly ceiling in USD. A string because bindings are strings. */
   MONTHLY_SPEND_CEILING_USD: string;
   /**
+   * Optional. When set, every endpoint except `/v1/status` requires a
+   * matching `x-spare-client` header and 404s without one.
+   *
+   * This is not authentication and cannot become it: the app has to carry the
+   * value, so anyone with the binary can read it out. Its entire strength is
+   * that no binary exists yet. It closes the window between deploying the
+   * Worker and shipping the client, and it stops being a control on the day
+   * the first TestFlight tester installs -- see DEPLOY.md.
+   *
+   * Unset means the gate is off, which is what today's deploys do and what
+   * every test that does not set it exercises. Closed-by-default was the other
+   * option and was rejected: a lost or mistyped secret would then be a silent
+   * total outage for real readers rather than an open door in a window nobody
+   * else knows about. `/v1/status` reports whether it is on, so "is the gate
+   * up" is a question with an answer rather than an assumption.
+   */
+  SPARE_CLIENT_TOKEN?: string;
+  /**
+   * Optional. "false" makes `POST /v1/trial/start` 404.
+   *
+   * The probe needs the Worker live weeks before there is a client, and a
+   * public trial endpoint in that window is a premium-pool entitlement anyone
+   * can claim with one curl. Off during the probe, on when the app ships.
+   */
+  TRIAL_START_ENABLED?: string;
+  /**
    * Optional. Enables the read-only `/v1/status` endpoint when set.
    *
    * Unset is the safe default and the endpoint 404s, so a deploy that never
@@ -127,6 +153,18 @@ export default {
     // that disabled them would be a worse hole than the one it exists to work
     // around. Spend is recorded exactly as for any other request.
     const isOperator = isAuthorisedOperator(request, env);
+
+    // The client gate, when one is configured. Ahead of the method guard and
+    // the device guard so an unauthorised caller learns nothing from either:
+    // 404, the same answer an unconfigured `/v1/status` gives, rather than a
+    // 405 or a 400 that confirms there is something here to find.
+    //
+    // The operator token passes in its own right. It is strictly stronger, and
+    // requiring both would make the batch tool carry two secrets to prove one
+    // thing.
+    if (!isOperator && !isAuthorisedClient(request, env)) {
+      return errorResponse(404, "unknownEndpoint", "No such endpoint.");
+    }
 
     if (request.method !== "POST") {
       return errorResponse(405, "methodNotAllowed", "Only POST is accepted.");
@@ -185,6 +223,13 @@ export default {
     // Starting and reading the trial are not generation calls and carry no
     // model request, so they are answered before the policy layer -- the same
     // reasoning as attachments below.
+    // Starting a trial can be switched off for the window before the app
+    // ships. Reading one is not: a device with no trial reads as eligible,
+    // which costs nothing and keeps `/v1/allowance` answering honestly.
+    if (url.pathname === "/v1/trial/start" && !isTrialStartEnabled(env)) {
+      return errorResponse(404, "unknownEndpoint", "No such endpoint.");
+    }
+
     if (
       url.pathname === "/v1/trial/start"
       || url.pathname === "/v1/trial/status"
@@ -269,9 +314,23 @@ export default {
         );
 
       case "/v1/go-deeper":
-        // Premium-only, and cheap enough not to meter separately.
         if (!hasPremiumAccess(effectiveTier)) {
           return errorResponse(402, "goDeeperLocked", "Going deeper is part of Premium.");
+        }
+        // Counted, not capped. Premium's go-deeper is unlimited and stays
+        // unlimited: the number below is not an entitlement, is not disclosed,
+        // and no reader can reach it. See `GO_DEEPER_PER_DAY_CEILING`.
+        //
+        // It exists because this was the largest uncapped call in the system.
+        // 24,000 Opus tokens, roughly $0.60 at full output, gated only on
+        // premium access -- which a free trial grants. Nothing counted it, so
+        // one device could run it until the global ceiling stopped it.
+        if (!isOperator && !(await consumeGoDeeper(env, deviceId, now))) {
+          return errorResponse(
+            429,
+            "tooManyRequests",
+            "That's a lot of going deeper. Try again tomorrow.",
+          );
         }
         return withTrialHeader(
           await handleUnmetered(modelRequest, env, effectiveTier, ctx, hooks, now),
@@ -399,6 +458,7 @@ async function handleStatus(
   const spend = (await (await spendStub.fetch(`https://spend/peek?now=${now}`)).json()) as {
     month: string;
     spentUSD: number;
+    unrecordedReadings?: number;
   };
 
   const funnel = await readFunnel(env);
@@ -408,6 +468,22 @@ async function handleStatus(
     spentUSD: Number(spend.spentUSD.toFixed(6)),
     ceilingUSD: ceiling,
     withinCeiling: spend.spentUSD < ceiling,
+    /**
+     * Generations whose cost never reached the ledger.
+     *
+     * Recording is best-effort by design -- losing one reading is better than
+     * failing a request that already succeeded -- but "best-effort" and
+     * "silently zero" are different things, and only the second one is a hole.
+     * Every swallowed reading is spend the ceiling cannot see, so a ceiling
+     * read alongside a nonzero count here is a floor, not a total.
+     *
+     * Rolls over with the month, like the spend it belongs to.
+     */
+    unrecordedReadings: spend.unrecordedReadings ?? 0,
+    /** Whether the pre-release client gate is up. See `SPARE_CLIENT_TOKEN`. */
+    clientTokenRequired: Boolean(env.SPARE_CLIENT_TOKEN),
+    /** Whether `POST /v1/trial/start` answers. See `TRIAL_START_ENABLED`. */
+    trialStartEnabled: isTrialStartEnabled(env),
     // What a free request would be told right now, so the answer doesn't have
     // to be recomputed by eye from the two numbers above.
     freeGenerationPaused: !(spend.spentUSD < ceiling),
@@ -456,6 +532,28 @@ async function handleStatus(
 function isAuthorisedOperator(request: Request, env: Env): boolean {
   if (!env.ADMIN_TOKEN) return false;
   return constantTimeEquals(request.headers.get("x-spare-admin") ?? "", env.ADMIN_TOKEN);
+}
+
+/**
+ * Whether this request carries the client token, when one is configured.
+ *
+ * Returns true when `SPARE_CLIENT_TOKEN` is unset, which is deliberately the
+ * opposite default from `isAuthorisedOperator`. That one guards a privilege
+ * and an unconfigured deploy should have none; this one guards availability
+ * and an unconfigured deploy should still serve readers. Which way it is
+ * pointing right now is reported by `/v1/status`.
+ */
+function isAuthorisedClient(request: Request, env: Env): boolean {
+  if (!env.SPARE_CLIENT_TOKEN) return true;
+  return constantTimeEquals(
+    request.headers.get("x-spare-client") ?? "",
+    env.SPARE_CLIENT_TOKEN,
+  );
+}
+
+/** Whether `POST /v1/trial/start` exists on this deployment. */
+function isTrialStartEnabled(env: Env): boolean {
+  return (env.TRIAL_START_ENABLED ?? "true").trim().toLowerCase() !== "false";
 }
 
 /**
@@ -729,7 +827,18 @@ async function handleGeneration(
         parsed.outputTokens,
         typeof modelRequest.model === "string" ? modelRequest.model : undefined,
       );
-      await recordSpend(env, cost, hooks, now);
+      // Wrapped rather than left to `forwardStream`'s catch, which covers the
+      // whole observer: a ledger write that threw used to take the cache write
+      // down with it, so one lost reading also cost everybody the lesson.
+      try {
+        if (cost > 0) {
+          await recordSpend(env, cost, hooks, now);
+        } else {
+          await noteUnrecordedSpend(env, now);
+        }
+      } catch {
+        await noteUnrecordedSpend(env, now);
+      }
 
       // Two admission rules, and they are the same rule.
       //
@@ -1209,6 +1318,39 @@ async function recordSpend(env: Env, usd: number, hooks: Hooks, now: number): Pr
   await stub.fetch(`https://spend/record?usd=${usd}&now=${now}`);
 }
 
+/**
+ * Records that a generation happened whose cost we could not measure.
+ *
+ * The `catch {}` around spend recording stays exactly as it was: a reading
+ * lost after the reader already has their lesson is the right thing to trade
+ * away. What was wrong was that it was lost *invisibly*, so the ceiling and
+ * the status endpoint both reported a number that was quietly a floor. This
+ * makes the loss countable without making it fatal.
+ *
+ * Itself best-effort, and for the same reason -- a failure to count a failure
+ * must not become a third failure.
+ */
+function noteUnrecordedSpend(env: Env, now: number): Promise<void> {
+  const stub = env.SPEND.get(env.SPEND.idFromName("global"));
+  return stub
+    .fetch(`https://spend/unrecorded?now=${now}`)
+    .then(() => undefined)
+    .catch(() => undefined);
+}
+
+/**
+ * Counts one go-deeper against this device's day, and says whether it may run.
+ *
+ * False means the device is past `GO_DEEPER_PER_DAY_CEILING`, which is set at
+ * abuse level rather than product level -- see the call site.
+ */
+async function consumeGoDeeper(env: Env, deviceId: string, now: number): Promise<boolean> {
+  const stub = env.USAGE.get(env.USAGE.idFromName(deviceId));
+  const response = await stub.fetch(`https://usage/goDeeper?now=${now}`);
+  const result = (await response.json()) as { allow: boolean };
+  return result.allow;
+}
+
 /** Non-streaming responses carry usage in the body. */
 function recordSpendFromBody(
   text: string,
@@ -1227,10 +1369,18 @@ function recordSpendFromBody(
           Number(parsed.usage?.output_tokens ?? 0),
           model,
         );
+        // A body that parsed but carried no usage is a reading lost just as
+        // surely as one that threw, and it is the quieter of the two.
+        if (!(cost > 0)) {
+          await noteUnrecordedSpend(env, now);
+          return;
+        }
         await recordSpend(env, cost, hooks, now);
       } catch {
         // An unparseable success body means no usage figure. Losing one
-        // reading is better than failing a request that already succeeded.
+        // reading is better than failing a request that already succeeded --
+        // but it is counted, so the ledger is known to be a floor.
+        await noteUnrecordedSpend(env, now);
       }
     })(),
   );

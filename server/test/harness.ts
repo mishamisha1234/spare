@@ -46,6 +46,13 @@ export function testEnv(overrides: Partial<Env> = {}): Env {
     APPSTORE_ISSUER_ID: "issuer-uuid",
     BUNDLE_ID: "app.spare.ios",
     MONTHLY_SPEND_CEILING_USD: "50",
+    // Both are set in `wrangler.toml` for the pre-release window, and both
+    // would otherwise reach every test through the real bindings. Overridden
+    // here to the shipped configuration -- trial on, client gate off -- so the
+    // suite describes the app as it will run, and the two tests that are
+    // *about* the window set their own values.
+    TRIAL_START_ENABLED: "true",
+    SPARE_CLIENT_TOKEN: undefined,
     ...overrides,
   };
 }

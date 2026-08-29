@@ -54,6 +54,27 @@ export const TRIAL_COURSES = 2;
 export const TRIAL_DAYS = 7;
 export const TRIAL_DURATION_MS = TRIAL_DAYS * 24 * 60 * 60 * 1000;
 
+/**
+ * How many go-deepers one device may run in a day.
+ *
+ * Not a product limit and never shown to anyone. Premium's go-deeper is
+ * unlimited, it is described as unlimited, and forty a day is out of reach of
+ * a reader: premium is fifty lessons a *month*, so forty is more expansions in
+ * one day than most subscribers have lessons in three weeks.
+ *
+ * It is here because `/v1/go-deeper` is the most expensive uncounted call the
+ * proxy makes -- 24,000 Opus tokens, about $0.60 at full output -- and nothing
+ * counted it at all. One device could run it until the global ceiling stopped
+ * it, and the global ceiling is a budget, not an abuse control.
+ *
+ * Be honest about what this buys on its own: forty calls is roughly $24 at
+ * full output, which is more than the monthly ceiling. It does not protect the
+ * budget from one determined device. What it does is make *one* device
+ * insufficient, so abuse has to be scripted across many -- which is what the
+ * client token and per-IP rate limiting are for. Depth, not a wall.
+ */
+export const GO_DEEPER_PER_DAY_CEILING = 40;
+
 export type Decision =
   | { allow: true; servedFromCache: boolean; milestone?: FunnelMilestone }
   | { allow: false; reason: DenialReason };
@@ -131,6 +152,11 @@ export interface UsageState {
    * repeating a request costs nothing.
    */
   chargedKeys: ChargedLesson[];
+  /**
+   * Go-deepers run today. Counted, never capped at product level -- see
+   * `GO_DEEPER_PER_DAY_CEILING`.
+   */
+  goDeeperToday: number;
 }
 
 /**
@@ -378,12 +404,36 @@ export class UsageCounter implements DurableObject {
       return Response.json({ seen: (await this.seenKeys()).includes(key) });
     }
 
+    // Counted inside the object rather than by the router, for the same reason
+    // `consume` is: read-check-increment from outside is two round trips and
+    // jointly racy, and a counter a burst can walk straight through is not a
+    // counter.
+    if (url.pathname === "/goDeeper") {
+      return Response.json(await this.consumeGoDeeper(now));
+    }
+
     if (url.pathname === "/markSeen") {
       await this.markSeen(url.searchParams.get("key") ?? "");
       return Response.json({ ok: true });
     }
 
     return new Response("not found", { status: 404 });
+  }
+
+  /**
+   * One go-deeper, atomically.
+   *
+   * Refuses *before* incrementing past the ceiling, so a device parked at the
+   * limit does not keep growing a number nobody reads.
+   */
+  private async consumeGoDeeper(now: number): Promise<{ allow: boolean; today: number }> {
+    const state = await this.load(now);
+    if (state.goDeeperToday >= GO_DEEPER_PER_DAY_CEILING) {
+      return { allow: false, today: state.goDeeperToday };
+    }
+    const updated = { ...state, goDeeperToday: state.goDeeperToday + 1 };
+    await this.state.storage.put<UsageState>("usage", updated);
+    return { allow: true, today: updated.goDeeperToday };
   }
 
   private async seenKeys(): Promise<string[]> {
@@ -464,6 +514,7 @@ export class UsageCounter implements DurableObject {
       coursesThisMonth: 0,
       lessonsThisMonth: 0,
       chargedKeys: [],
+      goDeeperToday: 0,
     };
 
     // Rollover on read.
@@ -479,6 +530,7 @@ export class UsageCounter implements DurableObject {
       // Rolls over with the day it belongs to. A record written before this
       // deploy has no field at all, hence the fallback.
       chargedKeys: stored.day === today ? (stored.chargedKeys ?? []) : [],
+      goDeeperToday: stored.day === today ? (stored.goDeeperToday ?? 0) : 0,
     };
   }
 
@@ -722,6 +774,17 @@ export interface SpendState {
   month: string;
   /** Estimated USD spent this month across every user. */
   spentUSD: number;
+  /**
+   * Generations this month whose cost never reached `spentUSD`.
+   *
+   * Recording is best-effort and stays best-effort: a reading lost after the
+   * reader already has their lesson is the right thing to trade away. What was
+   * wrong was that it was lost with no trace, so `spentUSD` read as a total
+   * when it was only ever a floor. A nonzero count here is the difference
+   * between the two, and it is the number to look at before believing the
+   * ceiling has room left.
+   */
+  unrecordedReadings: number;
 }
 
 /**
@@ -760,6 +823,20 @@ export class SpendLedger implements DurableObject {
       const updated: SpendState = {
         month: state.month,
         spentUSD: state.spentUSD + (Number.isFinite(amount) ? Math.max(0, amount) : 0),
+        unrecordedReadings: state.unrecordedReadings,
+      };
+      await this.state.storage.put<SpendState>("spend", updated);
+      return Response.json(updated);
+    }
+
+    // A generation whose cost could not be measured. Deliberately not folded
+    // into `/record` with a zero amount: that would be indistinguishable from
+    // a cache hit, and the whole point is that it is not.
+    if (url.pathname === "/unrecorded") {
+      const state = await this.load(now);
+      const updated: SpendState = {
+        ...state,
+        unrecordedReadings: state.unrecordedReadings + 1,
       };
       await this.state.storage.put<SpendState>("spend", updated);
       return Response.json(updated);
@@ -772,8 +849,9 @@ export class SpendLedger implements DurableObject {
     const stored = await this.state.storage.get<SpendState>("spend");
     const thisMonth = monthKey(now);
     if (!stored || stored.month !== thisMonth) {
-      return { month: thisMonth, spentUSD: 0 };
+      return { month: thisMonth, spentUSD: 0, unrecordedReadings: 0 };
     }
-    return stored;
+    // Absent in anything written before this counter existed.
+    return { ...stored, unrecordedReadings: stored.unrecordedReadings ?? 0 };
   }
 }

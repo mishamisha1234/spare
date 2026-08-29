@@ -24,6 +24,15 @@
     generate; it does not skip the spend ceiling, so this run cannot exceed
     MONTHLY_SPEND_CEILING_USD however wrong it goes.
 
+    Retries are the number to plan the ceiling around: the full 20-lesson set
+    is about $3, so a run that retried every lesson twice -- three attempts
+    each -- would be about $9, against a ceiling of $15.
+
+    A run that the ceiling stopped and a run that finished do not look alike.
+    The summary ends with a STOPPED banner naming the reason, and the exit
+    code is 2 rather than 0, so neither eye nor script can mistake a short run
+    for a complete one.
+
 .PARAMETER Token
     The ADMIN_TOKEN set with `npx wrangler secret put ADMIN_TOKEN`.
 
@@ -231,6 +240,10 @@ $results = @()
 $runningCost = 0.0
 $index = 0
 $abort = $false
+# Why the run stopped, or "" if it ran to the end. Read by the summary block,
+# which otherwise prints the same shape of table for a complete run and a run
+# the ceiling cut off after two lessons.
+$abortReason = ""
 
 foreach ($window in $plan) {
     if ($abort) { break }
@@ -250,11 +263,19 @@ foreach ($window in $plan) {
                 Write-Host "        The operator token was not accepted, so this ran as an ordinary free device." -ForegroundColor Yellow
                 Write-Host "        Check ADMIN_TOKEN is set on the Worker and matches -Token, then redeploy." -ForegroundColor Yellow
                 $abort = $true
+                $abortReason = "The operator token was not accepted (HTTP $($r.Status) $($r.ErrorCode))."
                 break
             }
             if ($r.ErrorCode -eq "spendCeilingReached") {
-                Write-Host "        The monthly spend ceiling stopped the run. Nothing further will generate." -ForegroundColor Yellow
                 $abort = $true
+                $abortReason = "MONTHLY_SPEND_CEILING_USD was reached. Nothing further would generate."
+                break
+            }
+            if ($r.Status -eq 404) {
+                Write-Host "        404. Either the Worker predates this endpoint, or SPARE_CLIENT_TOKEN is set" -ForegroundColor Yellow
+                Write-Host "        and this run is not presenting a token the Worker accepts." -ForegroundColor Yellow
+                $abort = $true
+                $abortReason = "The proxy answered 404. Check the deploy and SPARE_CLIENT_TOKEN."
                 break
             }
             $results += [pscustomobject]@{
@@ -340,10 +361,30 @@ foreach ($window in $plan) {
 $ok = @($results | Where-Object { $_.Verdict -ne "failed" })
 $hit = @($results | Where-Object { $_.Verdict -eq "in budget" }).Count
 Write-Host ""
-Write-Host ("{0} lessons, {1} in budget, total `${2:N2}" -f $ok.Count, $hit, $runningCost) -ForegroundColor White
+Write-Host ("{0} of {1} lessons, {2} in budget, total `${3:N2}" -f $ok.Count, $total, $hit, $runningCost) -ForegroundColor White
 Write-Host "Saved to $OutDir" -ForegroundColor DarkGray
+
+# The one thing this report must never be ambiguous about.
+#
+# Without it a ceiling-stopped run and a finished run print the same table, and
+# the only difference is a row count nobody counts. "12 of 20" is easy to read
+# as "I chose to run 12".
+if ($abort) {
+    Write-Host ""
+    Write-Host ("*" * 92) -ForegroundColor Red
+    Write-Host "  RUN STOPPED EARLY - THIS IS NOT A COMPLETE BATCH" -ForegroundColor Red
+    Write-Host ("  {0}" -f $abortReason) -ForegroundColor Red
+    Write-Host ("  {0} of {1} lessons generated. The numbers above describe those {0} only." -f $ok.Count, $total) -ForegroundColor Red
+    Write-Host ("*" * 92) -ForegroundColor Red
+} else {
+    Write-Host ""
+    Write-Host ("COMPLETE - all {0} lessons attempted." -f $total) -ForegroundColor Green
+}
 
 $csv = Join-Path $OutDir "summary.csv"
 $results | Export-Csv -Path $csv -NoTypeInformation -Encoding UTF8
 Write-Host "Table also written to summary.csv" -ForegroundColor DarkGray
 Write-Host ""
+
+# Non-zero on a stopped run, so this is answerable without reading the screen.
+if ($abort) { exit 2 }

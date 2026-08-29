@@ -10,13 +10,15 @@ having worked.
 Nothing here can be done for you: every step needs an account only you can log
 into.
 
-> **Do not deploy the reverse trial before the app that uses it is on the App
-> Store.** `POST /v1/trial/start` is public and unauthenticated by design —
-> there are no accounts — so a Worker carrying it with no client in the world
-> is a free-Opus endpoint for anyone who finds it. Bounded: one trial per
-> device id, ten lessons, two courses, and the global monthly spend ceiling
-> above all of it. Bounded is not the same as intended. One redeploy, after
-> the client ships, is the whole plan.
+> **The proxy has to go live before the app does, and two switches exist for
+> that window.** `POST /v1/trial/start` is public and unauthenticated by design
+> — there are no accounts — so a Worker carrying it with no client in the world
+> is a free-Opus endpoint for anyone who finds it. `wrangler.toml` ships with
+> `TRIAL_START_ENABLED = "false"`, which 404s it, and Step 4b sets
+> `SPARE_CLIENT_TOKEN`, which 404s everything except `/v1/status` for a caller
+> without the header. Both are off switches for a period, not a design: turn
+> the trial on in the deploy that accompanies the first TestFlight build, and
+> read **"The client token expires"** below before that date.
 >
 > **Already deployed?** The Worker running right now predates two fixes it needs.
 > Until you redeploy, the free tier cannot finish a single lesson (a lesson's
@@ -152,6 +154,61 @@ created empty and Step 6 fills it in.
 
 The key is now encrypted in Cloudflare. It isn't in the repo, it isn't in your
 command history, and it will never be sent back to your phone.
+
+---
+
+## Step 4b. Store the client token
+
+This is the one that keeps the proxy closed while there is no app.
+
+Invent a long random string — anything you can paste twice. It doesn't need to
+be memorable and you will not type it again after the app is configured.
+
+```powershell
+npx wrangler secret put SPARE_CLIENT_TOKEN
+```
+
+**You should see:**
+
+```
+✨ Success! Uploaded secret SPARE_CLIENT_TOKEN
+```
+
+From the next deploy onwards, every endpoint except `GET /v1/status` answers
+**404** unless the request carries `x-spare-client: <that string>`. The batch
+tool doesn't need it — the operator token is accepted on its own, so the probe
+works with the gate up and nothing else does.
+
+**The app does not send this header yet, and does not need to.** Nothing on a
+phone talks to the proxy during the probe. Sending it is part of the same piece
+of work as turning the trial on: the four places that already set
+`x-spare-device` (`ProviderRoute`, `Allowance`, `LessonAttachments`, `Funnel`)
+would each carry it, from an `Info.plist` key alongside `SPProxyBaseURL`. Do
+that, or unset this secret, before a build goes to a tester — with the gate up
+and the header missing, every request from the app 404s.
+
+### The client token expires
+
+Not on a date the software knows about. **It stops being a control the day the
+first TestFlight tester installs the app**, because the app has to carry the
+value, and anyone with the binary can read it out. There is no version of this
+that survives shipping.
+
+That is fine for what it is for: it closes the weeks between this deploy and
+the first build going out, which is the period when the URL is public and
+nothing in the world is a legitimate client. It is not fine as the only
+control afterwards.
+
+**Three things have to land before that date, and this is the list:**
+
+| Before the first TestFlight install | Why |
+|---|---|
+| **Cloudflare rate limiting** on the Worker's route — 30 requests a minute per IP on `/v1/*`. Dashboard only, no code. | The client token is gone; per-IP throttling is what takes over as the crude first backstop. See "Rate limiting" below. |
+| **The go-deeper counter** — already deployed, `GO_DEEPER_PER_DAY_CEILING` in `limits.ts`. Confirm it is live. | `/v1/go-deeper` is 24,000 Opus tokens and premium access is all it asks for, which a trial grants. |
+| **Reserve-then-settle on the spend ceiling.** Not built. | The ceiling is checked against spend already recorded, and recording happens after a generation finishes — so a burst of concurrent requests all read the same figure and all pass. Overshoot scales with the caller's concurrency. |
+
+Until the third one exists, treat `MONTHLY_SPEND_CEILING_USD` as "roughly where
+spending stops", not as a limit.
 
 ---
 
@@ -459,14 +516,50 @@ Press **Ctrl+C** to stop tailing.
 
 ## What it costs
 
-The spend ceiling is set to **$50/month** in `wrangler.toml`. Past it, free
+The spend ceiling is set to **$15/month** in `wrangler.toml`. Past it, free
 generation is served from the cache instead of the model; subscribers keep
 working, because their requests are paid for. Nothing breaks — costs stop
 climbing.
 
+Fifteen is a pre-release number, sized to the probe rather than to a userbase.
+The full 20-lesson batch costs about $3, so a run that retried every lesson
+twice — three attempts each — would be about $9 and still clear it. Raise it in
+the deploy that turns the trial on, when real subscribers start depending on
+free generation not pausing.
+
 To change it, edit `MONTHLY_SPEND_CEILING_USD` in `wrangler.toml` and redeploy.
 Treat it as a smoke alarm rather than a budget: if it ever trips, something is
 wrong, not busy.
+
+**One caveat on what it guarantees.** The check runs before the model is
+called, but against spend that has already been *recorded*, and recording
+happens after the response finishes. Requests that start inside that window all
+see the same figure and all proceed, so the ceiling can be overshot by roughly
+one generation per concurrent caller. It is a budget, not admission control,
+and closing that gap is on the list in Step 4b.
+
+## Rate limiting
+
+There is none, and there never has been. If you have read a claim to the
+contrary in `server/README.md`, it was wrong and has been corrected.
+
+It is a dashboard rule rather than anything in this repository:
+
+1. [dash.cloudflare.com](https://dash.cloudflare.com) → your account.
+2. **Workers & Pages** → **spare-proxy** → **Settings**.
+3. Find **Rate limiting** and add a rule.
+4. Match requests where **URI Path** *starts with* `/v1/`.
+5. Set the rate to **30 requests** per **1 minute**, counted by **IP address**.
+6. Action: **Block**, for the shortest duration offered — the point is to make
+   scripting slow, not to punish anybody.
+7. Deploy the rule.
+
+Thirty a minute is far above any reader. A lesson is a handful of requests and
+the app is not a thing you can hold down. It is well below what scripting new
+device ids needs to be worth doing.
+
+Check it took effect by sending 40 quick requests to `/v1/status` with no token
+and watching the last of them come back blocked rather than 401.
 
 ## Checking what it has cost
 
@@ -488,9 +581,12 @@ curl.exe -s -H "x-spare-admin: YOUR_TOKEN" https://spare-proxy.mishabichashvili1
 {
   "month": "2026-08",
   "spentUSD": 0.041233,
-  "ceilingUSD": 50,
+  "ceilingUSD": 15,
   "withinCeiling": true,
-  "freeGenerationPaused": false
+  "freeGenerationPaused": false,
+  "unrecordedReadings": 0,
+  "clientTokenRequired": true,
+  "trialStartEnabled": false
 }
 ```
 
@@ -503,6 +599,7 @@ things:
 |---|---|
 | `405 methodNotAllowed` | The deployed Worker predates this endpoint. Redeploy. |
 | `404 unknownEndpoint` | Deployed, but `ADMIN_TOKEN` isn't set. |
+| `404 unknownEndpoint` on every *other* endpoint | `SPARE_CLIENT_TOKEN` is set and the caller isn't sending it. Expected before the app ships. |
 | `401 unauthorized` | Token set, wrong one presented. |
 
 The endpoint is read-only and GET-only. There is no way through it to reset a

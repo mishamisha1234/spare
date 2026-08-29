@@ -10,7 +10,19 @@ compatibility_flags = ["nodejs_compat"]
 # Non-secret only. Keys live in `wrangler secret put` and never in the repo.
 [vars]
 BUNDLE_ID = "app.spare.ios"
-MONTHLY_SPEND_CEILING_USD = "50"
+
+# Lowered from 50 for the pre-release window. The six-lesson probe costs about
+# $1 and the full 20-lesson batch about $3, so $15 leaves room for a batch that
+# retries every lesson twice and still stops well short of a month's worth of
+# an open endpoint. Raise it when the app ships and real subscribers depend on
+# free generation not pausing.
+MONTHLY_SPEND_CEILING_USD = "15"
+
+# "false" makes POST /v1/trial/start 404. It is off because the Worker goes
+# live weeks before any client exists, and until then a public trial endpoint
+# is a premium-pool entitlement anybody can claim with one curl. Flip to "true"
+# in the deploy that accompanies the first TestFlight build.
+TRIAL_START_ENABLED = "false"
 
 [[durable_objects.bindings]]
 name = "USAGE"

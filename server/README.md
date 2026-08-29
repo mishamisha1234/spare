@@ -114,14 +114,22 @@ say "this is only the revision, don't charge it". That is a free-generation
 switch for anyone who reads one request. Deriving the unit from facts the proxy
 needs anyway is the only version that does not depend on the client being honest.
 
-The charge covers a bounded number of requests — sixteen — and not an unlimited
-number, which is the part that stops the fix being worse than the bug it fixes.
-Once a lesson is paid for its later requests are free, so without a ceiling a
-free device could send one topic all day and generate every time. Spoofing the
-device id already resets the allowance, but that costs a reinstall; repeating a
-request costs nothing. Sixteen is out of reach for an honest client — a course is
-nine requests and the retry policy allows three attempts a call — and finite for
-a dishonest one.
+The charge covers a bounded number of requests — `MAX_REQUESTS_PER_LESSON`,
+currently 24 — and not an unlimited number, which is the part that stops the fix
+being worse than the bug it fixes. Once a lesson is paid for its later requests
+are free, so without a ceiling a free device could send one topic all day and
+generate every time. Spoofing the device id already resets the allowance, but
+that costs a reinstall; repeating a request costs nothing. Twenty-four is out of
+reach for an honest client — a course is nine requests and the retry policy
+allows three attempts a call — and finite for a dishonest one.
+
+Finite is not the same as cheap, and the number reads differently now that a
+trial exists. Ten trial lessons are ten charge keys, and each affords 24
+generations, so 240 upstream calls fit inside one device's trial: at a lesson's
+24,000-token Opus ceiling that is roughly $144 of worst case, not the ~$8 an
+honest trialist costs. The global ceiling stops it long before then, which is
+the point — the per-device number bounds *fairness*, and only the ceiling
+bounds money.
 
 ### The outline needs its own endpoint
 
@@ -203,7 +211,8 @@ refused it, rather than showing a paywall for a length it believes it owns.
 second is the load-bearing one: the global spend ceiling is lifted for funded
 requests only, so a trialist stops at the ceiling like a free device does. That
 is also what bounds the device-spoofing exposure below, which the trial makes
-worth roughly $8 a reset instead of one lesson a day.
+worth roughly $8 a reset for an ordinary reader — and, at the ceilings rather
+than at typical use, considerably more. See "what a fake device is worth".
 
 ### A started course finishes
 
@@ -272,13 +281,38 @@ from "edit a boolean in a local database" to "reinstall and lose your
 library", which is enough to stop casual abuse and not enough to stop
 deliberate abuse.
 
-**The global monthly spend ceiling is the actual protection.** It does not
-care who is asking or why — past the ceiling, free generation stops serving
-fresh lessons and falls back to the cache. Premium keeps working, because
-those requests are paid for and verified. If the ceiling ever trips, that is
-the signal that something is wrong; it is not meant to be reached.
+**The global monthly spend ceiling is the budget, and it is not an abuse
+control.** It does not care who is asking or why — past the ceiling, free
+generation stops serving fresh lessons and falls back to the cache. Premium
+keeps working, because those requests are paid for and verified. If the ceiling
+ever trips, that is the signal that something is wrong; it is not meant to be
+reached.
 
-Per-IP throttling sits in front of everything as a second, cruder backstop.
+Two things it does not do, both worth stating plainly:
+
+**It is checked against spend that has already been recorded.** The check runs
+before `callAnthropic`, but recording happens after the response completes, on
+a `waitUntil` branch. Between the two sits a whole generation — tens of
+seconds for a 24,000-token completion — and every request that starts in that
+window reads the same pre-burst figure and passes. Overshoot therefore scales
+with the caller's concurrency, which is not a number this design bounds. The
+practical brake on a burst is Anthropic's own per-organisation rate limit,
+which is not a control written here and not one to rely on.
+
+**It cannot see what it was never told.** Recording is best-effort by design.
+A body that arrives without a usage figure, or a ledger write that throws, used
+to vanish silently, which made `spentUSD` a floor that read like a total.
+`unrecordedReadings` in `GET /v1/status` now counts those, so the gap between
+the two is a number rather than a hope. The `catch` is still a `catch`: a
+reading lost after the reader already has their lesson is the right thing to
+trade away.
+
+**There is no per-IP throttling in this repository.** An earlier version of
+this section claimed there was, as "a second, cruder backstop". There is no
+code and no `wrangler.toml` entry behind that sentence and there never was.
+Rate limiting on the Worker's route is a Cloudflare dashboard rule, it has to
+be configured by hand, and until somebody has done it and checked, the correct
+thing to write here is that it does not exist. See `DEPLOY.md`.
 
 `GET /v1/status`, authenticated with `ADMIN_TOKEN`, reports the month's spend
 against the ceiling and optionally one device's counters. It exists because that
@@ -289,10 +323,61 @@ token means the route 404s rather than 401s, so a deploy that never configures i
 does not advertise that it exists. Read-only and GET-only: changing a limit stays
 a deploy, where it is reviewable.
 
+### What a fake device is worth
+
+Worth writing down separately from the $8 figure above, because the two answer
+different questions and only one of them is about an attacker.
+
+Eight dollars is what an enthusiastic trialist costs: ten lessons, mostly
+short. The adversarial number is what one device can be made to cost if
+somebody is trying. Ten trial lessons are ten charge keys and each affords
+`MAX_REQUESTS_PER_LESSON` generations, so 240 upstream calls fit inside one
+trial; `applyPolicy` passes `system` and `messages` through as content,
+because the prompt is the app's business, so the caller decides what gets
+generated and can run every call to its token ceiling. At `/v1/lesson`'s
+24,000 Opus tokens that is roughly $144 — three times the ceiling that is
+supposed to be the backstop, which means the ceiling is what stops it and the
+per-device numbers never come into it.
+
+The unmetered endpoints were worse, because they had no per-device number at
+all. `/v1/go-deeper` is the same 24,000 Opus tokens, gated only on
+`hasPremiumAccess` — which a trial grants — and nothing counted it. Eighty-three
+calls burn a $50 ceiling. It is counted now: see `GO_DEEPER_PER_DAY_CEILING`,
+which is set at abuse level and disclosed to nobody, because premium's
+go-deeper is unlimited and stays unlimited.
+
+None of that is reachable while the client gate is up, which is the point of
+the gate and also its limit — it comes down when the app ships.
+
+### The pre-release gate
+
+`SPARE_CLIENT_TOKEN`, when set, requires a matching `x-spare-client` header on
+every endpoint except `GET /v1/status`, and answers 404 without one.
+
+**This is not authentication and cannot become it.** The app has to carry the
+value, so anyone with the binary can read it out. Its entire strength is that
+no binary exists yet: it closes the weeks between deploying the Worker and
+shipping the client, in which every endpoint is public and no client's
+behaviour bounds what gets asked for. **It stops being a control on the day the
+first TestFlight tester installs**, and the things that replace it — a
+Cloudflare rate-limiting rule, the go-deeper counter, an admission-controlled
+ceiling — have to be in place before that date, not after it.
+
+Unset means the gate is off. That is deliberately the opposite default from
+`ADMIN_TOKEN`, and the reason is what each one guards: an unconfigured deploy
+should have no privileges, and it should still serve readers. A mistyped secret
+would otherwise be a silent total outage. `GET /v1/status` reports
+`clientTokenRequired`, so whether the gate is up is a question with an answer.
+
+`TRIAL_START_ENABLED = "false"` is the same window's other switch: it 404s
+`POST /v1/trial/start` while leaving `/v1/trial/status` and `/v1/allowance`
+answering, since reading a trial nobody has costs nothing. `/v1/status` reports
+it too.
+
 ### The operator bypass
 
-A request carrying `x-spare-admin: $ADMIN_TOKEN` skips the per-device limits and
-the cache, so every request generates. It exists to produce a batch of lessons to
+A request carrying `x-spare-admin: $ADMIN_TOKEN` skips the per-device limits, the
+go-deeper counter, the client gate and the cache, so every request generates. It exists to produce a batch of lessons to
 read and judge (see `batch-lessons.ps1`), which the daily limit otherwise makes
 impossible.
 
