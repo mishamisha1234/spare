@@ -121,11 +121,19 @@ public struct ProxyFunnelReporter: FunnelReporter {
     private let transport: any HTTPTransport
     private let baseURL: URL
     private let deviceID: String
+    /// See `SpareClient`. Omitted when nil; the proxy answers 404 either way.
+    private let clientToken: String?
 
-    public init(transport: any HTTPTransport, baseURL: URL, deviceID: String) {
+    public init(
+        transport: any HTTPTransport,
+        baseURL: URL,
+        deviceID: String,
+        clientToken: String? = nil
+    ) {
         self.transport = transport
         self.baseURL = baseURL
         self.deviceID = deviceID
+        self.clientToken = clientToken
     }
 
     public func report(_ event: FunnelEvent) async {
@@ -140,10 +148,15 @@ public struct ProxyFunnelReporter: FunnelReporter {
         // every request, and because a conversion has to be resolved against
         // *this* device's trial. It is not stored against the counters: see
         // `FunnelLedger`, which holds five integers and nothing else.
+        var headers = ["content-type": "application/json", "x-spare-device": deviceID]
+        if let clientToken, !clientToken.isEmpty {
+            headers["x-spare-client"] = clientToken
+        }
+
         let request = HTTPRequest(
             url: url,
             method: "POST",
-            headers: ["content-type": "application/json", "x-spare-device": deviceID],
+            headers: headers,
             body: body,
             timeout: 10
         )

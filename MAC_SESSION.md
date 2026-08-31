@@ -114,6 +114,42 @@ xcrun simctl list devices available
 
 ---
 
+## Part 2b — Supply the client token
+
+The proxy refuses every request that does not carry the pre-release client
+token. Without it the app builds, runs, and gets **404 on every lesson**. The
+token is deliberately not in this repository — the repo is public, and CI fails
+the build if anything token-shaped is committed — so it has to be supplied on
+the machine doing the building.
+
+It is in your password manager, saved when the Worker was deployed.
+
+Create this file once. It is gitignored, so it never leaves the Mac:
+
+```
+cd ~/Spare
+echo 'SPARE_CLIENT_TOKEN = paste-the-token-here' > Local.xcconfig
+```
+
+Then in Xcode: click the blue **Spare** project in the sidebar → select the
+**Spare** *project* row (not the target underneath it) → **Info** tab → under
+**Configurations**, set both Debug and Release to use `Local.xcconfig`.
+
+For a command-line build instead, append the setting to the `xcodebuild` line:
+
+```
+SPARE_CLIENT_TOKEN=paste-the-token-here
+```
+
+**How to tell it worked:** check 2 below generates a lesson. If every duration
+fails instantly with a network error, the token did not reach the build — the
+app is being 404'd, which looks exactly like the proxy being down.
+
+Leave the test suite in Part 2 alone: it never calls the Worker, so it passes
+with or without the token.
+
+---
+
 ## Part 3 — Sign with a free personal team
 
 1. In Xcode, if the project is not open: `open ~/Spare/Spare.xcodeproj`

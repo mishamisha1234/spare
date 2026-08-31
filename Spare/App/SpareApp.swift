@@ -177,7 +177,8 @@ struct SpareApp: App {
             transport: FoundationHTTPTransport(),
             baseURL: baseURL,
             deviceID: DeviceIdentity.current(),
-            receipt: { await purchases.currentReceipt() }
+            receipt: { await purchases.currentReceipt() },
+            clientToken: SpareClient.token
         )
     }
 
@@ -194,7 +195,8 @@ struct SpareApp: App {
         return ProxyFunnelReporter(
             transport: FoundationHTTPTransport(),
             baseURL: baseURL,
-            deviceID: DeviceIdentity.current()
+            deviceID: DeviceIdentity.current(),
+            clientToken: SpareClient.token
         )
     }
 
@@ -212,7 +214,8 @@ struct SpareApp: App {
             transport: FoundationHTTPTransport(),
             baseURL: baseURL,
             deviceID: DeviceIdentity.current(),
-            receipt: { await purchases.currentReceipt() }
+            receipt: { await purchases.currentReceipt() },
+            clientToken: SpareClient.token
         )
     }
 
@@ -263,7 +266,8 @@ struct SpareApp: App {
             // Read per request, not captured: a purchase, a restore, or an
             // expiry has to take effect without a relaunch.
             receipt: { await purchases.currentReceipt() },
-            ledger: ledger
+            ledger: ledger,
+            clientToken: SpareClient.token
         )
 
         #if DEBUG

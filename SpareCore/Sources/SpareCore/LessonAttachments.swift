@@ -94,17 +94,21 @@ public struct ProxyAttachmentStore: AttachmentStore {
     private let baseURL: URL
     private let deviceID: String
     private let receipt: @Sendable () async -> String?
+    /// See `SpareClient`. Omitted when nil; the proxy answers 404 either way.
+    private let clientToken: String?
 
     public init(
         transport: any HTTPTransport,
         baseURL: URL,
         deviceID: String,
-        receipt: @escaping @Sendable () async -> String? = { nil }
+        receipt: @escaping @Sendable () async -> String? = { nil },
+        clientToken: String? = nil
     ) {
         self.transport = transport
         self.baseURL = baseURL
         self.deviceID = deviceID
         self.receipt = receipt
+        self.clientToken = clientToken
     }
 
     public func attachments(for lesson: LessonIdentity) async throws -> LessonAttachments? {
@@ -156,9 +160,14 @@ public struct ProxyAttachmentStore: AttachmentStore {
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
+        var headers = ["content-type": "application/json", "x-spare-device": deviceID]
+        if let clientToken, !clientToken.isEmpty {
+            headers["x-spare-client"] = clientToken
+        }
+
         return try await transport.send(HTTPRequest(
             url: url,
-            headers: ["content-type": "application/json", "x-spare-device": deviceID],
+            headers: headers,
             body: try encoder.encode(JSONValue.object(envelope)),
             // Neither call reaches a model, so neither needs a model's patience.
             timeout: 30

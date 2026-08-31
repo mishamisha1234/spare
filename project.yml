@@ -46,6 +46,11 @@ targets:
         # identity the app is allowed to know. The key itself is a Cloudflare
         # secret and appears nowhere in this repo.
         SPProxyBaseURL: https://spare-proxy.mishabichashvili1998.workers.dev
+        # The pre-release gate. Every /v1/* endpoint except /v1/status answers
+        # 404 without it. Supplied from the SPARE_CLIENT_TOKEN build setting,
+        # never written here: this repository is public, and a literal would
+        # publish the token on push. See Shared/SpareClient.swift.
+        SpareClientToken: $(SPARE_CLIENT_TOKEN)
         # Registers the scheme the widget's links use.
         CFBundleURLTypes:
           - CFBundleURLName: app.spare.ios.deeplink
@@ -56,6 +61,11 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.spare.ios
         GENERATE_INFOPLIST_FILE: NO
+        # Empty by default. Overridden by an untracked Local.xcconfig, or on
+        # the command line: xcodebuild SPARE_CLIENT_TOKEN=... An empty value
+        # means the header is omitted, which CI needs -- it builds and tests
+        # without ever reaching the Worker.
+        SPARE_CLIENT_TOKEN: ""
         SWIFT_UPCOMING_FEATURE_CONCURRENCY: YES
   SpareWidget:
     type: app-extension
@@ -76,6 +86,10 @@ targets:
       path: SpareWidget/Info.plist
       properties:
         CFBundleDisplayName: Spare
+        # Present for parity with the app: the widget reads the shared store
+        # and makes no proxy calls today, but it links SpareCore and would
+        # need this the moment it did.
+        SpareClientToken: $(SPARE_CLIENT_TOKEN)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:
@@ -84,6 +98,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.spare.ios.widget
         GENERATE_INFOPLIST_FILE: NO
+        SPARE_CLIENT_TOKEN: ""
         SWIFT_UPCOMING_FEATURE_CONCURRENCY: YES
   SpareTests:
     type: bundle.unit-test

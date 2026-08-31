@@ -34,3 +34,6 @@ api_key.txt
 secrets.json
 secrets.plist
 secrets.yml
+
+# Local build settings (the client token). Never committed.
+Local.xcconfig

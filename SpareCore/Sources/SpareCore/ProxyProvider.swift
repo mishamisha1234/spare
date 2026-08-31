@@ -36,6 +36,9 @@ public struct ProxyProvider: LessonProvider {
     ///     tier, and the proxy then serves free-tier content.
     ///   - operatorToken: The proxy's `ADMIN_TOKEN`, for the offline batch tool
     ///     only. The app never passes one. See `ProxyRoute`.
+    ///   - clientToken: The pre-release `SPARE_CLIENT_TOKEN`. The shipping app
+    ///     always passes one; without it every `/v1/*` call comes back 404.
+    ///     See `SpareClient`.
     public init(
         transport: any HTTPTransport,
         baseURL: URL,
@@ -45,6 +48,7 @@ public struct ProxyProvider: LessonProvider {
         sleeper: any Sleeper = TaskSleeper(),
         configuration: Configuration = .standard,
         operatorToken: String? = nil,
+        clientToken: String? = nil,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         pipeline = GenerationPipeline(
@@ -53,7 +57,8 @@ public struct ProxyProvider: LessonProvider {
                 baseURL: baseURL,
                 deviceID: deviceID,
                 receipt: receipt,
-                operatorToken: operatorToken
+                operatorToken: operatorToken,
+                clientToken: clientToken
             ),
             ledger: ledger,
             sleeper: sleeper,

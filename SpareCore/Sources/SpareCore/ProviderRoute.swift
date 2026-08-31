@@ -154,17 +154,26 @@ public struct ProxyRoute: ProviderRoute {
     /// per-device limits and the cache — not the spend ceiling, and not the
     /// request policy.
     private let operatorToken: String?
+    /// The pre-release client token, or nil.
+    ///
+    /// Unlike `operatorToken` this is the ordinary case: the shipping app sets
+    /// it and the proxy answers 404 to every `/v1/*` call that arrives without
+    /// it. Nil is still legitimate — CI and sample builds have no token and
+    /// never reach the network — so it is omitted rather than sent empty.
+    private let clientToken: String?
 
     public init(
         baseURL: URL,
         deviceID: String,
         receipt: @escaping @Sendable () async -> String? = { nil },
-        operatorToken: String? = nil
+        operatorToken: String? = nil,
+        clientToken: String? = nil
     ) {
         self.baseURL = baseURL
         self.deviceID = deviceID
         self.receipt = receipt
         self.operatorToken = operatorToken
+        self.clientToken = clientToken
     }
 
     /// Endpoints whose requests the proxy forces to `stream: true`.
@@ -267,6 +276,9 @@ public struct ProxyRoute: ProviderRoute {
         }
         if let operatorToken, !operatorToken.isEmpty {
             headers["x-spare-admin"] = operatorToken
+        }
+        if let clientToken, !clientToken.isEmpty {
+            headers["x-spare-client"] = clientToken
         }
 
         return HTTPRequest(
