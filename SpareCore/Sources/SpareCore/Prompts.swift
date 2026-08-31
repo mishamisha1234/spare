@@ -424,6 +424,27 @@ public enum Prompts {
         add a second argument, and do not exceed the section ceiling.
         """
 
+    /// Appended to a revision being run again because the last one used the
+    /// negated-scope pivot.
+    ///
+    /// Quotes the sentence rather than describing the shape. Describing the
+    /// shape is what the editorial prompt already does, in three successive
+    /// formulations across eight probe rounds, and the rate never moved outside
+    /// sampling noise. What the model cannot see is which sentence it wrote.
+    public static let revisionPivotTemplate: String = """
+
+        Your previous revision of this draft contained this sentence:
+
+        "{{sentence}}"
+
+        That is a banned construction: a sentence that sweeps up the passage
+        before it and negates it, in order to pivot into a qualification or a
+        summation. Rewrite that passage without it. If the qualification is
+        worth making, attach it to the specific thing it qualifies and name that
+        thing. Do not merely reword the sentence — the move is what is banned,
+        in any phrasing.
+        """
+
     public static let outlineTaskTemplate: String = """
         Plan a {{minutes}}-minute mini-course on: {{topic}}
 
@@ -562,23 +583,30 @@ public enum Prompts {
     ///
     /// A range rather than a window, so the caller has to say which budget it
     /// means and cannot pick the wrong one by default.
-    /// - Parameter shortfall: the word count of a previous revision that came
-    ///   in under the floor, when this call is that revision being run again.
-    ///   Nil on a first attempt, which renders the placeholder away to nothing.
+    /// - Parameter retry: why this call is a re-run, when it is one. Nil on a
+    ///   first attempt, which renders the placeholder away to nothing.
     public static func revisionTaskPrompt(
         wordBudget: ClosedRange<Int>,
         draftJSON: String,
-        shortfall: Int? = nil
+        retry: RetryReason? = nil
     ) -> String {
-        let shortfallText = shortfall.map { words in
-            PromptTemplate.render(revisionShortfallTemplate, [
+        let retryText: String
+        switch retry {
+        case .none:
+            retryText = ""
+        case .short(let words):
+            retryText = PromptTemplate.render(revisionShortfallTemplate, [
                 "words": "\(words)",
                 "floor": "\(wordBudget.lowerBound)",
             ])
-        } ?? ""
+        case .bannedConstruction(let sentence):
+            retryText = PromptTemplate.render(revisionPivotTemplate, [
+                "sentence": sentence,
+            ])
+        }
         return PromptTemplate.render(revisionTaskTemplate, [
             "wordBudget": budgetPhrase(wordBudget),
-            "shortfall": shortfallText,
+            "shortfall": retryText,
             "draft": draftJSON,
         ])
     }

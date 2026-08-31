@@ -222,6 +222,10 @@ A 30-minute course is an outline call plus two calls per chapter — 9 requests 
 
 Retryable: network drops, 429, 5xx, truncated streams, malformed JSON. Not retryable: refusals (a decision, not a glitch) and auth failures.
 
+Two checks can spend a retry: a pass under the word floor, and a pass carrying the negated-scope pivot (`LessonQualityCheck.negatedScopePivot`). They share **one** counter, `Configuration.qualityRetries`, rather than getting one each. That is a hard constraint, not tidiness: a budget apiece would put a 30-minute course's worst case at 1 outline + 4 chapters x (3 drafts + 3 revisions) = 25 calls, past `MAX_REQUESTS_PER_LESSON`'s 24, turning a style problem into a 402 halfway through chapter three. Shared, the worst case stays at the 17 that bound was raised to cover.
+
+Because they share, a construction retry rolls the word count again and could hand back something shorter. So attempts are ranked and the floor dominates: a pass that met the floor beats one that merely avoids the construction. The construction check can never make length worse than it found it. On exhaustion the floor still blocks and the construction never does — a lesson carrying it is still a lesson.
+
 One rule is subtler: **a revision pass is never retried once it has emitted text.** Those deltas are already on the reader's screen, and `RevisionGate` is append-only — re-running the pass would append a second copy rather than replace the first. Draft passes, which are never displayed, retry freely.
 
 ## API key handling
@@ -300,6 +304,14 @@ Contrast is **measured, not eyeballed** — [`ThemeContrastTests`](SpareTests/Th
 **Empty and error states** come from one place. [`ProviderErrorCopy`](SpareCore/Sources/SpareCore/ProviderErrorCopy.swift) maps each `LessonProviderError` to a title, a message, whether retrying could help, and whether the fix is in Settings. Before it, three screens each had their own "Couldn't load…" string and being offline read identically to being rate limited — which matters, since one resolves by reconnecting and the other by waiting. "Try again" is offered only where it can work: an action that cannot help implies the failure is the reader's for not trying hard enough. A test asserts the copy's retryability agrees with the provider's own retry policy.
 
 ## Known deviations
+
+- **A rejected lesson can stay in the pool for thirty days.** The pivot check runs on the device; the server knows nothing about it. The server caches on its own criteria — complete, final pass, at or above `hardWordFloor` — so when a first attempt carries the construction but is long enough, it is written to the pool and marked seen. If the retry then comes back clean *but under the server's floor*, the server declines to overwrite, and the pool keeps the pivot-carrying first attempt while the reader who triggered the retry sees the clean one. Every other reader asking that question gets the rejected version for the next thirty days.
+
+  Not a key collision: `cacheKey` is derived from pool, window, format, topic and interest, none of which a regeneration changes, so the retry writes to exactly the same key. It is a *write-policy* divergence — the client and the server disagree about what "good enough to cache" means, and the server owns the pool. Ranking makes it rarer, since the floor-passing attempt usually wins, but does not remove it.
+
+  Fixing it properly means teaching the server the same check, which duplicates an editorial rule across Swift and TypeScript — the thing `policy.ts` exists to avoid. Documented rather than fixed.
+
+  Worth knowing that one accident holds this together: `markSeen` runs on the same condition as the cache write, and `handleGeneration` suppresses a hit for a device that has already seen the entry. Without that, a retry would be served the cached first attempt straight back and the whole gate would be a no-op. It is load-bearing for a reason it was not built for.
 
 - **Toolbar button shadow — confirmed unfixable without abandoning `.toolbar`.** Toolbar items render with a soft shadow under a circular background the theme doesn't specify. Three fixes were tried and verified against CI screenshots, and all three left it unchanged:
   1. `.buttonStyle(.plain)` on the buttons — it isn't button styling.
@@ -436,6 +448,45 @@ the rest are prompt rules the revision pass has to enforce by judgement.
 The second batch is eight fresh subjects, two per length, against the same
 reader profile — same profile deliberately, since whether the analogies still
 all come from freight is one of the things being tested.
+
+### What the probe rounds did and did not show
+
+Between the first batch and the pivot gate, eight rounds of six lessons each were
+run against the live proxy, each changing one thing in the editorial prompt and
+each read as evidence that the change had worked or backfired. Most of that
+reading was wrong, and the way it went wrong is worth keeping.
+
+The negated-scope pivot appeared in 26 of 57 generated lessons — **about 46%,
+95% CI [33%, 58%]**. Round-by-round the counts were 4, 5, 1, 2, 2, 3, 5 out of
+six, and each movement got an explanation: the ban failed, the rotation worked,
+the confidence-calibration edit regressed it. A dispersion test across the runs
+gives chi-square 13.3 on 9 df, p ~ 0.15 — **not distinguishable from pure
+sampling noise.** Every round is consistent with one constant rate.
+
+The check that settled it: the round with the worst rate (5/6) was re-run with a
+byte-identical prompt and came back **1/6**. Same prompt, same topics, same
+devices, same afternoon. There was no regression to explain, and there had
+probably been nothing to explain in any of the earlier rounds either.
+
+Three things follow, and they generalise past this construction:
+
+- **A six-lesson run cannot measure a prompt change.** Distinguishing 45% from
+  20% at that size needs roughly n=50 per arm. Every single-digit probe here was
+  underpowered by an order of magnitude, and the narrative it produced was
+  confident and fictional. Replicate before believing a difference.
+- **Some prompt changes do work, and look different when they do.** The
+  vague-attribution ban was tested the same way and gave 8 hits across 12
+  lessons without it against 1 across 12 with it. That is visible at this sample
+  size. The pivot never produced a signal like that under any of three
+  formulations, which is what eventually justified a code gate instead.
+- **Topic dominates prompt.** Across ten runs the same six topics ranged from
+  1/10 (mechanical clocks) to 7/10 (sourdough). A fixed six-topic panel where one
+  topic almost always fires and another almost never has less discriminating
+  power than n=6 already suggests.
+
+The gate's job is to catch the construction when it fires, not to lower the rate.
+The rate is not the target, and a probe round after the gate would not be able to
+tell you whether it had moved.
 
 ## Roadmap
 

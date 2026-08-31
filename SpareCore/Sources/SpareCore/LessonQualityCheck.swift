@@ -82,6 +82,9 @@ public enum LessonQualityCheck {
         case displayedArithmetic(String)
         case tooManySections(count: Int, cap: Int, perChapter: Bool)
         case subtitleGivesAwayClaim
+        /// A sentence that sweeps up the passage before it and negates it, to
+        /// pivot into a qualification or a summation. Carries the sentence.
+        case negatedScopePivot(String)
 
         public var description: String {
             switch self {
@@ -102,8 +105,60 @@ public enum LessonQualityCheck {
                 return "\(count) sections\(unit), ceiling is \(cap)"
             case .subtitleGivesAwayClaim:
                 return "subtitle gives away the surprising claim"
+            case .negatedScopePivot(let sentence):
+                return "negated-scope pivot: \"\(sentence.prefix(60))\""
             }
         }
+
+        /// Whether finding this is worth paying for another pass.
+        ///
+        /// Almost never. Most findings describe writing that could be better,
+        /// and regenerating for those would spend a whole pass at full price on
+        /// a lesson the reader would have been happy with — `wellUnderBudget`
+        /// alone fires on most lessons that land under the floor, so retrying
+        /// on it would retry nearly everything.
+        ///
+        /// The pivot is the exception because three separate prompt
+        /// formulations failed to move it: banned by position, banned by
+        /// function, and displaced by rotating what fills its slot. Its rate
+        /// across ten probe runs (26 of 57 lessons) never moved outside
+        /// sampling noise. A check that fires deterministically is the only
+        /// thing left that does not depend on an effect nobody could measure.
+        ///
+        /// Exhaustive rather than defaulted, so a new case has to decide.
+        public var warrantsRetry: Bool {
+            switch self {
+            case .negatedScopePivot:
+                return true
+            case .bannedPhrase, .overBudget, .wellUnderBudget, .opensWithDefinition,
+                 .containsEmoji, .closingRestatesOpening, .wrongDeeperAngleCount,
+                 .uniformSentenceLength, .bannedClosingConstruction,
+                 .displayedArithmetic, .tooManySections, .subtitleGivesAwayClaim:
+                return false
+            }
+        }
+
+        /// The text the retry has to be told about, for findings that carry one.
+        ///
+        /// A bare re-run is the same request twice. Naming the sentence is the
+        /// one thing the model cannot see for itself — see
+        /// `Prompts.revisionPivotTemplate`.
+        public var offendingSentence: String? {
+            switch self {
+            case .negatedScopePivot(let sentence): return sentence
+            default: return nil
+            }
+        }
+    }
+
+    /// Findings that justify another pass. Takes prose rather than a `Lesson`
+    /// so the same check serves a chapter, which is not one.
+    public static func retryTriggeringFindings(inBody body: String) -> [Finding] {
+        var found: [Finding] = []
+        if let sentence = negatedScopePivot(in: body) {
+            found.append(.negatedScopePivot(sentence))
+        }
+        return found.filter(\.warrantsRetry)
     }
 
     public static func findings(for lesson: Lesson, window: TimeWindow) -> [Finding] {
@@ -179,6 +234,10 @@ public enum LessonQualityCheck {
             findings.append(.subtitleGivesAwayClaim)
         }
 
+        // Reported here as well as driving the retry, so the batch tool's
+        // summary still counts the ones that survived their retry.
+        findings.append(contentsOf: retryTriggeringFindings(inBody: body))
+
         return findings
     }
 
@@ -198,6 +257,60 @@ public enum LessonQualityCheck {
         return Prompts.bannedClosingOpeners
             .sorted { $0.count > $1.count }
             .first { lowered.hasPrefix($0) }
+    }
+
+    // MARK: - Negated-scope pivot
+
+    /// Sentence openers that perform the pivot.
+    ///
+    /// Deliberately two, and deliberately matched only at the start of a
+    /// sentence. The construction is a *move* — sweep up what was just said,
+    /// negate it, turn into a qualification — and in a corpus of 39 generated
+    /// lessons every one of its 23 appearances opened a sentence with one of
+    /// these. Widening to "none of it", "not all of this", or a bare "none"
+    /// anywhere in a sentence buys nothing measured and costs precision:
+    /// "Commercial yeast bread has none of this complexity" is an ordinary
+    /// comparative, mid-sentence, and must not fire. It is the one near-miss
+    /// in that corpus and it is the reason this is a prefix test.
+    ///
+    /// The narrowness is a known gap, not an oversight. "It did not happen
+    /// because anyone declared a correct spelling" is the same move and passes
+    /// through. Catching it would need judgement rather than a prefix, and a
+    /// check that fires on ordinary prose is worse than one that misses.
+    static let negatedScopeOpeners = ["none of this", "none of that"]
+
+    static func negatedScopePivot(in body: String) -> String? {
+        sentences(in: body).first { sentence in
+            let lowered = sentence.lowercased()
+            return negatedScopeOpeners.contains { lowered.hasPrefix($0) }
+        }
+    }
+
+    /// Sentences in reading order, headings dropped.
+    ///
+    /// Split on the same terminators as `sentenceWordLengths`, but keeping the
+    /// text: this check is about how a sentence *starts*, which a word count
+    /// throws away. An abbreviation splits a sentence early and yields a
+    /// fragment, which is harmless here — a fragment beginning "none of this"
+    /// is the construction just the same.
+    static func sentences(in body: String) -> [String] {
+        var out: [String] = []
+        for rawLine in body.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty || line.hasPrefix("#") { continue }
+            var current = ""
+            for character in line {
+                current.append(character)
+                if character == "." || character == "?" || character == "!" {
+                    let sentence = current.trimmingCharacters(in: .whitespaces)
+                    if !sentence.isEmpty { out.append(sentence) }
+                    current = ""
+                }
+            }
+            let tail = current.trimmingCharacters(in: .whitespaces)
+            if !tail.isEmpty { out.append(tail) }
+        }
+        return out
     }
 
     // MARK: - Displayed arithmetic

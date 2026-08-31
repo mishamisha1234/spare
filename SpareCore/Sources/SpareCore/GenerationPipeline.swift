@@ -1,5 +1,20 @@
 import Foundation
 
+/// Why a pass is being run again, and what the re-run has to be told.
+///
+/// Replaces the bare `Int?` shortfall now that two different checks can spend
+/// the same retry. A bare re-run is the same request twice and lands in the
+/// same place often enough not to be worth the money, so each case carries the
+/// one thing the model cannot see for itself: what it produced last time.
+public enum RetryReason: Equatable, Sendable {
+    /// The previous attempt came in under the word floor.
+    case short(words: Int)
+    /// The previous attempt used a banned construction. Carries the sentence
+    /// verbatim, because naming the shape without naming the instance has
+    /// already been tried three times in the prompt and did not work.
+    case bannedConstruction(sentence: String)
+}
+
 /// The two-pass generation pipeline, independent of where requests are sent.
 ///
 /// Draft, revision, quality checks, retry behaviour, and lazy chapter
@@ -29,16 +44,24 @@ public struct GenerationPipeline: LessonProvider {
         /// The editorial prompt is identical on every call, which is the whole
         /// point of caching it. Disable only to measure the difference.
         public var cacheSystemPrompt: Bool
-        /// Extra attempts allowed at a pass that came back under the word floor.
+        /// Extra attempts allowed at a pass that came back under the word floor
+        /// **or** carrying a banned construction.
         ///
-        /// One, not three. Each attempt is a whole pass at full price, and the
-        /// server bounds how many requests one lesson may make: at one retry a
+        /// One, not three, and one *shared between both checks* rather than one
+        /// each. Each attempt is a whole pass at full price, and the server
+        /// bounds how many requests one lesson may make: at one retry a
         /// course's worst case is an outline plus four chapters of two drafts
         /// and two revisions, which is seventeen calls and is what
         /// `MAX_REQUESTS_PER_LESSON` was raised to cover. A second retry would
         /// put it past that bound and turn a length problem into a 402 halfway
-        /// through chapter three.
-        public var wordFloorRetries: Int
+        /// through chapter three — and so would giving the construction check a
+        /// budget of its own, which is why `respectingQuality` decrements one
+        /// counter for both.
+        ///
+        /// Named for quality rather than the floor since the construction check
+        /// joined it: leaving it `wordFloorRetries` would say the budget is the
+        /// floor's alone, which is the misreading that breaks the bound above.
+        public var qualityRetries: Int
         /// Whether a pass that lands under the word floor is retried and, in the
         /// end, refused.
         ///
@@ -58,14 +81,14 @@ public struct GenerationPipeline: LessonProvider {
             effort: Effort? = .high,
             retry: RetryPolicy = .standard,
             cacheSystemPrompt: Bool = true,
-            wordFloorRetries: Int = 1,
+            qualityRetries: Int = 1,
             enforcesWordFloor: Bool = true
         ) {
             self.model = model
             self.effort = effort
             self.retry = retry
             self.cacheSystemPrompt = cacheSystemPrompt
-            self.wordFloorRetries = max(0, wordFloorRetries)
+            self.qualityRetries = max(0, qualityRetries)
             self.enforcesWordFloor = enforcesWordFloor
         }
 
@@ -271,10 +294,11 @@ public struct GenerationPipeline: LessonProvider {
         //
         // The floor check here is the free one: nothing has been shown, so a
         // re-run costs a call and no reader ever knows. It does not refuse.
-        let draft = try await respectingWordFloor(
+        let draft = try await respectingQuality(
             budget: window.wordBudget,
             throwOnExhaustion: false,
             wordCount: { (lesson: Lesson) in lesson.wordCount },
+            body: { (lesson: Lesson) in lesson.bodyMarkdown },
             runPass: { _ in
                 let (draft, _) = try await streamStructured(
                     request: draftRequest,
@@ -294,14 +318,20 @@ public struct GenerationPipeline: LessonProvider {
 
         // Pass 2. This is what the reader actually sees, so a re-run has to
         // take back what the last attempt put on their screen.
-        let revised = try await respectingWordFloor(
+        let revised = try await respectingQuality(
             budget: window.wordBudget,
             wordCount: { (lesson: Lesson) in lesson.wordCount },
+            body: { (lesson: Lesson) in lesson.bodyMarkdown },
             onWithdraw: { continuation.yield(.revisionRestarted(chapter: 0)) },
-            runPass: { shortfall in
+            // Follows the withdrawal above, so the reader is shown the attempt
+            // being kept rather than the one just discarded.
+            onRestore: { (kept: Lesson) in
+                continuation.yield(.revisedDelta(chapter: 0, text: kept.bodyMarkdown))
+            },
+            runPass: { retry in
                 let (revised, _) = try await streamStructured(
                     request: revisionRequest(
-                        window: window, draft: draft, stream: true, shortfall: shortfall
+                        window: window, draft: draft, stream: true, retry: retry
                     ),
                     field: "bodyMarkdown",
                     kind: .lessonRevision,
@@ -426,10 +456,11 @@ public struct GenerationPipeline: LessonProvider {
         // Measured against the chapter's budget, not the course's. Same rule
         // as the revision below, and the same mistake if it is got wrong.
         var draftJSON = ""
-        _ = try await respectingWordFloor(
+        _ = try await respectingQuality(
             budget: window.chapterWordBudget,
             throwOnExhaustion: false,
             wordCount: { (chapter: ChapterResponse) in chapter.bodyMarkdown.lessonWordCount },
+            body: { (chapter: ChapterResponse) in chapter.bodyMarkdown },
             runPass: { _ in
                 let (draft, json) = try await streamStructured(
                     request: chapterRequest,
@@ -453,11 +484,28 @@ public struct GenerationPipeline: LessonProvider {
         let headerPrefix = "\(LessonFormat.chapterHeadingPrefix)\(index + 1): "
         var resolvedHeading = heading
 
-        let revised = try await respectingWordFloor(
+        let revised = try await respectingQuality(
             budget: window.chapterWordBudget,
             wordCount: { (chapter: ChapterResponse) in chapter.bodyMarkdown.lessonWordCount },
+            body: { (chapter: ChapterResponse) in chapter.bodyMarkdown },
             onWithdraw: { continuation.yield(.revisionRestarted(chapter: index)) },
-            runPass: { shortfall in
+            // Header and body together, in the same shape the streaming path
+            // assembles them (see the return below), so a restored chapter is
+            // not left headless.
+            onRestore: { (kept: ChapterResponse) in
+                continuation.yield(.revisedDelta(
+                    chapter: index,
+                    text: headerPrefix + kept.heading + "
+
+" + kept.bodyMarkdown
+                ))
+                // Track it too. The assembled return below reads
+                // `resolvedHeading`, which still holds the *discarded*
+                // attempt's heading at this point — leaving it would pair one
+                // attempt's heading with another's body.
+                resolvedHeading = kept.heading
+            },
+            runPass: { retry in
                 let revisionRequest = MessagesRequest(
                     model: configuration.model,
                     maxTokens: AnthropicAPI.maxTokens(for: window),
@@ -467,7 +515,7 @@ public struct GenerationPipeline: LessonProvider {
                     messages: [.user(Prompts.revisionTaskPrompt(
                         wordBudget: window.chapterWordBudget,
                         draftJSON: draftJSON,
-                        shortfall: shortfall
+                        retry: retry
                     ))],
                     stream: true,
                     effort: configuration.effort,
@@ -543,7 +591,7 @@ public struct GenerationPipeline: LessonProvider {
         window: TimeWindow,
         draft: Lesson,
         stream: Bool = false,
-        shortfall: Int? = nil
+        retry: RetryReason? = nil
     ) -> MessagesRequest {
         let draftJSON = (try? encodeJSON(draft)) ?? draft.bodyMarkdown
         return MessagesRequest(
@@ -554,7 +602,7 @@ public struct GenerationPipeline: LessonProvider {
             messages: [.user(Prompts.revisionTaskPrompt(
                 wordBudget: window.wordBudget,
                 draftJSON: draftJSON,
-                shortfall: shortfall
+                retry: retry
             ))],
             stream: stream,
             effort: configuration.effort,
@@ -773,34 +821,110 @@ public struct GenerationPipeline: LessonProvider {
     ///   - onWithdraw: called before each re-run, for a pass whose output has
     ///     already reached the reader. Drafts pass nothing: they are never
     ///     displayed, so there is nothing to take back.
-    ///   - runPass: given the previous attempt's word count, or nil first time.
-    private func respectingWordFloor<T>(
+    ///   - body: the prose to check for banned constructions. Separate from
+    ///     `wordCount` because a chapter is not a `Lesson` and both paths need
+    ///     the same check.
+    ///   - onRestore: called with the attempt being kept when it is *not* the
+    ///     one just run — see `rank`. Immediately follows an `onWithdraw`, so a
+    ///     displayed pass can put the kept text back.
+    ///   - runPass: given why the last attempt is being re-run, or nil first
+    ///     time. Not a word count any more: two different checks can spend this
+    ///     budget and the re-run has to be told which one did.
+    private func respectingQuality<T>(
         budget: ClosedRange<Int>,
         throwOnExhaustion: Bool = true,
         wordCount: (T) -> Int,
+        body: (T) -> String,
         onWithdraw: () -> Void = {},
-        runPass: (_ previousShortfall: Int?) async throws -> T
+        onRestore: (T) -> Void = { _ in },
+        runPass: (_ previous: RetryReason?) async throws -> T
     ) async throws -> T {
         guard configuration.enforcesWordFloor else { return try await runPass(nil) }
 
-        var shortfall: Int?
-        var retriesLeft = configuration.wordFloorRetries
+        var reason: RetryReason?
+        // ONE counter for both checks. Not tidiness — a budget each would put a
+        // course's worst case at 1 outline + 4 chapters x (3 drafts + 3
+        // revisions) = 25 calls, past `MAX_REQUESTS_PER_LESSON` (24), turning a
+        // style problem into a 402 halfway through chapter three. Sharing holds
+        // the worst case at the 17 that bound was raised to cover.
+        var retriesLeft = configuration.qualityRetries
+        var best: T?
 
         while true {
-            let result = try await runPass(shortfall)
+            let result = try await runPass(reason)
             let words = wordCount(result)
-            if LessonQualityCheck.failure(wordCount: words, budget: budget) == nil {
-                return result
+            let failure = LessonQualityCheck.failure(wordCount: words, budget: budget)
+            let finding = LessonQualityCheck.retryTriggeringFindings(inBody: body(result)).first
+
+            if failure == nil, finding == nil { return result }
+
+            // Ties keep the current attempt, so an equally-bad re-run never
+            // costs a pointless rewind.
+            var keepingCurrent = false
+            if best == nil
+                || rank(result, budget: budget, wordCount: wordCount, body: body)
+                    <= rank(best!, budget: budget, wordCount: wordCount, body: body) {
+                best = result
+                keepingCurrent = true
             }
+
             guard retriesLeft > 0 else {
-                guard throwOnExhaustion else { return result }
-                throw LessonProviderError.underWordFloor(
-                    words: words, floor: budget.lowerBound
-                )
+                let keep = best ?? result
+                if !keepingCurrent {
+                    onWithdraw()
+                    onRestore(keep)
+                }
+                // Only the failure tier may block. A finding never does: a
+                // lesson carrying the construction is still a lesson, and
+                // refusing to serve one over a sentence shape would be the
+                // wrong trade in the expensive direction.
+                if LessonQualityCheck.failure(wordCount: wordCount(keep), budget: budget) != nil {
+                    guard throwOnExhaustion else { return keep }
+                    throw LessonProviderError.underWordFloor(
+                        words: wordCount(keep), floor: budget.lowerBound
+                    )
+                }
+                return keep
             }
+
             retriesLeft -= 1
-            shortfall = words
+            // The floor is the more serious of the two, so it names the reason
+            // when both are true.
+            if failure != nil {
+                reason = .short(words: words)
+            } else if let sentence = finding?.offendingSentence {
+                reason = .bannedConstruction(sentence: sentence)
+            } else {
+                reason = nil
+            }
             onWithdraw()
+        }
+    }
+
+    /// Lower is better.
+    ///
+    /// The floor dominates, and that ordering is the whole safety property. A
+    /// construction-triggered re-run rolls the word count again, so without it
+    /// a lesson that was the promised length could be traded for a shorter one
+    /// that merely avoids a sentence shape — and on the revision pass, where
+    /// exhaustion throws, that trade turns a stylistic tic into a generation
+    /// failure the reader sees. Ranked this way the construction check can
+    /// never make length worse than it found it.
+    private func rank<T>(
+        _ candidate: T,
+        budget: ClosedRange<Int>,
+        wordCount: (T) -> Int,
+        body: (T) -> String
+    ) -> Int {
+        let meetsFloor = LessonQualityCheck.failure(
+            wordCount: wordCount(candidate), budget: budget
+        ) == nil
+        let clean = LessonQualityCheck.retryTriggeringFindings(inBody: body(candidate)).isEmpty
+        switch (meetsFloor, clean) {
+        case (true, true): return 0
+        case (true, false): return 1
+        case (false, true): return 2
+        case (false, false): return 3
         }
     }
 

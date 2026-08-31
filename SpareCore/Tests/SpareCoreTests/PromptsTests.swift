@@ -125,7 +125,7 @@ final class PromptsTests: XCTestCase {
         XCTAssertFalse(first.contains("previous revision"), first)
 
         let retry = Prompts.revisionTaskPrompt(
-            wordBudget: 2400...3000, draftJSON: "{}", shortfall: 1_555
+            wordBudget: 2400...3000, draftJSON: "{}", retry: .short(words: 1_555)
         )
         XCTAssertTrue(PromptTemplate.unresolvedPlaceholders(in: retry).isEmpty, retry)
         XCTAssertTrue(retry.contains("1555 words"), retry)

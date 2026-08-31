@@ -28,7 +28,7 @@ final class WordFloorTests: XCTestCase {
             transport: transport,
             keyStore: StaticAPIKeyStore("sk-ant-fixture"),
             sleeper: RecordingSleeper(),
-            configuration: .init(wordFloorRetries: retries, enforcesWordFloor: true)
+            configuration: .init(qualityRetries: retries, enforcesWordFloor: true)
         )
     }
 
@@ -298,5 +298,120 @@ final class WordFloorTests: XCTestCase {
             .split(separator: "\n")
             .filter { $0.hasPrefix(LessonFormat.chapterHeadingPrefix) }
         XCTAssertEqual(headings.count, chapterCount, "a rewound chapter lost its heading")
+    }
+
+    // MARK: - The shared retry budget
+
+    /// A body of the right length carrying the banned construction, sentence-
+    /// initial, the way every real instance in the corpus appeared.
+    private func pivotStream(words: Int) -> FixtureTransport.Step {
+        .sse(HTTPFixtures.stream(json: HTTPFixtures.lessonJSON(
+            body: filler(words: words - 8) + ". None of this happens in a single pass."
+        )))
+    }
+
+    /// The floor and the construction spend the **same** counter.
+    ///
+    /// A budget each would put a course's worst case at 25 calls against
+    /// `MAX_REQUESTS_PER_LESSON`'s 24. Here: the revision comes back short,
+    /// spends the one retry, and the re-run carries the construction — which
+    /// must be accepted rather than funding a third attempt.
+    func testTheFloorAndTheConstructionShareOneRetry() async throws {
+        let transport = FixtureTransport([
+            lessonStream(words: 1_200),   // draft, clean
+            lessonStream(words: 900),     // revision, under the 990 hard floor
+            pivotStream(words: 1_200),    // re-run: long enough, but pivots
+        ])
+
+        let events = try await collect(makeProvider(transport).streamLesson(
+            topic: topic, window: .seven, profile: profile, demand: .eager()
+        ))
+
+        XCTAssertEqual(transport.requestCount, 3, "the construction must not buy a third attempt")
+        XCTAssertEqual(restarts(events), 1)
+        guard case .finished = events.last else {
+            return XCTFail("a surviving construction must not fail the generation")
+        }
+    }
+
+    /// Ranking: the floor dominates.
+    ///
+    /// The construction re-run rolls the word count again. Without ranking the
+    /// loop returns the last attempt — here a *short* one — turning a sentence
+    /// shape into a lesson that breaks the length promise, and on this pass
+    /// into a thrown `underWordFloor` the reader would see. The attempt that
+    /// cleared the floor has to win even though it carries the construction.
+    func testAConstructionRetryNeverTradesAwayTheWordFloor() async throws {
+        let transport = FixtureTransport([
+            lessonStream(words: 1_200),   // draft, clean
+            pivotStream(words: 1_200),    // revision: long enough, pivots
+            lessonStream(words: 900),     // re-run: clean, but under the floor
+        ])
+
+        let events = try await collect(makeProvider(transport).streamLesson(
+            topic: topic, window: .seven, profile: profile, demand: .eager()
+        ))
+
+        guard case .finished(let lesson)? = events.last else {
+            return XCTFail("must not throw: one attempt did meet the floor")
+        }
+        XCTAssertGreaterThanOrEqual(
+            lesson.wordCount,
+            LessonQualityCheck.hardFloor(for: TimeWindow.seven.wordBudget),
+            "kept the short attempt over the one that met the floor"
+        )
+        // Two rewinds: one to run the retry, one to put the kept attempt back.
+        XCTAssertEqual(restarts(events), 2, "the kept attempt must be restored to the reader")
+    }
+
+    /// Accept-on-exhaustion. A finding never blocks: a lesson carrying the
+    /// construction is still a lesson.
+    func testAConstructionThatSurvivesItsRetryIsServed() async throws {
+        let transport = FixtureTransport([
+            lessonStream(words: 1_200),
+            pivotStream(words: 1_200),
+            pivotStream(words: 1_200),
+        ])
+
+        let events = try await collect(makeProvider(transport).streamLesson(
+            topic: topic, window: .seven, profile: profile, demand: .eager()
+        ))
+
+        XCTAssertEqual(transport.requestCount, 3)
+        guard case .finished(let lesson)? = events.last else {
+            return XCTFail("a finding must never block a lesson from being read")
+        }
+        XCTAssertTrue(lesson.bodyMarkdown.contains("None of this"))
+    }
+
+    /// The draft is never displayed, so its re-run costs a call and no rewind.
+    func testAPivotingDraftIsRetriedWithoutARewind() async throws {
+        let transport = FixtureTransport([
+            pivotStream(words: 1_200),    // draft pivots
+            lessonStream(words: 1_200),   // draft re-run, clean
+            lessonStream(words: 1_200),   // revision, clean
+        ])
+
+        let events = try await collect(makeProvider(transport).streamLesson(
+            topic: topic, window: .seven, profile: profile, demand: .eager()
+        ))
+
+        XCTAssertEqual(transport.requestCount, 3)
+        XCTAssertEqual(restarts(events), 0, "a draft is never on screen to take back")
+    }
+
+    /// With no retries configured the check still must not block.
+    func testWithNoBudgetAConstructionIsAcceptedRatherThanRefused() async throws {
+        let transport = FixtureTransport([
+            lessonStream(words: 1_200),
+            pivotStream(words: 1_200),
+        ])
+
+        let events = try await collect(makeProvider(transport, retries: 0).streamLesson(
+            topic: topic, window: .seven, profile: profile, demand: .eager()
+        ))
+
+        XCTAssertEqual(transport.requestCount, 2)
+        guard case .finished = events.last else { return XCTFail("must still serve") }
     }
 }
