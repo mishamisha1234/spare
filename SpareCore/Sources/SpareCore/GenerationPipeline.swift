@@ -495,9 +495,7 @@ public struct GenerationPipeline: LessonProvider {
             onRestore: { (kept: ChapterResponse) in
                 continuation.yield(.revisedDelta(
                     chapter: index,
-                    text: headerPrefix + kept.heading + "
-
-" + kept.bodyMarkdown
+                    text: headerPrefix + kept.heading + "\n\n" + kept.bodyMarkdown
                 ))
                 // Track it too. The assembled return below reads
                 // `resolvedHeading`, which still holds the *discarded*
